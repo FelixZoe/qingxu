@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:qingxu/models/pomodoro_state.dart';
+import 'package:qingxu/models/sync_settings.dart';
+import 'package:qingxu/models/task_item.dart';
+import 'package:qingxu/services/sync_client_base.dart';
 import 'package:qingxu/state/task_controller.dart';
 import 'package:qingxu/ui/design_system.dart';
 import 'package:qingxu/ui/pomodoro_page.dart';
@@ -54,7 +58,7 @@ void main() {
     tester,
   ) async {
     await usePhoneSize(tester);
-    final controller = TaskController();
+    final controller = TaskController(syncClient: _SupportedSyncClient());
     addTearDown(controller.dispose);
     await tester.pumpWidget(
       host(
@@ -77,4 +81,26 @@ void main() {
     expect(find.text('外观'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
+}
+
+class _SupportedSyncClient implements SyncClientBase {
+  @override
+  String get defaultDeviceName => '测试设备';
+
+  @override
+  bool get isSupported => true;
+
+  @override
+  Future<SyncResponse> sync(
+    SyncSettings settings,
+    List<TaskItem> tasks,
+    PomodoroState pomodoro,
+  ) async => SyncResponse(
+    tasks: tasks,
+    pomodoro: pomodoro,
+    serverTime: DateTime.now().toUtc().toIso8601String(),
+  );
+
+  @override
+  Future<void> testConnection(SyncSettings settings) async {}
 }
