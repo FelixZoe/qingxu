@@ -34,7 +34,7 @@ class SceneDelegate: FlutterSceneDelegate {
 final class QingxuTabBarController: UITabBarController, UITabBarControllerDelegate {
   private let flutterViewController: FlutterViewController
   private let qingxuNavigationBridge: NativeNavigationBridge
-  private let tabs = QingxuTab.allCases
+  private let qingxuTabs = QingxuTab.allCases
 
   init(
     flutterViewController: FlutterViewController,
@@ -55,7 +55,7 @@ final class QingxuTabBarController: UITabBarController, UITabBarControllerDelega
     delegate = self
     tabBar.tintColor = UIColor(red: 0.91, green: 0.72, blue: 0.25, alpha: 1)
 
-    viewControllers = tabs.map { tab in
+    viewControllers = qingxuTabs.map { tab in
       let controller = FlutterTabContentController()
       controller.tabBarItem = UITabBarItem(
         title: tab.title,
@@ -72,7 +72,7 @@ final class QingxuTabBarController: UITabBarController, UITabBarControllerDelega
   func select(_ tab: QingxuTab) {
     loadViewIfNeeded()
     guard
-      let index = tabs.firstIndex(of: tab),
+      let index = qingxuTabs.firstIndex(of: tab),
       let contentController = viewControllers?[index] as? FlutterTabContentController
     else {
       return
@@ -94,7 +94,7 @@ final class QingxuTabBarController: UITabBarController, UITabBarControllerDelega
     }
 
     contentController.embed(flutterViewController)
-    qingxuNavigationBridge.userSelected(tabs[index])
+    qingxuNavigationBridge.userSelected(qingxuTabs[index])
   }
 }
 
