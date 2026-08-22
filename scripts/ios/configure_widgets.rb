@@ -59,5 +59,12 @@ unless embed_phase.files_references.include?(widgets.product_reference)
   build_file.settings = { 'ATTRIBUTES' => %w[RemoveHeadersOnCopy CodeSignOnCopy] }
 end
 
+# Flutter's Thin Binary script reads the completed app bundle. Embedding the
+# extension after that script creates an Xcode dependency cycle, so keep the
+# copy phase immediately before Thin Binary.
+runner.build_phases.delete(embed_phase)
+thin_binary_index = runner.build_phases.index { |phase| phase.respond_to?(:name) && phase.name == 'Thin Binary' }
+runner.build_phases.insert(thin_binary_index || runner.build_phases.length, embed_phase)
+
 project.save
 puts 'Configured QingxuWidgets and Live Activity targets.'
