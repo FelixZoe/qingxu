@@ -31,6 +31,7 @@ dependencies:
   forui: ^0.25.0
   flutter:
     sdk: flutter
+  flutter_secure_storage: ^11.0.0
   flutter_localizations:
     sdk: flutter
 

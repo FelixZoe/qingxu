@@ -7,11 +7,13 @@ class Sidebar extends StatelessWidget {
   const Sidebar({
     required this.controller,
     required this.searchFocus,
+    required this.onOpenSyncSettings,
     super.key,
   });
 
   final TaskController controller;
   final FocusNode searchFocus;
+  final VoidCallback onOpenSyncSettings;
 
   @override
   Widget build(BuildContext context) {
@@ -81,25 +83,7 @@ class Sidebar extends StatelessWidget {
             ),
           ],
         ),
-        footer: const Padding(
-          padding: EdgeInsets.all(20),
-          child: Row(
-            children: [
-              DecoratedBox(
-                decoration: BoxDecoration(
-                  color: Color(0xFF75AA78),
-                  shape: BoxShape.circle,
-                ),
-                child: SizedBox(width: 7, height: 7),
-              ),
-              SizedBox(width: 8),
-              Text(
-                '本地数据已保存',
-                style: TextStyle(fontSize: 11, color: Color(0xFF969289)),
-              ),
-            ],
-          ),
-        ),
+        footer: _SyncFooter(controller: controller),
         children: [
           FSidebarGroup(
             label: const Text('任务'),
@@ -148,6 +132,79 @@ class Sidebar extends StatelessWidget {
                   iconColor: Color(project.color),
                 ),
             ],
+          ),
+          if (controller.syncSupported)
+            FSidebarGroup(
+              label: const Text('设置'),
+              children: [
+                FSidebarItem(
+                  icon: const Icon(Icons.sync_rounded, size: 18),
+                  label: const Text('多端同步'),
+                  onPress: () {
+                    final drawerOpen =
+                        Scaffold.maybeOf(context)?.isDrawerOpen ?? false;
+                    if (drawerOpen) {
+                      Navigator.of(context).pop();
+                      WidgetsBinding.instance.addPostFrameCallback(
+                        (_) => onOpenSyncSettings(),
+                      );
+                    } else {
+                      onOpenSyncSettings();
+                    }
+                  },
+                ),
+              ],
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SyncFooter extends StatelessWidget {
+  const _SyncFooter({required this.controller});
+
+  final TaskController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final (color, label) = controller.syncSupported
+        ? switch (controller.syncActivity) {
+            SyncActivity.syncing || SyncActivity.testing => (
+              const Color(0xFF6687AD),
+              controller.syncMessage,
+            ),
+            SyncActivity.success => (
+              const Color(0xFF75AA78),
+              controller.syncMessage,
+            ),
+            SyncActivity.error => (
+              const Color(0xFFBD6A5C),
+              controller.syncMessage,
+            ),
+            SyncActivity.idle => (
+              const Color(0xFF75AA78),
+              controller.syncMessage,
+            ),
+            SyncActivity.unconfigured => (const Color(0xFFAAA69D), '仅保存在本地'),
+          }
+        : (const Color(0xFF75AA78), '本地数据已保存');
+    return Padding(
+      padding: const EdgeInsets.all(20),
+      child: Row(
+        children: [
+          DecoratedBox(
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+            child: const SizedBox(width: 7, height: 7),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 11, color: Color(0xFF969289)),
+            ),
           ),
         ],
       ),

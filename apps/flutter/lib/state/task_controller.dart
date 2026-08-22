@@ -3,15 +3,36 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 
+import '../models/sync_settings.dart';
 import '../models/task_item.dart';
+import '../services/secure_token_storage.dart';
+import '../services/secure_token_storage_base.dart';
+import '../services/sync_client.dart';
+import '../services/sync_client_base.dart';
+import '../services/sync_settings_storage.dart';
+import '../services/sync_settings_storage_base.dart';
 import '../services/task_storage.dart';
 import '../services/task_storage_base.dart';
 
+enum SyncActivity { unconfigured, idle, testing, syncing, success, error }
+
 class TaskController extends ChangeNotifier {
-  TaskController({TaskStorageBase? storage})
-    : _storage = storage ?? TaskStorage();
+  TaskController({
+    TaskStorageBase? storage,
+    SyncSettingsStorageBase? syncSettingsStorage,
+    SecureTokenStorageBase? secureTokenStorage,
+    SyncClientBase? syncClient,
+    this.syncDebounce = const Duration(milliseconds: 1200),
+  }) : _storage = storage ?? TaskStorage(),
+       _syncSettingsStorage = syncSettingsStorage ?? SyncSettingsStorage(),
+       _secureTokenStorage = secureTokenStorage ?? SecureTokenStorage(),
+       _syncClient = syncClient ?? SyncClient();
 
   final TaskStorageBase _storage;
+  final SyncSettingsStorageBase _syncSettingsStorage;
+  final SecureTokenStorageBase _secureTokenStorage;
+  final SyncClientBase _syncClient;
+  final Duration syncDebounce;
   final List<TaskItem> _tasks = [];
 
   static const projects = <ProjectItem>[
@@ -23,7 +44,28 @@ class TaskController extends ChangeNotifier {
   String search = '';
   String? selectedTaskId;
 
+  SyncSettings _syncSettings = const SyncSettings();
+  SyncActivity _syncActivity = SyncActivity.unconfigured;
+  String _syncMessage = '尚未配置同步';
+  DateTime? _lastSyncedAt;
+  String? _lastServerTime;
+  Timer? _syncDebounceTimer;
+  Future<bool>? _activeSync;
+  Future<void> _saveTail = Future<void>.value();
+  bool _syncQueued = false;
+  int _syncConfigurationGeneration = 0;
+  bool _disposed = false;
+
   List<TaskItem> get tasks => List.unmodifiable(_tasks);
+  SyncSettings get syncSettings => _syncSettings;
+  SyncActivity get syncActivity => _syncActivity;
+  String get syncMessage => _syncMessage;
+  DateTime? get lastSyncedAt => _lastSyncedAt;
+  String? get lastServerTime => _lastServerTime;
+  bool get syncSupported => _syncClient.isSupported;
+  bool get isSyncBusy =>
+      _syncActivity == SyncActivity.testing ||
+      _syncActivity == SyncActivity.syncing;
 
   TaskItem? get selectedTask {
     for (final task in _tasks) {
@@ -85,37 +127,113 @@ class TaskController extends ChangeNotifier {
   }
 
   Future<void> initialize() async {
+    await _loadTasks();
+    await _loadSyncSettings();
+    if (_tasks.isEmpty) _seed();
+
+    if (syncSupported && _syncSettings.autoSync && _syncSettings.isConfigured) {
+      unawaited(syncNow());
+    }
+  }
+
+  Future<void> _loadTasks() async {
     final encoded = await _storage.load();
+    if (encoded == null || encoded.isEmpty) return;
+    try {
+      final decoded = jsonDecode(encoded) as List<dynamic>;
+      _tasks.addAll(
+        decoded.map(
+          (value) => TaskItem.fromJson(
+            Map<String, Object?>.from(value as Map<dynamic, dynamic>),
+          ),
+        ),
+      );
+    } on Object {
+      _tasks.clear();
+    }
+  }
+
+  Future<void> _loadSyncSettings() async {
+    final encoded = await _syncSettingsStorage.load();
+    String? legacyToken;
+    String? securityWarning;
     if (encoded != null && encoded.isNotEmpty) {
       try {
-        final decoded = jsonDecode(encoded) as List<dynamic>;
-        _tasks.addAll(
-          decoded.map(
-            (value) => TaskItem.fromJson(value as Map<String, Object?>),
-          ),
+        final decoded = Map<String, Object?>.from(
+          jsonDecode(encoded) as Map<dynamic, dynamic>,
         );
-      } on FormatException {
-        _tasks.clear();
+        legacyToken = decoded['token'] as String?;
+        _syncSettings = SyncSettings.fromJson(decoded);
+      } on Object {
+        _syncSettings = const SyncSettings();
       }
     }
-    if (_tasks.isEmpty) _seed();
+    String? secureToken;
+    var secureReadSucceeded = false;
+    try {
+      secureToken = await _secureTokenStorage.read();
+      secureReadSucceeded = true;
+    } on Object {
+      securityWarning = '无法读取系统安全存储，请重新输入同步密钥';
+    }
+    final loadedToken = secureToken?.trim().isNotEmpty == true
+        ? secureToken!.trim()
+        : legacyToken?.trim() ?? '';
+    _syncSettings = SyncSettings(
+      serverUrl: _syncSettings.serverUrl,
+      token: loadedToken,
+      deviceName: _syncSettings.deviceName,
+      autoSync: _syncSettings.autoSync,
+    ).normalized();
+
+    if (legacyToken?.trim().isNotEmpty == true && secureReadSucceeded) {
+      var safeToRemoveLegacyToken = secureToken?.trim().isNotEmpty == true;
+      if (!safeToRemoveLegacyToken) {
+        try {
+          await _secureTokenStorage.write(legacyToken!);
+          safeToRemoveLegacyToken = true;
+        } on Object {
+          securityWarning = '旧密钥无法迁移到系统安全存储，已保留旧密钥以防止丢失';
+        }
+      }
+      if (safeToRemoveLegacyToken) {
+        try {
+          await _syncSettingsStorage.save(jsonEncode(_syncSettings.toJson()));
+        } on Object {
+          securityWarning ??= '旧配置清理失败，请重新保存同步设置';
+        }
+      }
+    }
+    if (_syncSettings.deviceName.isEmpty) {
+      _syncSettings = SyncSettings(
+        serverUrl: _syncSettings.serverUrl,
+        token: _syncSettings.token,
+        deviceName: _syncClient.defaultDeviceName,
+        autoSync: _syncSettings.autoSync,
+      );
+    }
+    _syncActivity = _syncSettings.isConfigured
+        ? SyncActivity.idle
+        : SyncActivity.unconfigured;
+    _syncMessage =
+        securityWarning ?? (_syncSettings.isConfigured ? '等待同步' : '尚未配置同步');
   }
 
   void selectView(String view) {
     activeView = view;
     search = '';
     selectedTaskId = null;
-    notifyListeners();
+    _notifyListeners();
   }
 
   void setSearch(String value) {
     search = value;
-    notifyListeners();
+    _notifyListeners();
   }
 
   void selectTask(String? id) {
     selectedTaskId = id;
-    notifyListeners();
+    _notifyListeners();
   }
 
   void addTask(String title) {
@@ -164,16 +282,203 @@ class TaskController extends ChangeNotifier {
   }
 
   void deleteTask(TaskItem task) {
-    updateTask(task.copyWith(deletedAt: DateTime.now().toUtc()));
     selectedTaskId = null;
-    notifyListeners();
+    updateTask(task.copyWith(deletedAt: DateTime.now().toUtc()));
+  }
+
+  Future<bool> saveSyncSettings(SyncSettings value) async {
+    final normalized = value.normalized();
+    final previous = _syncSettings;
+    try {
+      await _secureTokenStorage.write(normalized.token);
+      try {
+        await _syncSettingsStorage.save(jsonEncode(normalized.toJson()));
+      } on Object {
+        try {
+          await _secureTokenStorage.write(previous.token);
+        } on Object {
+          // Preserve the original failure. Saving again reconciles both stores.
+        }
+        rethrow;
+      }
+    } on Object catch (error) {
+      _setSyncError('设置保存失败：${_readableError(error)}');
+      return false;
+    }
+
+    _syncConfigurationGeneration += 1;
+    _syncSettings = normalized;
+    _syncDebounceTimer?.cancel();
+    _syncActivity = normalized.isConfigured
+        ? SyncActivity.idle
+        : SyncActivity.unconfigured;
+    _syncMessage = normalized.isConfigured ? '同步设置已保存' : '尚未配置同步';
+    if (_activeSync != null) {
+      _syncQueued = normalized.autoSync && normalized.isConfigured;
+    } else if (normalized.autoSync && normalized.isConfigured) {
+      _scheduleSync();
+    }
+    _notifyListeners();
+    return true;
+  }
+
+  Future<bool> testSyncConnection(SyncSettings value) async {
+    if (!syncSupported) {
+      _setSyncError('当前平台暂不支持同步设置');
+      return false;
+    }
+    if (_activeSync != null) {
+      _syncMessage = '正在同步，请稍后再测试连接';
+      _notifyListeners();
+      return false;
+    }
+    final candidate = value.normalized();
+    if (!candidate.isConfigured) {
+      _setSyncError(candidate.validationMessage ?? '同步设置不完整');
+      return false;
+    }
+
+    _syncActivity = SyncActivity.testing;
+    _syncMessage = '正在测试连接…';
+    _notifyListeners();
+    try {
+      await _syncClient.testConnection(candidate);
+      _syncActivity = SyncActivity.success;
+      _syncMessage = '服务器连接正常';
+      _notifyListeners();
+      return true;
+    } on Object catch (error) {
+      _setSyncError(_readableError(error));
+      return false;
+    }
+  }
+
+  Future<bool> syncNow() async {
+    if (!syncSupported) {
+      _setSyncError('当前平台暂不支持同步');
+      return false;
+    }
+    if (!_syncSettings.isConfigured) {
+      _setSyncError(_syncSettings.validationMessage ?? '同步设置不完整');
+      return false;
+    }
+    final running = _activeSync;
+    if (running != null) {
+      _syncQueued = true;
+      return running;
+    }
+
+    final operation = _performSync();
+    _activeSync = operation;
+    final succeeded = await operation;
+    if (identical(_activeSync, operation)) _activeSync = null;
+    if (_syncQueued && !_disposed) {
+      _syncQueued = false;
+      unawaited(syncNow());
+    }
+    return succeeded;
+  }
+
+  Future<bool> _performSync() async {
+    _syncDebounceTimer?.cancel();
+    final configurationGeneration = _syncConfigurationGeneration;
+    final settings = _syncSettings;
+    _syncActivity = SyncActivity.syncing;
+    _syncMessage = '正在同步…';
+    _notifyListeners();
+    try {
+      final response = await _syncClient.sync(
+        settings,
+        List<TaskItem>.unmodifiable(_tasks),
+      );
+      if (configurationGeneration != _syncConfigurationGeneration) {
+        return true;
+      }
+      _mergeRemote(response.tasks);
+      await _persistTasks();
+      _lastSyncedAt = DateTime.now();
+      _lastServerTime = response.serverTime;
+      _syncActivity = SyncActivity.success;
+      _syncMessage = '同步完成';
+      _notifyListeners();
+      return true;
+    } on Object catch (error) {
+      if (configurationGeneration != _syncConfigurationGeneration) {
+        return false;
+      }
+      _setSyncError(_readableError(error));
+      return false;
+    }
+  }
+
+  void _mergeRemote(List<TaskItem> remoteTasks) {
+    final byId = <String, TaskItem>{for (final task in _tasks) task.id: task};
+    for (final remote in remoteTasks) {
+      final local = byId[remote.id];
+      final remoteWinsEqualTimestamp =
+          local != null &&
+          remote.updatedAt.isAtSameMomentAs(local.updatedAt) &&
+          local.deletedAt == null &&
+          remote.deletedAt != null;
+      if (local == null ||
+          remote.updatedAt.isAfter(local.updatedAt) ||
+          remoteWinsEqualTimestamp) {
+        byId[remote.id] = remote;
+      }
+    }
+    _tasks
+      ..clear()
+      ..addAll(byId.values);
+    final selected = selectedTask;
+    if (selectedTaskId != null && selected == null) selectedTaskId = null;
   }
 
   void _changed() {
-    notifyListeners();
-    unawaited(
-      _storage.save(jsonEncode(_tasks.map((task) => task.toJson()).toList())),
-    );
+    _notifyListeners();
+    unawaited(_persistTasks().catchError((Object _) {}));
+    _scheduleSync();
+  }
+
+  Future<void> _persistTasks() {
+    final encoded = jsonEncode(_tasks.map((task) => task.toJson()).toList());
+    final previous = _saveTail;
+    final operation = () async {
+      try {
+        await previous;
+      } on Object {
+        // A later snapshot should still be written after an earlier write fails.
+      }
+      await _storage.save(encoded);
+    }();
+    _saveTail = operation;
+    return operation;
+  }
+
+  void _scheduleSync() {
+    _syncDebounceTimer?.cancel();
+    if (!syncSupported ||
+        !_syncSettings.autoSync ||
+        !_syncSettings.isConfigured ||
+        _disposed) {
+      return;
+    }
+    _syncDebounceTimer = Timer(syncDebounce, () => unawaited(syncNow()));
+  }
+
+  void _setSyncError(String message) {
+    _syncActivity = SyncActivity.error;
+    _syncMessage = message;
+    _notifyListeners();
+  }
+
+  String _readableError(Object error) {
+    if (error is SyncException) return error.message;
+    final value = error.toString();
+    return value.length <= 180 ? value : '${value.substring(0, 180)}…';
+  }
+
+  void _notifyListeners() {
+    if (!_disposed) notifyListeners();
   }
 
   void _seed() {
@@ -193,11 +498,9 @@ class TaskController extends ChangeNotifier {
         created,
         notes: '新增任务后刷新页面，内容仍然保留。',
       ),
-      _seedTask('seed-sync', '规划下一阶段的同步服务', 4000, tomorrow, 'qingxu', created),
+      _seedTask('seed-sync', '配置你的多端同步', 4000, tomorrow, 'qingxu', created),
     ]);
-    unawaited(
-      _storage.save(jsonEncode(_tasks.map((task) => task.toJson()).toList())),
-    );
+    unawaited(_persistTasks().catchError((Object _) {}));
   }
 
   TaskItem _seedTask(
@@ -223,5 +526,12 @@ class TaskController extends ChangeNotifier {
       updatedAt: createdAt,
       deletedAt: null,
     );
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    _syncDebounceTimer?.cancel();
+    super.dispose();
   }
 }

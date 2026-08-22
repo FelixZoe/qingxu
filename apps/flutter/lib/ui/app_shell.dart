@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../state/task_controller.dart';
 import 'sidebar.dart';
+import 'sync_settings_page.dart';
 import 'task_editor.dart';
 import 'task_list.dart';
 
@@ -18,6 +19,15 @@ class AppShell extends StatefulWidget {
 class _AppShellState extends State<AppShell> {
   final quickAddFocus = FocusNode();
   final searchFocus = FocusNode();
+
+  void _openSyncSettings() {
+    if (!widget.controller.syncSupported) return;
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (context) => SyncSettingsPage(controller: widget.controller),
+      ),
+    );
+  }
 
   @override
   void dispose() {
@@ -52,6 +62,7 @@ class _AppShellState extends State<AppShell> {
                   controller: widget.controller,
                   quickAddFocus: quickAddFocus,
                   searchFocus: searchFocus,
+                  onOpenSyncSettings: _openSyncSettings,
                 );
               }
               return Center(
@@ -82,6 +93,7 @@ class _AppShellState extends State<AppShell> {
                         child: Sidebar(
                           controller: widget.controller,
                           searchFocus: searchFocus,
+                          onOpenSyncSettings: _openSyncSettings,
                         ),
                       ),
                       Expanded(
@@ -116,11 +128,13 @@ class _CompactShell extends StatelessWidget {
     required this.controller,
     required this.quickAddFocus,
     required this.searchFocus,
+    required this.onOpenSyncSettings,
   });
 
   final TaskController controller;
   final FocusNode quickAddFocus;
   final FocusNode searchFocus;
+  final VoidCallback onOpenSyncSettings;
 
   @override
   Widget build(BuildContext context) {
@@ -139,7 +153,11 @@ class _CompactShell extends StatelessWidget {
       drawer: Drawer(
         width: 270,
         child: SafeArea(
-          child: Sidebar(controller: controller, searchFocus: searchFocus),
+          child: Sidebar(
+            controller: controller,
+            searchFocus: searchFocus,
+            onOpenSyncSettings: onOpenSyncSettings,
+          ),
         ),
       ),
       body: SafeArea(

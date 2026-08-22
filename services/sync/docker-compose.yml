@@ -1,0 +1,30 @@
+services:
+  sync:
+    build:
+      context: .
+    image: qingxu-sync:${QINGXU_IMAGE_TAG:-local}
+    restart: unless-stopped
+    environment:
+      SYNC_TOKEN: ${SYNC_TOKEN:?请在 .env 中设置 SYNC_TOKEN}
+      SYNC_CORS_ORIGINS: ${SYNC_CORS_ORIGINS:-https://todo.darker.one}
+      SYNC_MAX_BODY_BYTES: ${SYNC_MAX_BODY_BYTES:-2097152}
+      SYNC_HEALTH_URL: ${SYNC_HEALTH_URL:-http://127.0.0.1:8080/health}
+      GOMEMLIMIT: ${GOMEMLIMIT:-48MiB}
+    ports:
+      - "${SYNC_LISTEN:-127.0.0.1:8080}:8080"
+    volumes:
+      - "${SYNC_DATA_DIR:-./data}:/data"
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 64
+    mem_limit: 64m
+    healthcheck:
+      test: ["CMD", "/qingxu-sync", "healthcheck"]
+      interval: 30s
+      timeout: 5s
+      start_period: 5s
+      retries: 3
+    stop_grace_period: 15s

@@ -12,7 +12,7 @@ permissions:
 
 concurrency:
   group: qingxu-${{ github.workflow }}-${{ github.ref }}
-  queue: max
+  cancel-in-progress: false
 
 jobs:
   version:
@@ -66,10 +66,12 @@ jobs:
             exit 1
           fi
 
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "tag=v$version" >> "$GITHUB_OUTPUT"
-          echo "build_number=$GITHUB_RUN_NUMBER" >> "$GITHUB_OUTPUT"
-          echo "should_release=$should_release" >> "$GITHUB_OUTPUT"
+          {
+            echo "version=$version"
+            echo "tag=v$version"
+            echo "build_number=$GITHUB_RUN_NUMBER"
+            echo "should_release=$should_release"
+          } >> "$GITHUB_OUTPUT"
           echo "Building Qingxu v$version ($GITHUB_RUN_NUMBER)"
 
   flutter-web:
@@ -91,6 +93,11 @@ jobs:
       - run: flutter analyze
       - run: flutter test
       - run: flutter build web --release --build-name "$APP_VERSION" --build-number "$BUILD_NUMBER"
+      - name: Stamp Web release identity
+        run: |
+          printf '{"version":"%s","commit":"%s","buildNumber":"%s"}\n' \
+            "$APP_VERSION" "$GITHUB_SHA" "$BUILD_NUMBER" \
+            > build/web/version.json
       - name: Package Web
         run: cd build/web && zip -r "../../../../Qingxu-${APP_VERSION}-Web.zip" .
       - uses: actions/upload-artifact@v4
@@ -98,6 +105,51 @@ jobs:
           name: qingxu-${{ needs.version.outputs.version }}-web
           retention-days: 7
           path: Qingxu-${{ needs.version.outputs.version }}-Web.zip
+
+  sync-server:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/sync
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: services/sync/go.mod
+          cache-dependency-path: services/sync/go.mod
+      - name: Test sync service
+        run: go test ./...
+      - name: Vet sync service
+        run: go vet ./...
+      - name: Build sync container
+        run: docker build --tag qingxu-sync:test .
+
+  docker-publish:
+    if: needs.version.outputs.should_release == 'true'
+    needs: [version, sync-server, flutter-web, flutter-windows, flutter-ios]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: services/sync
+          push: true
+          tags: |
+            ghcr.io/felixzoe/qingxu-sync:${{ needs.version.outputs.version }}
+            ghcr.io/felixzoe/qingxu-sync:latest
+          labels: |
+            org.opencontainers.image.title=qingxu-sync
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ needs.version.outputs.version }}
 
   flutter-windows:
     needs: version
@@ -217,8 +269,16 @@ jobs:
           path: apps/flutter/Qingxu-${{ needs.version.outputs.version }}-iOS-unsigned.ipa
 
   github-release:
-    if: needs.version.outputs.should_release == 'true'
-    needs: [version, flutter-web, flutter-windows, flutter-ios]
+    if: >-
+      always() &&
+      needs.version.outputs.should_release == 'true' &&
+      needs.flutter-web.result == 'success' &&
+      needs.flutter-windows.result == 'success' &&
+      needs.flutter-ios.result == 'success' &&
+      needs.sync-server.result == 'success' &&
+      needs.docker-publish.result == 'success' &&
+      (github.event_name != 'push' || github.ref != 'refs/heads/main' || needs.deploy-production.result == 'success')
+    needs: [version, flutter-web, flutter-windows, flutter-ios, sync-server, docker-publish, deploy-production]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -239,27 +299,126 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          mapfile -d '' release_files < <(find release-assets -type f -print0)
+          if (( ${#release_files[@]} == 0 )); then
+            echo "No release files were downloaded." >&2
+            exit 1
+          fi
           if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release upload "$RELEASE_TAG" release-assets/* --clobber --repo "$GITHUB_REPOSITORY"
+            gh release upload "$RELEASE_TAG" "${release_files[@]}" --clobber --repo "$GITHUB_REPOSITORY"
           else
-            gh release create "$RELEASE_TAG" release-assets/* \
+            gh release create "$RELEASE_TAG" "${release_files[@]}" \
               --repo "$GITHUB_REPOSITORY" \
               --target "$GITHUB_SHA" \
               --generate-notes \
               --title "清序 $RELEASE_TAG"
           fi
-      - name: Persist version in source
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+  deploy-production:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [version, flutter-web, flutter-windows, flutter-ios, sync-server, docker-publish]
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: https://todo.darker.one
+    permissions:
+      contents: read
+    env:
+      APP_VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: qingxu-${{ needs.version.outputs.version }}-web
+          path: deploy-staging
+      - name: Configure deployment SSH
+        shell: bash
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          test -n "$DEPLOY_HOST"
+          test -n "$DEPLOY_USER"
+          test -n "$DEPLOY_SSH_KEY"
+          test -n "$DEPLOY_KNOWN_HOSTS"
+          install -d -m 700 "$HOME/.ssh"
+          printf '%s\n' "$DEPLOY_SSH_KEY" > "$HOME/.ssh/qingxu-deploy"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/qingxu-deploy" "$HOME/.ssh/known_hosts"
+      - name: Upload deployment bundle
+        shell: bash
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+        run: |
+          set -euo pipefail
+          remote_dir="/tmp/qingxu-deploy-$GITHUB_SHA"
+          ssh -i "$HOME/.ssh/qingxu-deploy" \
+            -o BatchMode=yes -o IdentitiesOnly=yes \
+            "$DEPLOY_USER@$DEPLOY_HOST" \
+            "install -d -m 700 '$remote_dir'"
+          scp -i "$HOME/.ssh/qingxu-deploy" \
+            -o BatchMode=yes -o IdentitiesOnly=yes \
+            deploy-staging/* \
+            "$DEPLOY_USER@$DEPLOY_HOST:$remote_dir/"
+      - name: Activate release
+        shell: bash
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+        run: |
+          set -euo pipefail
+          remote_dir="/tmp/qingxu-deploy-$GITHUB_SHA"
+          ssh -i "$HOME/.ssh/qingxu-deploy" \
+            -o BatchMode=yes -o IdentitiesOnly=yes \
+            "$DEPLOY_USER@$DEPLOY_HOST" \
+            "sudo /usr/local/sbin/qingxu-deploy '$APP_VERSION' '$GITHUB_SHA' '$remote_dir'"
+      - name: Verify production
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --show-error --silent \
+            --retry 6 --retry-delay 5 --retry-all-errors \
+            https://todo.darker.one/health \
+            | grep -F '"status":"ok"'
+          curl --fail --show-error --silent \
+            --retry 6 --retry-delay 5 --retry-all-errors \
+            https://todo.darker.one/version.json \
+            | tee /tmp/qingxu-production-version.json
+          grep -F "\"version\":\"$APP_VERSION\"" /tmp/qingxu-production-version.json
+          grep -F "\"commit\":\"$GITHUB_SHA\"" /tmp/qingxu-production-version.json
+
+  version-writeback:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [version, deploy-production, github-release]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      APP_VERSION: ${{ needs.version.outputs.version }}
+      BUILD_NUMBER: ${{ needs.version.outputs.build_number }}
+      RELEASE_TAG: ${{ needs.version.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Persist released version in source
         shell: bash
         run: |
           set -euo pipefail
           git fetch origin main
-          git checkout -B version-bump origin/main
+          remote_sha="$(git rev-parse origin/main)"
+          if [[ "$remote_sha" != "$GITHUB_SHA" ]]; then
+            echo "main moved to $remote_sha; leaving version write-back to the newer workflow."
+            exit 0
+          fi
+          git checkout --detach "$GITHUB_SHA"
 
           remote_version="$(sed -nE 's/^version:[[:space:]]*([0-9]+\.[0-9]+\.[0-9]+).*/\1/p' apps/flutter/pubspec.yaml)"
           newest="$(printf '%s\n%s\n' "$remote_version" "$APP_VERSION" | sort -V | tail -n 1)"
           if [[ "$newest" != "$APP_VERSION" ]]; then
-            echo "Source already contains newer version $remote_version; skipping v$APP_VERSION write-back."
+            echo "Source contains newer version $remote_version; skipping v$APP_VERSION write-back."
             exit 0
           fi
 
