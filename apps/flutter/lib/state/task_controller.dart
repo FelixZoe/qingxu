@@ -8,7 +8,8 @@ import '../services/task_storage.dart';
 import '../services/task_storage_base.dart';
 
 class TaskController extends ChangeNotifier {
-  TaskController({TaskStorageBase? storage}) : _storage = storage ?? TaskStorage();
+  TaskController({TaskStorageBase? storage})
+    : _storage = storage ?? TaskStorage();
 
   final TaskStorageBase _storage;
   final List<TaskItem> _tasks = [];
@@ -35,7 +36,8 @@ class TaskController extends ChangeNotifier {
     if (search.trim().isNotEmpty) return search.trim();
     if (activeView.startsWith('project:')) {
       final id = activeView.substring('project:'.length);
-      return projects.where((project) => project.id == id).firstOrNull?.title ?? '项目';
+      return projects.where((project) => project.id == id).firstOrNull?.title ??
+          '项目';
     }
     return const {
           'inbox': '收集箱',
@@ -59,7 +61,8 @@ class TaskController extends ChangeNotifier {
         return '${task.title}\n${task.notes}'.toLowerCase().contains(query);
       }
       if (activeView.startsWith('project:')) {
-        return task.isOpen && task.projectId == activeView.substring('project:'.length);
+        return task.isOpen &&
+            task.projectId == activeView.substring('project:'.length);
       }
       if (activeView == 'logbook') return task.status == TaskStatus.completed;
       if (!task.isOpen) return false;
@@ -86,7 +89,11 @@ class TaskController extends ChangeNotifier {
     if (encoded != null && encoded.isNotEmpty) {
       try {
         final decoded = jsonDecode(encoded) as List<dynamic>;
-        _tasks.addAll(decoded.map((value) => TaskItem.fromJson(value as Map<String, Object?>)));
+        _tasks.addAll(
+          decoded.map(
+            (value) => TaskItem.fromJson(value as Map<String, Object?>),
+          ),
+        );
       } on FormatException {
         _tasks.clear();
       }
@@ -122,7 +129,9 @@ class TaskController extends ChangeNotifier {
       title: value,
       notes: '',
       status: TaskStatus.open,
-      projectId: activeView.startsWith('project:') ? activeView.substring('project:'.length) : null,
+      projectId: activeView.startsWith('project:')
+          ? activeView.substring('project:'.length)
+          : null,
       startAt: activeView == 'today' ? today : null,
       deadlineAt: null,
       completedAt: null,
@@ -145,11 +154,13 @@ class TaskController extends ChangeNotifier {
 
   void toggleTask(TaskItem task) {
     final completed = task.status != TaskStatus.completed;
-    updateTask(task.copyWith(
-      status: completed ? TaskStatus.completed : TaskStatus.open,
-      completedAt: completed ? DateTime.now().toUtc() : null,
-      clearCompletedAt: !completed,
-    ));
+    updateTask(
+      task.copyWith(
+        status: completed ? TaskStatus.completed : TaskStatus.open,
+        completedAt: completed ? DateTime.now().toUtc() : null,
+        clearCompletedAt: !completed,
+      ),
+    );
   }
 
   void deleteTask(TaskItem task) {
@@ -160,7 +171,9 @@ class TaskController extends ChangeNotifier {
 
   void _changed() {
     notifyListeners();
-    unawaited(_storage.save(jsonEncode(_tasks.map((task) => task.toJson()).toList())));
+    unawaited(
+      _storage.save(jsonEncode(_tasks.map((task) => task.toJson()).toList())),
+    );
   }
 
   void _seed() {
@@ -171,11 +184,20 @@ class TaskController extends ChangeNotifier {
     _tasks.addAll([
       _seedTask('seed-quick', '体验快速新增任务', 1000, today, null, created),
       _seedTask('seed-focus', '整理今天真正重要的三件事', 2000, today, 'personal', created),
-      _seedTask('seed-offline', '确认离线保存正常', 3000, today, 'qingxu', created,
-          notes: '新增任务后刷新页面，内容仍然保留。'),
+      _seedTask(
+        'seed-offline',
+        '确认离线保存正常',
+        3000,
+        today,
+        'qingxu',
+        created,
+        notes: '新增任务后刷新页面，内容仍然保留。',
+      ),
       _seedTask('seed-sync', '规划下一阶段的同步服务', 4000, tomorrow, 'qingxu', created),
     ]);
-    unawaited(_storage.save(jsonEncode(_tasks.map((task) => task.toJson()).toList())));
+    unawaited(
+      _storage.save(jsonEncode(_tasks.map((task) => task.toJson()).toList())),
+    );
   }
 
   TaskItem _seedTask(

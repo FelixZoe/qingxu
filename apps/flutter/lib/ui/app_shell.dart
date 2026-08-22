@@ -30,10 +30,14 @@ class _AppShellState extends State<AppShell> {
   Widget build(BuildContext context) {
     return CallbackShortcuts(
       bindings: {
-        const SingleActivator(LogicalKeyboardKey.keyN, control: true): quickAddFocus.requestFocus,
-        const SingleActivator(LogicalKeyboardKey.keyN, meta: true): quickAddFocus.requestFocus,
-        const SingleActivator(LogicalKeyboardKey.keyK, control: true): searchFocus.requestFocus,
-        const SingleActivator(LogicalKeyboardKey.keyK, meta: true): searchFocus.requestFocus,
+        const SingleActivator(LogicalKeyboardKey.keyN, control: true):
+            quickAddFocus.requestFocus,
+        const SingleActivator(LogicalKeyboardKey.keyN, meta: true):
+            quickAddFocus.requestFocus,
+        const SingleActivator(LogicalKeyboardKey.keyK, control: true):
+            searchFocus.requestFocus,
+        const SingleActivator(LogicalKeyboardKey.keyK, meta: true):
+            searchFocus.requestFocus,
       },
       child: Focus(
         autofocus: true,
@@ -54,12 +58,21 @@ class _AppShellState extends State<AppShell> {
                 child: Container(
                   width: constraints.maxWidth - 32,
                   height: constraints.maxHeight - 32,
-                  constraints: const BoxConstraints(maxWidth: 1440, minHeight: 600),
+                  constraints: const BoxConstraints(
+                    maxWidth: 1440,
+                    minHeight: 600,
+                  ),
                   decoration: BoxDecoration(
                     color: const Color(0xFFFBFAF7),
                     borderRadius: BorderRadius.circular(18),
                     border: Border.all(color: const Color(0x1A5A533F)),
-                    boxShadow: const [BoxShadow(color: Color(0x14504A38), blurRadius: 55, offset: Offset(0, 18))],
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Color(0x14504A38),
+                        blurRadius: 55,
+                        offset: Offset(0, 18),
+                      ),
+                    ],
                   ),
                   clipBehavior: Clip.antiAlias,
                   child: Row(
@@ -125,7 +138,9 @@ class _CompactShell extends StatelessWidget {
     return Scaffold(
       drawer: Drawer(
         width: 270,
-        child: SafeArea(child: Sidebar(controller: controller, searchFocus: searchFocus)),
+        child: SafeArea(
+          child: Sidebar(controller: controller, searchFocus: searchFocus),
+        ),
       ),
       body: SafeArea(
         child: Builder(
@@ -139,4 +154,3 @@ class _CompactShell extends StatelessWidget {
     );
   }
 }
-

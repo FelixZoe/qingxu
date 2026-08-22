@@ -3,4 +3,3 @@ abstract interface class TaskStorageBase {
 
   Future<void> save(String value);
 }
-

@@ -63,19 +63,19 @@ class TaskItem {
   }
 
   Map<String, Object?> toJson() => {
-        'id': id,
-        'title': title,
-        'notes': notes,
-        'status': status.name,
-        'projectId': projectId,
-        'startAt': startAt?.toIso8601String(),
-        'deadlineAt': deadlineAt?.toIso8601String(),
-        'completedAt': completedAt?.toIso8601String(),
-        'order': order,
-        'createdAt': createdAt.toIso8601String(),
-        'updatedAt': updatedAt.toIso8601String(),
-        'deletedAt': deletedAt?.toIso8601String(),
-      };
+    'id': id,
+    'title': title,
+    'notes': notes,
+    'status': status.name,
+    'projectId': projectId,
+    'startAt': startAt?.toIso8601String(),
+    'deadlineAt': deadlineAt?.toIso8601String(),
+    'completedAt': completedAt?.toIso8601String(),
+    'order': order,
+    'createdAt': createdAt.toIso8601String(),
+    'updatedAt': updatedAt.toIso8601String(),
+    'deletedAt': deletedAt?.toIso8601String(),
+  };
 
   factory TaskItem.fromJson(Map<String, Object?> json) {
     DateTime? optionalDate(String key) {
@@ -107,4 +107,3 @@ class ProjectItem {
   final String title;
   final int color;
 }
-

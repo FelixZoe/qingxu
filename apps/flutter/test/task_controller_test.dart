@@ -18,4 +18,3 @@ void main() {
     expect(restored.visibleTasks.any((task) => task.title == '测试任务'), isTrue);
   });
 }
-

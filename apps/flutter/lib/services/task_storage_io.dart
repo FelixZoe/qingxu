@@ -6,10 +6,14 @@ class TaskStorage implements TaskStorageBase {
   File get _file {
     if (Platform.isWindows) {
       final root = Platform.environment['APPDATA'] ?? Directory.systemTemp.path;
-      return File('$root${Platform.pathSeparator}Qingxu${Platform.pathSeparator}tasks.json');
+      return File(
+        '$root${Platform.pathSeparator}Qingxu${Platform.pathSeparator}tasks.json',
+      );
     }
     final home = Platform.environment['HOME'] ?? Directory.systemTemp.path;
-    return File('$home${Platform.pathSeparator}Documents${Platform.pathSeparator}Qingxu${Platform.pathSeparator}tasks.json');
+    return File(
+      '$home${Platform.pathSeparator}Documents${Platform.pathSeparator}Qingxu${Platform.pathSeparator}tasks.json',
+    );
   }
 
   @override

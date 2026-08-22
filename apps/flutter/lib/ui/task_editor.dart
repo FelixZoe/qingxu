@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:forui/forui.dart';
 
 import '../models/task_item.dart';
 import '../state/task_controller.dart';
@@ -33,10 +34,12 @@ class _TaskEditorState extends State<TaskEditor> {
 
   void saveText() {
     final title = titleController.text.trim();
-    widget.controller.updateTask(widget.task.copyWith(
-      title: title.isEmpty ? widget.task.title : title,
-      notes: notesController.text,
-    ));
+    widget.controller.updateTask(
+      widget.task.copyWith(
+        title: title.isEmpty ? widget.task.title : title,
+        notes: notesController.text,
+      ),
+    );
   }
 
   Future<void> pickStartDate() async {
@@ -48,7 +51,16 @@ class _TaskEditorState extends State<TaskEditor> {
       locale: const Locale('zh', 'CN'),
     );
     if (selected != null) {
-      widget.controller.updateTask(widget.task.copyWith(startAt: DateTime(selected.year, selected.month, selected.day, 9).toUtc()));
+      widget.controller.updateTask(
+        widget.task.copyWith(
+          startAt: DateTime(
+            selected.year,
+            selected.month,
+            selected.day,
+            9,
+          ).toUtc(),
+        ),
+      );
     }
   }
 
@@ -61,10 +73,19 @@ class _TaskEditorState extends State<TaskEditor> {
           Container(
             height: 58,
             padding: const EdgeInsets.symmetric(horizontal: 16),
-            decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: Color(0xFFDEDBD3)))),
+            decoration: const BoxDecoration(
+              border: Border(bottom: BorderSide(color: Color(0xFFDEDBD3))),
+            ),
             child: Row(
               children: [
-                const Text('任务详情', style: TextStyle(fontSize: 12, color: Color(0xFF85827A), fontWeight: FontWeight.w600)),
+                const Text(
+                  '任务详情',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Color(0xFF85827A),
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
                 const Spacer(),
                 IconButton(
                   onPressed: () {
@@ -86,8 +107,14 @@ class _TaskEditorState extends State<TaskEditor> {
                     controller: titleController,
                     onSubmitted: (_) => saveText(),
                     onTapOutside: (_) => saveText(),
-                    style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w700),
-                    decoration: const InputDecoration(border: InputBorder.none, isDense: true),
+                    style: const TextStyle(
+                      fontSize: 19,
+                      fontWeight: FontWeight.w700,
+                    ),
+                    decoration: const InputDecoration(
+                      border: InputBorder.none,
+                      isDense: true,
+                    ),
                   ),
                   const SizedBox(height: 15),
                   TextField(
@@ -98,8 +125,14 @@ class _TaskEditorState extends State<TaskEditor> {
                       hintText: '备注',
                       filled: true,
                       fillColor: const Color(0x99FFFFFF),
-                      border: OutlineInputBorder(borderSide: const BorderSide(color: Color(0xFFE5E1DA)), borderRadius: BorderRadius.circular(9)),
-                      enabledBorder: OutlineInputBorder(borderSide: const BorderSide(color: Color(0xFFE5E1DA)), borderRadius: BorderRadius.circular(9)),
+                      border: OutlineInputBorder(
+                        borderSide: const BorderSide(color: Color(0xFFE5E1DA)),
+                        borderRadius: BorderRadius.circular(9),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderSide: const BorderSide(color: Color(0xFFE5E1DA)),
+                        borderRadius: BorderRadius.circular(9),
+                      ),
                     ),
                   ),
                   const SizedBox(height: 22),
@@ -115,23 +148,21 @@ class _TaskEditorState extends State<TaskEditor> {
                     value: _dateLabel(widget.task.deadlineAt),
                     onTap: () {},
                   ),
-                  _ProjectField(controller: widget.controller, task: widget.task),
+                  _ProjectField(
+                    controller: widget.controller,
+                    task: widget.task,
+                  ),
                 ],
               ),
             ),
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(22, 0, 22, 20),
-            child: OutlinedButton.icon(
-              onPressed: () => widget.controller.deleteTask(widget.task),
-              icon: const Icon(Icons.delete_outline_rounded, size: 18),
-              label: const Text('删除任务'),
-              style: OutlinedButton.styleFrom(
-                minimumSize: const Size.fromHeight(48),
-                foregroundColor: const Color(0xFFC45F55),
-                side: const BorderSide(color: Color(0xFFE1D4D0)),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(9)),
-              ),
+            child: FButton(
+              variant: FButtonVariant.destructive,
+              prefix: const Icon(FLucideIcons.trash2, size: 17),
+              onPress: () => widget.controller.deleteTask(widget.task),
+              child: const Text('删除任务'),
             ),
           ),
         ],
@@ -147,7 +178,12 @@ class _TaskEditorState extends State<TaskEditor> {
 }
 
 class _EditorField extends StatelessWidget {
-  const _EditorField({required this.icon, required this.label, required this.value, required this.onTap});
+  const _EditorField({
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.onTap,
+  });
 
   final IconData icon;
   final String label;
@@ -155,26 +191,13 @@ class _EditorField extends StatelessWidget {
   final VoidCallback onTap;
 
   @override
-  Widget build(BuildContext context) => InkWell(
-        onTap: onTap,
-        child: Container(
-          height: 45,
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          decoration: const BoxDecoration(
-            color: Color(0x8AFFFFFF),
-            border: Border(bottom: BorderSide(color: Color(0xFFE8E4DD))),
-          ),
-          child: Row(
-            children: [
-              Icon(icon, size: 18, color: const Color(0xFF77736B)),
-              const SizedBox(width: 10),
-              Text(label, style: const TextStyle(fontSize: 12, color: Color(0xFF6C6962))),
-              const Spacer(),
-              Text(value, style: const TextStyle(fontSize: 11, color: Color(0xFF88837A))),
-            ],
-          ),
-        ),
-      );
+  Widget build(BuildContext context) => FItem(
+    prefix: Icon(icon, size: 17, color: const Color(0xFF77736B)),
+    title: Text(label),
+    details: Text(value),
+    suffix: const Icon(FLucideIcons.chevronRight, size: 15),
+    onPress: onTap,
+  );
 }
 
 class _ProjectField extends StatelessWidget {
@@ -185,31 +208,40 @@ class _ProjectField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-        height: 45,
-        padding: const EdgeInsets.symmetric(horizontal: 12),
-        color: const Color(0x8AFFFFFF),
-        child: Row(
-          children: [
-            const Icon(Icons.format_list_bulleted_rounded, size: 18, color: Color(0xFF77736B)),
-            const SizedBox(width: 10),
-            const Text('项目', style: TextStyle(fontSize: 12, color: Color(0xFF6C6962))),
-            const Spacer(),
-            DropdownButtonHideUnderline(
-              child: DropdownButton<String>(
-                value: task.projectId ?? '',
-                style: const TextStyle(fontSize: 11, color: Color(0xFF77736B)),
-                items: [
-                  const DropdownMenuItem(value: '', child: Text('无项目')),
-                  for (final project in TaskController.projects) DropdownMenuItem(value: project.id, child: Text(project.title)),
-                ],
-                onChanged: (value) => controller.updateTask(task.copyWith(
-                  projectId: value,
-                  clearProject: value == null || value.isEmpty,
-                )),
+    height: 45,
+    padding: const EdgeInsets.symmetric(horizontal: 12),
+    color: const Color(0x8AFFFFFF),
+    child: Row(
+      children: [
+        const Icon(
+          Icons.format_list_bulleted_rounded,
+          size: 18,
+          color: Color(0xFF77736B),
+        ),
+        const SizedBox(width: 10),
+        const Text(
+          '项目',
+          style: TextStyle(fontSize: 12, color: Color(0xFF6C6962)),
+        ),
+        const Spacer(),
+        DropdownButtonHideUnderline(
+          child: DropdownButton<String>(
+            value: task.projectId ?? '',
+            style: const TextStyle(fontSize: 11, color: Color(0xFF77736B)),
+            items: [
+              const DropdownMenuItem(value: '', child: Text('无项目')),
+              for (final project in TaskController.projects)
+                DropdownMenuItem(value: project.id, child: Text(project.title)),
+            ],
+            onChanged: (value) => controller.updateTask(
+              task.copyWith(
+                projectId: value,
+                clearProject: value == null || value.isEmpty,
               ),
             ),
-          ],
+          ),
         ),
-      );
+      ],
+    ),
+  );
 }
-
