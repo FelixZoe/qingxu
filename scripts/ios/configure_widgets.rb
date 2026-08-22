@@ -4,6 +4,10 @@
 require 'xcodeproj'
 
 ios_dir = File.expand_path('../../apps/flutter/ios', __dir__)
+app_version = ENV.fetch('APP_VERSION', '').strip
+build_number = ENV.fetch('BUILD_NUMBER', '').strip
+abort 'APP_VERSION must be set for the widget target' if app_version.empty?
+abort 'BUILD_NUMBER must be set for the widget target' if build_number.empty?
 project = Xcodeproj::Project.open(File.join(ios_dir, 'Runner.xcodeproj'))
 runner = project.targets.find { |target| target.name == 'Runner' }
 abort 'Runner target not found' unless runner
@@ -31,11 +35,11 @@ widgets.build_configurations.each do |configuration|
   settings = configuration.build_settings
   settings['APPLICATION_EXTENSION_API_ONLY'] = 'YES'
   settings['CODE_SIGN_ENTITLEMENTS'] = 'QingxuWidgets/QingxuWidgets.entitlements'
-  settings['CURRENT_PROJECT_VERSION'] = '$(FLUTTER_BUILD_NUMBER)'
+  settings['CURRENT_PROJECT_VERSION'] = build_number
   settings['GENERATE_INFOPLIST_FILE'] = 'NO'
   settings['INFOPLIST_FILE'] = 'QingxuWidgets/Info.plist'
   settings['IPHONEOS_DEPLOYMENT_TARGET'] = '16.2'
-  settings['MARKETING_VERSION'] = '$(FLUTTER_BUILD_NAME)'
+  settings['MARKETING_VERSION'] = app_version
   settings['PRODUCT_BUNDLE_IDENTIFIER'] = 'one.darker.qingxu.widgets'
   settings['PRODUCT_NAME'] = '$(TARGET_NAME)'
   settings['SKIP_INSTALL'] = 'YES'
