@@ -162,11 +162,11 @@ class _ModePicker extends StatelessWidget {
     final selected = state.mode == PomodoroMode.focus
         ? PomodoroMode.focus
         : PomodoroMode.shortBreak;
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: palette.surface,
+    return Material(
+      color: palette.surface,
+      shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: palette.border),
+        side: BorderSide(color: palette.border),
       ),
       child: Padding(
         padding: const EdgeInsets.all(4),
