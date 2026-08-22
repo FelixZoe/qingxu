@@ -106,10 +106,12 @@ func (s *Server) health(response http.ResponseWriter, request *http.Request) {
 type syncRequest struct {
 	DeviceID string            `json:"deviceId"`
 	Tasks    []json.RawMessage `json:"tasks"`
+	Pomodoro json.RawMessage   `json:"pomodoro,omitempty"`
 }
 
 type syncResponse struct {
 	Tasks      []json.RawMessage `json:"tasks"`
+	Pomodoro   json.RawMessage   `json:"pomodoro,omitempty"`
 	ServerTime string            `json:"serverTime"`
 }
 
@@ -161,8 +163,21 @@ func (s *Server) sync(response http.ResponseWriter, request *http.Request) {
 		}
 		tasks = append(tasks, task)
 	}
+	var pomodoro *store.Pomodoro
+	if len(input.Pomodoro) > 0 && string(input.Pomodoro) != "null" {
+		parsed, err := store.ParsePomodoro(input.Pomodoro)
+		if err != nil {
+			writeError(response, http.StatusBadRequest, "invalid_pomodoro", err.Error())
+			return
+		}
+		if parsed.UpdatedAt.After(latestAllowedUpdate) {
+			writeError(response, http.StatusBadRequest, "future_updated_at", "pomodoro.updatedAt is more than 5 minutes in the future")
+			return
+		}
+		pomodoro = &parsed
+	}
 
-	merged, err := s.store.Merge(tasks)
+	merged, mergedPomodoro, err := s.store.MergeAll(tasks, pomodoro)
 	if err != nil {
 		log.Printf("persist sync data: %v", err)
 		if errors.Is(err, store.ErrCapacityExceeded) {
@@ -174,6 +189,7 @@ func (s *Server) sync(response http.ResponseWriter, request *http.Request) {
 	}
 	writeJSON(response, http.StatusOK, syncResponse{
 		Tasks:      merged,
+		Pomodoro:   mergedPomodoro,
 		ServerTime: time.Now().UTC().Format(time.RFC3339Nano),
 	})
 }

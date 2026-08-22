@@ -26,10 +26,17 @@ enum QingxuTab: String, CaseIterable, Hashable {
   }
 }
 
+enum QingxuThemeMode: String {
+  case system
+  case light
+  case dark
+}
+
 final class NativeNavigationBridge {
   private var channel: FlutterMethodChannel?
   private weak var tabBarController: QingxuTabBarController?
   private var selectedTab = QingxuTab.today
+  private var themeMode = QingxuThemeMode.system
 
   func connect(to messenger: FlutterBinaryMessenger) {
     let channel = FlutterMethodChannel(
@@ -37,29 +44,48 @@ final class NativeNavigationBridge {
       binaryMessenger: messenger
     )
     channel.setMethodCallHandler { [weak self] call, result in
-      guard call.method == "setSelectedTab" else {
-        result(FlutterMethodNotImplemented)
-        return
-      }
-      guard
-        let rawValue = call.arguments as? String,
-        let tab = QingxuTab(rawValue: rawValue)
-      else {
-        result(
-          FlutterError(
-            code: "invalid_tab",
-            message: "Flutter requested an unsupported native tab.",
-            details: call.arguments
+      switch call.method {
+      case "setSelectedTab":
+        guard
+          let rawValue = call.arguments as? String,
+          let tab = QingxuTab(rawValue: rawValue)
+        else {
+          result(
+            FlutterError(
+              code: "invalid_tab",
+              message: "Flutter requested an unsupported native tab.",
+              details: call.arguments
+            )
           )
-        )
-        return
+          return
+        }
+        DispatchQueue.main.async {
+          self?.selectedTab = tab
+          self?.tabBarController?.select(tab)
+        }
+        result(nil)
+      case "setThemeMode":
+        guard
+          let rawValue = call.arguments as? String,
+          let mode = QingxuThemeMode(rawValue: rawValue)
+        else {
+          result(
+            FlutterError(
+              code: "invalid_theme_mode",
+              message: "Flutter requested an unsupported native theme mode.",
+              details: call.arguments
+            )
+          )
+          return
+        }
+        DispatchQueue.main.async {
+          self?.themeMode = mode
+          self?.tabBarController?.applyThemeMode(mode)
+        }
+        result(nil)
+      default:
+        result(FlutterMethodNotImplemented)
       }
-
-      DispatchQueue.main.async {
-        self?.selectedTab = tab
-        self?.tabBarController?.select(tab)
-      }
-      result(nil)
     }
     self.channel = channel
   }
@@ -67,6 +93,7 @@ final class NativeNavigationBridge {
   func install(tabBarController: QingxuTabBarController) {
     self.tabBarController = tabBarController
     tabBarController.select(selectedTab)
+    tabBarController.applyThemeMode(themeMode)
   }
 
   func userSelected(_ tab: QingxuTab) {
@@ -78,6 +105,7 @@ final class NativeNavigationBridge {
 @main
 @objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
   let navigationBridge = NativeNavigationBridge()
+  let systemFeaturesBridge = IOSSystemFeaturesBridge()
 
   override func application(
     _ application: UIApplication,
@@ -89,5 +117,6 @@ final class NativeNavigationBridge {
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
     navigationBridge.connect(to: engineBridge.applicationRegistrar.messenger())
+    systemFeaturesBridge.connect(to: engineBridge.applicationRegistrar.messenger())
   }
 }

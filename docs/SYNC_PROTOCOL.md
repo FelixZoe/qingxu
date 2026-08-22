@@ -54,15 +54,31 @@
       "updatedAt": "2026-08-22T10:00:00.000Z",
       "deletedAt": null
     }
-  ]
+  ],
+  "pomodoro": {
+    "mode": "focus",
+    "status": "running",
+    "remainingSeconds": 1500,
+    "completedFocusSessions": 2,
+    "endsAt": "2026-08-22T10:25:00.000Z",
+    "updatedAt": "2026-08-22T10:00:00.000Z"
+  }
 }
 ```
 
-响应返回服务器合并后的完整任务集合：
+响应返回服务器合并后的完整任务集合、番茄钟单例状态与服务端时间：
 
 ```json
 {
   "tasks": [],
+  "pomodoro": {
+    "mode": "focus",
+    "status": "running",
+    "remainingSeconds": 1500,
+    "completedFocusSessions": 2,
+    "endsAt": "2026-08-22T10:25:00.000Z",
+    "updatedAt": "2026-08-22T10:00:00.000Z"
+  },
   "serverTime": "2026-08-22T10:00:01.123Z"
 }
 ```
@@ -78,6 +94,8 @@
 5. 墓碑继续保存和返回，防止旧设备恢复已删除任务。
 6. 比服务器当前时间超前超过 5 分钟的 `updatedAt` 会被拒绝，避免错误设备时钟长期锁死任务。
 7. 重复提交相同快照是幂等的。
+
+番茄钟是单例 LWW 文档，同样比较 `updatedAt`。运行状态用绝对 UTC `endsAt` 表示；`remainingSeconds` 是暂停或空闲时的权威值。客户端根据响应中的 `serverTime` 估算时钟偏移，因此各端不会依赖各自设备时钟单独递减。
 
 这是文档级 LWW，不是逐字段合并。两个设备同时编辑同一任务时，时间较新的完整任务覆盖较旧任务；客户端应使用系统 UTC 时间并保持自动校时。
 
@@ -105,4 +123,3 @@
 ## 协议演进
 
 磁盘格式已有显式版本号。v1 客户端必须忽略它不认识的任务字段；服务端保留完整任务 JSON。未来如果引入增量 operation log、端到端加密或多用户认证，将使用明确的新端点/版本迁移，而不会悄悄改变本文件中的 v1 语义。
-

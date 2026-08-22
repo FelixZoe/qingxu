@@ -24,6 +24,18 @@ class SceneDelegate: FlutterSceneDelegate {
     window?.rootViewController = tabBarController
     window?.makeKeyAndVisible()
   }
+
+  override func scene(_ scene: UIScene, openURLContexts URLContexts: Set<UIOpenURLContext>) {
+    super.scene(scene, openURLContexts: URLContexts)
+    guard
+      let value = URLContexts.first?.url.host,
+      let tab = QingxuTab(rawValue: value),
+      let controller = window?.rootViewController as? QingxuTabBarController,
+      let appDelegate = UIApplication.shared.delegate as? AppDelegate
+    else { return }
+    controller.select(tab)
+    appDelegate.navigationBridge.userSelected(tab)
+  }
 }
 
 /// Uses Apple's standard tab bar on every supported iOS version.
@@ -53,7 +65,8 @@ final class QingxuTabBarController: UITabBarController, UITabBarControllerDelega
   override func viewDidLoad() {
     super.viewDidLoad()
     delegate = self
-    tabBar.tintColor = UIColor(red: 0.91, green: 0.72, blue: 0.25, alpha: 1)
+    view.backgroundColor = .qingxuSurface
+    tabBar.tintColor = .qingxuAccent
 
     viewControllers = qingxuTabs.map { tab in
       let controller = FlutterTabContentController()
@@ -82,6 +95,15 @@ final class QingxuTabBarController: UITabBarController, UITabBarControllerDelega
     contentController.embed(flutterViewController)
   }
 
+  func applyThemeMode(_ mode: QingxuThemeMode) {
+    overrideUserInterfaceStyle = switch mode {
+    case .system: .unspecified
+    case .light: .light
+    case .dark: .dark
+    }
+    setNeedsStatusBarAppearanceUpdate()
+  }
+
   func tabBarController(
     _ tabBarController: UITabBarController,
     didSelect viewController: UIViewController
@@ -104,7 +126,7 @@ private final class FlutterTabContentController: UIViewController {
 
   override func viewDidLoad() {
     super.viewDidLoad()
-    view.backgroundColor = .systemBackground
+    view.backgroundColor = .qingxuSurface
   }
 
   func embed(_ flutterViewController: FlutterViewController) {
@@ -143,5 +165,19 @@ private final class FlutterTabContentController: UIViewController {
     flutterViewController.view.removeFromSuperview()
     flutterViewController.removeFromParent()
     embeddedViewController = nil
+  }
+}
+
+private extension UIColor {
+  static let qingxuSurface = UIColor { traits in
+    traits.userInterfaceStyle == .dark
+      ? UIColor(red: 0.071, green: 0.090, blue: 0.078, alpha: 1)
+      : UIColor(red: 0.980, green: 0.973, blue: 0.949, alpha: 1)
+  }
+
+  static let qingxuAccent = UIColor { traits in
+    traits.userInterfaceStyle == .dark
+      ? UIColor(red: 0.431, green: 0.682, blue: 0.525, alpha: 1)
+      : UIColor(red: 0.325, green: 0.459, blue: 0.561, alpha: 1)
   }
 }

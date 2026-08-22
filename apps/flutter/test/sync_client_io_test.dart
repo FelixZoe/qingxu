@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qingxu/models/sync_settings.dart';
+import 'package:qingxu/models/pomodoro_state.dart';
 import 'package:qingxu/models/task_item.dart';
 import 'package:qingxu/services/sync_client_io.dart';
 
@@ -84,6 +85,7 @@ void main() {
         deviceName: 'Windows 测试机',
       ),
       [task],
+      PomodoroState.initial(),
     );
     await handled;
 

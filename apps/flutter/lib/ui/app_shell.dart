@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../state/task_controller.dart';
+import 'design_system.dart';
 import 'pomodoro_page.dart';
 import 'sidebar.dart';
 import 'sync_settings_page.dart';
@@ -10,9 +11,16 @@ import 'task_editor.dart';
 import 'task_list.dart';
 
 class AppShell extends StatefulWidget {
-  const AppShell({required this.controller, super.key});
+  const AppShell({
+    required this.controller,
+    required this.themeMode,
+    required this.onThemeModeChanged,
+    super.key,
+  });
 
   final TaskController controller;
+  final ThemeMode themeMode;
+  final ValueChanged<ThemeMode> onThemeModeChanged;
 
   @override
   State<AppShell> createState() => _AppShellState();
@@ -48,39 +56,46 @@ class _AppShellState extends State<AppShell> {
           animation: widget.controller,
           builder: (context, _) => LayoutBuilder(
             builder: (context, constraints) {
+              final palette = QingxuPalette.of(context);
               final compact = constraints.maxWidth < 760;
               final useNativeIosTabs =
                   !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS;
-              final useFullBleedWindows =
-                  !kIsWeb && defaultTargetPlatform == TargetPlatform.windows;
+              final useAndroidTabs =
+                  !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
+              final useFullBleedDesktop =
+                  !kIsWeb &&
+                  (defaultTargetPlatform == TargetPlatform.windows ||
+                      defaultTargetPlatform == TargetPlatform.macOS);
               final showEditor = widget.controller.selectedTask != null;
-              if (compact || useNativeIosTabs) {
+              if (compact || useNativeIosTabs || useAndroidTabs) {
                 return _CompactShell(
                   controller: widget.controller,
                   quickAddFocus: quickAddFocus,
                   searchFocus: searchFocus,
+                  themeMode: widget.themeMode,
+                  onThemeModeChanged: widget.onThemeModeChanged,
                 );
               }
               return Center(
                 child: Container(
-                  width: useFullBleedWindows
+                  width: useFullBleedDesktop
                       ? constraints.maxWidth
                       : constraints.maxWidth - 32,
-                  height: useFullBleedWindows
+                  height: useFullBleedDesktop
                       ? constraints.maxHeight
                       : constraints.maxHeight - 32,
-                  constraints: useFullBleedWindows
+                  constraints: useFullBleedDesktop
                       ? const BoxConstraints()
                       : const BoxConstraints(maxWidth: 1440, minHeight: 600),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFFBFAF7),
-                    borderRadius: useFullBleedWindows
+                    color: palette.surface,
+                    borderRadius: useFullBleedDesktop
                         ? BorderRadius.zero
                         : BorderRadius.circular(18),
-                    border: useFullBleedWindows
+                    border: useFullBleedDesktop
                         ? null
-                        : Border.all(color: const Color(0x1A5A533F)),
-                    boxShadow: useFullBleedWindows
+                        : Border.all(color: palette.border),
+                    boxShadow: useFullBleedDesktop
                         ? null
                         : const [
                             BoxShadow(
@@ -104,6 +119,8 @@ class _AppShellState extends State<AppShell> {
                         child: _Workspace(
                           controller: widget.controller,
                           quickAddFocus: quickAddFocus,
+                          themeMode: widget.themeMode,
+                          onThemeModeChanged: widget.onThemeModeChanged,
                         ),
                       ),
                       if (showEditor && _viewIndex(widget.controller) == 0)
@@ -132,11 +149,15 @@ class _CompactShell extends StatelessWidget {
     required this.controller,
     required this.quickAddFocus,
     required this.searchFocus,
+    required this.themeMode,
+    required this.onThemeModeChanged,
   });
 
   final TaskController controller;
   final FocusNode quickAddFocus;
   final FocusNode searchFocus;
+  final ThemeMode themeMode;
+  final ValueChanged<ThemeMode> onThemeModeChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -153,9 +174,12 @@ class _CompactShell extends StatelessWidget {
     }
     final useNativeIosTabs =
         !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS;
+    final useAndroidTabs =
+        !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
+    final useMobileTabs = useNativeIosTabs || useAndroidTabs;
     return Builder(
       builder: (context) => Scaffold(
-        drawer: useNativeIosTabs
+        drawer: useMobileTabs
             ? null
             : Drawer(
                 width: 270,
@@ -171,10 +195,41 @@ class _CompactShell extends StatelessWidget {
             builder: (context) => _Workspace(
               controller: controller,
               quickAddFocus: quickAddFocus,
-              onMenu: useNativeIosTabs ? null : Scaffold.of(context).openDrawer,
+              themeMode: themeMode,
+              onThemeModeChanged: onThemeModeChanged,
+              onMenu: useMobileTabs ? null : Scaffold.of(context).openDrawer,
             ),
           ),
         ),
+        bottomNavigationBar: useAndroidTabs
+            ? NavigationBar(
+                selectedIndex: _navigationIndex(controller),
+                onDestinationSelected: (index) =>
+                    controller.selectView(_navigationViews[index]),
+                destinations: const [
+                  NavigationDestination(
+                    icon: Icon(Icons.inbox_outlined),
+                    selectedIcon: Icon(Icons.inbox_rounded),
+                    label: '收集箱',
+                  ),
+                  NavigationDestination(
+                    icon: Icon(Icons.light_mode_outlined),
+                    selectedIcon: Icon(Icons.light_mode_rounded),
+                    label: '今天',
+                  ),
+                  NavigationDestination(
+                    icon: Icon(Icons.timer_outlined),
+                    selectedIcon: Icon(Icons.timer_rounded),
+                    label: '番茄钟',
+                  ),
+                  NavigationDestination(
+                    icon: Icon(Icons.settings_outlined),
+                    selectedIcon: Icon(Icons.settings_rounded),
+                    label: '设置',
+                  ),
+                ],
+              )
+            : null,
       ),
     );
   }
@@ -184,26 +239,54 @@ class _Workspace extends StatelessWidget {
   const _Workspace({
     required this.controller,
     required this.quickAddFocus,
+    required this.themeMode,
+    required this.onThemeModeChanged,
     this.onMenu,
   });
 
   final TaskController controller;
   final FocusNode quickAddFocus;
+  final ThemeMode themeMode;
+  final ValueChanged<ThemeMode> onThemeModeChanged;
   final VoidCallback? onMenu;
 
   @override
-  Widget build(BuildContext context) => IndexedStack(
-    index: _viewIndex(controller),
-    children: [
+  Widget build(BuildContext context) {
+    final selected = _viewIndex(controller);
+    final pages = <Widget>[
       TaskListPane(
         controller: controller,
         quickAddFocus: quickAddFocus,
         onMenu: onMenu,
       ),
-      PomodoroPage(onMenu: onMenu),
-      SyncSettingsPage(controller: controller, embedded: true, onMenu: onMenu),
-    ],
-  );
+      PomodoroPage(controller: controller, onMenu: onMenu),
+      SyncSettingsPage(
+        controller: controller,
+        embedded: true,
+        onMenu: onMenu,
+        themeMode: themeMode,
+        onThemeModeChanged: onThemeModeChanged,
+      ),
+    ];
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        for (var index = 0; index < pages.length; index++)
+          AnimatedOpacity(
+            opacity: index == selected ? 1 : 0,
+            duration: QingxuMotion.standard,
+            curve: QingxuMotion.curve,
+            child: IgnorePointer(
+              ignoring: index != selected,
+              child: TickerMode(
+                enabled: index == selected,
+                child: pages[index],
+              ),
+            ),
+          ),
+      ],
+    );
+  }
 }
 
 int _viewIndex(TaskController controller) => switch (controller.activeView) {
@@ -211,3 +294,10 @@ int _viewIndex(TaskController controller) => switch (controller.activeView) {
   'settings' => 2,
   _ => 0,
 };
+
+const _navigationViews = ['inbox', 'today', 'pomodoro', 'settings'];
+
+int _navigationIndex(TaskController controller) {
+  final index = _navigationViews.indexOf(controller.activeView);
+  return index < 0 ? 1 : index;
+}

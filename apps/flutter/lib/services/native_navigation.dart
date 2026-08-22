@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../state/task_controller.dart';
@@ -25,6 +26,15 @@ final class NativeNavigationBridge {
     _channel.setMethodCallHandler(bridge._handleMethodCall);
     controller.addListener(bridge._syncNativeSelection);
     bridge._syncNativeSelection();
+  }
+
+  static void setThemeMode(ThemeMode mode) {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.iOS) return;
+    unawaited(
+      _channel
+          .invokeMethod<void>('setThemeMode', mode.name)
+          .catchError((Object _) {}),
+    );
   }
 
   Future<void> _handleMethodCall(MethodCall call) async {

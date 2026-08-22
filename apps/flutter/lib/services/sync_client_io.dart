@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import '../models/sync_settings.dart';
+import '../models/pomodoro_state.dart';
 import '../models/task_item.dart';
 import 'sync_client_base.dart';
 
@@ -10,13 +11,20 @@ class SyncClient implements SyncClientBase {
   static const _timeout = Duration(seconds: 10);
 
   @override
-  bool get isSupported => Platform.isWindows || Platform.isIOS;
+  bool get isSupported =>
+      Platform.isWindows ||
+      Platform.isIOS ||
+      Platform.isAndroid ||
+      Platform.isMacOS;
 
   @override
   String get defaultDeviceName {
     final host = Platform.localHostname.trim();
     if (host.isNotEmpty) return host;
-    return Platform.isIOS ? '我的 iPhone' : '我的 Windows 设备';
+    if (Platform.isIOS) return '我的 iPhone';
+    if (Platform.isAndroid) return '我的 Android 设备';
+    if (Platform.isMacOS) return '我的 Mac';
+    return '我的 Windows 设备';
   }
 
   @override
@@ -59,7 +67,11 @@ class SyncClient implements SyncClientBase {
   }
 
   @override
-  Future<SyncResponse> sync(SyncSettings settings, List<TaskItem> tasks) async {
+  Future<SyncResponse> sync(
+    SyncSettings settings,
+    List<TaskItem> tasks,
+    PomodoroState pomodoro,
+  ) async {
     _requireConfiguration(settings);
     final client = _newClient();
     try {
@@ -75,6 +87,7 @@ class SyncClient implements SyncClientBase {
         jsonEncode({
           'deviceId': settings.deviceName,
           'tasks': tasks.map((task) => task.toJson()).toList(),
+          'pomodoro': pomodoro.toJson(),
         }),
       );
 
@@ -99,7 +112,15 @@ class SyncClient implements SyncClientBase {
         }
         remoteTasks.add(TaskItem.fromJson(Map<String, Object?>.from(value)));
       }
-      return SyncResponse(tasks: remoteTasks, serverTime: serverTime);
+      final rawPomodoro = decoded['pomodoro'];
+      final remotePomodoro = rawPomodoro is Map
+          ? PomodoroState.fromJson(Map<String, Object?>.from(rawPomodoro))
+          : null;
+      return SyncResponse(
+        tasks: remoteTasks,
+        pomodoro: remotePomodoro,
+        serverTime: serverTime,
+      );
     } on SyncException {
       rethrow;
     } on TimeoutException {

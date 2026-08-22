@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qingxu/models/sync_settings.dart';
+import 'package:qingxu/models/pomodoro_state.dart';
 import 'package:qingxu/models/task_item.dart';
 import 'package:qingxu/services/secure_token_storage_base.dart';
 import 'package:qingxu/services/sync_client_base.dart';
@@ -393,7 +394,11 @@ class ControlledSyncClient implements SyncClientBase {
   bool get isSupported => true;
 
   @override
-  Future<SyncResponse> sync(SyncSettings settings, List<TaskItem> tasks) {
+  Future<SyncResponse> sync(
+    SyncSettings settings,
+    List<TaskItem> tasks,
+    PomodoroState pomodoro,
+  ) {
     final call = ControlledSyncCall(settings, List.unmodifiable(tasks));
     calls.add(call);
     return call.completer.future;
@@ -419,7 +424,11 @@ class FakeSyncClient implements SyncClientBase {
   bool get isSupported => true;
 
   @override
-  Future<SyncResponse> sync(SyncSettings settings, List<TaskItem> tasks) async {
+  Future<SyncResponse> sync(
+    SyncSettings settings,
+    List<TaskItem> tasks,
+    PomodoroState pomodoro,
+  ) async {
     syncCalls += 1;
     lastSettings = settings;
     lastTasks = List.unmodifiable(tasks);

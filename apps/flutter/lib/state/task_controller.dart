@@ -4,7 +4,11 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 
 import '../models/sync_settings.dart';
+import '../models/pomodoro_state.dart';
 import '../models/task_item.dart';
+import '../services/pomodoro_storage.dart';
+import '../services/pomodoro_storage_base.dart';
+import '../services/ios_system_features.dart';
 import '../services/secure_token_storage.dart';
 import '../services/secure_token_storage_base.dart';
 import '../services/sync_client.dart';
@@ -22,18 +26,23 @@ class TaskController extends ChangeNotifier {
     SyncSettingsStorageBase? syncSettingsStorage,
     SecureTokenStorageBase? secureTokenStorage,
     SyncClientBase? syncClient,
+    PomodoroStorageBase? pomodoroStorage,
     this.syncDebounce = const Duration(milliseconds: 1200),
   }) : _storage = storage ?? TaskStorage(),
        _syncSettingsStorage = syncSettingsStorage ?? SyncSettingsStorage(),
        _secureTokenStorage = secureTokenStorage ?? SecureTokenStorage(),
-       _syncClient = syncClient ?? SyncClient();
+       _syncClient = syncClient ?? SyncClient(),
+       _pomodoroStorage = pomodoroStorage ?? PomodoroStorage();
 
   final TaskStorageBase _storage;
   final SyncSettingsStorageBase _syncSettingsStorage;
   final SecureTokenStorageBase _secureTokenStorage;
   final SyncClientBase _syncClient;
+  final PomodoroStorageBase _pomodoroStorage;
   final Duration syncDebounce;
   final List<TaskItem> _tasks = [];
+  PomodoroState _pomodoro = PomodoroState.initial();
+  Duration _serverClockOffset = Duration.zero;
 
   static const projects = <ProjectItem>[
     ProjectItem('personal', '个人', 0xFF78A4D6),
@@ -50,6 +59,7 @@ class TaskController extends ChangeNotifier {
   DateTime? _lastSyncedAt;
   String? _lastServerTime;
   Timer? _syncDebounceTimer;
+  Timer? _autoPullTimer;
   Future<bool>? _activeSync;
   Future<void> _saveTail = Future<void>.value();
   bool _syncQueued = false;
@@ -63,6 +73,10 @@ class TaskController extends ChangeNotifier {
   DateTime? get lastSyncedAt => _lastSyncedAt;
   String? get lastServerTime => _lastServerTime;
   bool get syncSupported => _syncClient.isSupported;
+  PomodoroState get pomodoro => _pomodoro;
+  DateTime get estimatedServerNow =>
+      DateTime.now().toUtc().add(_serverClockOffset);
+  int get pomodoroRemainingSeconds => _pomodoro.remainingAt(estimatedServerNow);
   bool get isSyncBusy =>
       _syncActivity == SyncActivity.testing ||
       _syncActivity == SyncActivity.syncing;
@@ -125,11 +139,26 @@ class TaskController extends ChangeNotifier {
 
   Future<void> initialize() async {
     await _loadTasks();
+    await _loadPomodoro();
     await _loadSyncSettings();
     if (_tasks.isEmpty) _seed();
 
     if (syncSupported && _syncSettings.autoSync && _syncSettings.isConfigured) {
       unawaited(syncNow());
+    }
+    _configureAutoPull();
+    _publishSystemSnapshot();
+  }
+
+  Future<void> _loadPomodoro() async {
+    final encoded = await _pomodoroStorage.load();
+    if (encoded == null || encoded.isEmpty) return;
+    try {
+      _pomodoro = PomodoroState.fromJson(
+        Map<String, Object?>.from(jsonDecode(encoded) as Map<dynamic, dynamic>),
+      );
+    } on Object {
+      _pomodoro = PomodoroState.initial();
     }
   }
 
@@ -283,6 +312,96 @@ class TaskController extends ChangeNotifier {
     updateTask(task.copyWith(deletedAt: DateTime.now().toUtc()));
   }
 
+  void togglePomodoro() {
+    final now = estimatedServerNow;
+    if (_pomodoro.status == PomodoroStatus.running) {
+      _setPomodoro(
+        _pomodoro.copyWith(
+          status: PomodoroStatus.paused,
+          remainingSeconds: _pomodoro.remainingAt(now),
+          clearEndsAt: true,
+          updatedAt: now,
+        ),
+      );
+      return;
+    }
+    final remaining = _pomodoro.remainingSeconds > 0
+        ? _pomodoro.remainingSeconds
+        : PomodoroState.durationFor(_pomodoro.mode).inSeconds;
+    _setPomodoro(
+      _pomodoro.copyWith(
+        status: PomodoroStatus.running,
+        remainingSeconds: remaining,
+        endsAt: now.add(Duration(seconds: remaining)),
+        updatedAt: now,
+      ),
+    );
+  }
+
+  void resetPomodoro() {
+    final now = estimatedServerNow;
+    _setPomodoro(
+      _pomodoro.copyWith(
+        status: PomodoroStatus.idle,
+        remainingSeconds: PomodoroState.durationFor(_pomodoro.mode).inSeconds,
+        clearEndsAt: true,
+        updatedAt: now,
+      ),
+    );
+  }
+
+  void selectPomodoroMode(PomodoroMode mode) {
+    final now = estimatedServerNow;
+    _setPomodoro(
+      _pomodoro.copyWith(
+        mode: mode,
+        status: PomodoroStatus.idle,
+        remainingSeconds: PomodoroState.durationFor(mode).inSeconds,
+        clearEndsAt: true,
+        updatedAt: now,
+      ),
+    );
+  }
+
+  void skipPomodoro() => _advancePomodoro(countFocus: false);
+
+  bool advancePomodoroIfNeeded() {
+    if (_pomodoro.status != PomodoroStatus.running ||
+        _pomodoro.remainingAt(estimatedServerNow) > 0) {
+      return false;
+    }
+    _advancePomodoro(countFocus: _pomodoro.mode == PomodoroMode.focus);
+    return true;
+  }
+
+  void _advancePomodoro({required bool countFocus}) {
+    final now = estimatedServerNow;
+    final completed = _pomodoro.completedFocusSessions + (countFocus ? 1 : 0);
+    final nextMode = _pomodoro.mode == PomodoroMode.focus
+        ? (completed > 0 && completed % 4 == 0
+              ? PomodoroMode.longBreak
+              : PomodoroMode.shortBreak)
+        : PomodoroMode.focus;
+    _setPomodoro(
+      PomodoroState(
+        mode: nextMode,
+        status: PomodoroStatus.idle,
+        remainingSeconds: PomodoroState.durationFor(nextMode).inSeconds,
+        completedFocusSessions: completed,
+        updatedAt: now,
+      ),
+    );
+  }
+
+  void _setPomodoro(PomodoroState value) {
+    _pomodoro = value;
+    _notifyListeners();
+    unawaited(_persistPomodoro().catchError((Object _) {}));
+    _scheduleSync();
+    _configureAutoPull();
+    _publishSystemSnapshot();
+  }
+
   Future<bool> saveSyncSettings(SyncSettings value) async {
     final normalized = value.normalized();
     final previous = _syncSettings;
@@ -315,6 +434,7 @@ class TaskController extends ChangeNotifier {
     } else if (normalized.autoSync && normalized.isConfigured) {
       _scheduleSync();
     }
+    _configureAutoPull();
     _notifyListeners();
     return true;
   }
@@ -387,17 +507,30 @@ class TaskController extends ChangeNotifier {
       final response = await _syncClient.sync(
         settings,
         List<TaskItem>.unmodifiable(_tasks),
+        _pomodoro,
       );
       if (configurationGeneration != _syncConfigurationGeneration) {
         return true;
       }
       _mergeRemote(response.tasks);
-      await _persistTasks();
+      final serverTime = DateTime.tryParse(response.serverTime)?.toUtc();
+      if (serverTime != null) {
+        _serverClockOffset = serverTime.difference(DateTime.now().toUtc());
+      }
+      final remotePomodoro = response.pomodoro;
+      if (remotePomodoro != null &&
+          (remotePomodoro.updatedAt.isAfter(_pomodoro.updatedAt) ||
+              remotePomodoro.updatedAt.isAtSameMomentAs(_pomodoro.updatedAt))) {
+        _pomodoro = remotePomodoro;
+      }
+      await Future.wait([_persistTasks(), _persistPomodoro()]);
       _lastSyncedAt = DateTime.now();
       _lastServerTime = response.serverTime;
       _syncActivity = SyncActivity.success;
       _syncMessage = '同步完成';
       _notifyListeners();
+      _configureAutoPull();
+      _publishSystemSnapshot();
       return true;
     } on Object catch (error) {
       if (configurationGeneration != _syncConfigurationGeneration) {
@@ -434,6 +567,18 @@ class TaskController extends ChangeNotifier {
     _notifyListeners();
     unawaited(_persistTasks().catchError((Object _) {}));
     _scheduleSync();
+    _publishSystemSnapshot();
+  }
+
+  void _publishSystemSnapshot() {
+    final localNow = DateTime.now();
+    final tomorrow = DateTime(localNow.year, localNow.month, localNow.day + 1);
+    final todayCount = _tasks.where((task) {
+      if (!task.isOpen || task.deletedAt != null) return false;
+      final start = task.startAt?.toLocal();
+      return start != null && start.isBefore(tomorrow);
+    }).length;
+    IOSSystemFeatures.update(pomodoro: _pomodoro, todayTaskCount: todayCount);
   }
 
   Future<void> _persistTasks() {
@@ -451,6 +596,9 @@ class TaskController extends ChangeNotifier {
     return operation;
   }
 
+  Future<void> _persistPomodoro() =>
+      _pomodoroStorage.save(jsonEncode(_pomodoro.toJson()));
+
   void _scheduleSync() {
     _syncDebounceTimer?.cancel();
     if (!syncSupported ||
@@ -460,6 +608,20 @@ class TaskController extends ChangeNotifier {
       return;
     }
     _syncDebounceTimer = Timer(syncDebounce, () => unawaited(syncNow()));
+  }
+
+  void _configureAutoPull() {
+    _autoPullTimer?.cancel();
+    if (_disposed ||
+        !syncSupported ||
+        !_syncSettings.autoSync ||
+        !_syncSettings.isConfigured) {
+      return;
+    }
+    final interval = _pomodoro.status == PomodoroStatus.running
+        ? const Duration(seconds: 3)
+        : const Duration(seconds: 30);
+    _autoPullTimer = Timer.periodic(interval, (_) => unawaited(syncNow()));
   }
 
   void _setSyncError(String message) {
@@ -529,6 +691,7 @@ class TaskController extends ChangeNotifier {
   void dispose() {
     _disposed = true;
     _syncDebounceTimer?.cancel();
+    _autoPullTimer?.cancel();
     super.dispose();
   }
 }

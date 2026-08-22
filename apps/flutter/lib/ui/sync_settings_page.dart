@@ -1,18 +1,25 @@
+import 'package:flutter/cupertino.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../models/sync_settings.dart';
 import '../state/task_controller.dart';
+import 'design_system.dart';
 
 class SyncSettingsPage extends StatefulWidget {
   const SyncSettingsPage({
     required this.controller,
+    required this.themeMode,
+    required this.onThemeModeChanged,
     this.embedded = false,
     this.onMenu,
     super.key,
   });
 
   final TaskController controller;
+  final ThemeMode themeMode;
+  final ValueChanged<ThemeMode> onThemeModeChanged;
   final bool embedded;
   final VoidCallback? onMenu;
 
@@ -70,34 +77,53 @@ class _SyncSettingsPageState extends State<SyncSettingsPage> {
     if (await _save()) await widget.controller.syncNow();
   }
 
-  PreferredSizeWidget _buildAppBar({required bool enableSyncActions}) => AppBar(
-    automaticallyImplyLeading: !widget.embedded,
-    leading: widget.onMenu == null
-        ? null
-        : IconButton(
-            tooltip: '打开导航',
-            onPressed: widget.onMenu,
-            icon: const Icon(Icons.menu_rounded),
-          ),
-    title: const Text('设置'),
-    backgroundColor: const Color(0xFFFBFAF7),
-    surfaceTintColor: Colors.transparent,
-    actions: enableSyncActions
-        ? [
-            TextButton(
-              onPressed: _saving ? null : _save,
-              child: Text(_saving ? '保存中…' : '保存'),
+  PreferredSizeWidget _buildAppBar({required bool enableSyncActions}) {
+    final useCupertinoNavigation =
+        !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS;
+    if (useCupertinoNavigation) {
+      return CupertinoNavigationBar(
+        middle: const Text('设置'),
+        trailing: enableSyncActions
+            ? CupertinoButton(
+                padding: EdgeInsets.zero,
+                onPressed: _saving ? null : _save,
+                child: Text(_saving ? '保存中…' : '保存'),
+              )
+            : null,
+      );
+    }
+    return AppBar(
+      toolbarHeight: widget.embedded ? 74 : null,
+      automaticallyImplyLeading: !widget.embedded,
+      leading: widget.onMenu == null
+          ? null
+          : IconButton(
+              tooltip: '打开导航',
+              onPressed: widget.onMenu,
+              icon: const Icon(Icons.menu_rounded),
             ),
-            const SizedBox(width: 8),
-          ]
-        : null,
-  );
+      title: const Text(
+        '设置',
+        style: TextStyle(fontSize: 25, fontWeight: FontWeight.w700),
+      ),
+      actions: enableSyncActions
+          ? [
+              TextButton(
+                onPressed: _saving ? null : _save,
+                child: Text(_saving ? '保存中…' : '保存'),
+              ),
+              const SizedBox(width: 14),
+            ]
+          : null,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
+    final palette = QingxuPalette.of(context);
     if (!widget.controller.syncSupported) {
       return Scaffold(
-        backgroundColor: const Color(0xFFF5F4F0),
+        backgroundColor: palette.canvas,
         appBar: _buildAppBar(enableSyncActions: false),
         body: SafeArea(
           top: false,
@@ -105,31 +131,42 @@ class _SyncSettingsPageState extends State<SyncSettingsPage> {
             child: Padding(
               padding: const EdgeInsets.all(24),
               child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 520),
-                child: const _SettingsCard(
+                constraints: const BoxConstraints(maxWidth: 620),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Icon(
-                      Icons.devices_outlined,
-                      size: 38,
-                      color: Color(0xFF85827A),
+                    _AppearanceCard(
+                      themeMode: widget.themeMode,
+                      onChanged: widget.onThemeModeChanged,
                     ),
-                    SizedBox(height: 16),
-                    Text(
-                      'Web 版使用浏览器本地存储',
-                      style: TextStyle(
-                        fontSize: 17,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    SizedBox(height: 8),
-                    Text(
-                      '服务器同步配置目前仅在 Windows 和 iOS 客户端开放。Web 端任务仍会保存在当前浏览器中。',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: 13,
-                        height: 1.5,
-                        color: Color(0xFF77736B),
-                      ),
+                    const SizedBox(height: 18),
+                    _SettingsCard(
+                      children: [
+                        Icon(
+                          Icons.devices_outlined,
+                          size: 38,
+                          color: palette.muted,
+                        ),
+                        const SizedBox(height: 16),
+                        const Text(
+                          '当前平台暂不支持同步',
+                          style: TextStyle(
+                            fontSize: 17,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          '请在 iOS、Android、Windows 或 macOS 客户端配置自托管同步。',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 13,
+                            height: 1.5,
+                            color: palette.muted,
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
@@ -141,7 +178,7 @@ class _SyncSettingsPageState extends State<SyncSettingsPage> {
     }
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F4F0),
+      backgroundColor: palette.canvas,
       appBar: _buildAppBar(enableSyncActions: true),
       body: SafeArea(
         top: false,
@@ -153,6 +190,11 @@ class _SyncSettingsPageState extends State<SyncSettingsPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  _AppearanceCard(
+                    themeMode: widget.themeMode,
+                    onChanged: widget.onThemeModeChanged,
+                  ),
+                  const SizedBox(height: 18),
                   _StatusCard(controller: widget.controller),
                   const SizedBox(height: 18),
                   _SettingsCard(
@@ -242,12 +284,12 @@ class _SyncSettingsPageState extends State<SyncSettingsPage> {
                     },
                   ),
                   const SizedBox(height: 18),
-                  const Text(
+                  Text(
                     '同步设置和密钥只保存在当前设备，不会写入项目源码或上传到 GitHub。网络失败时，本地任务仍可正常使用。',
                     style: TextStyle(
                       fontSize: 12,
                       height: 1.5,
-                      color: Color(0xFF77736B),
+                      color: palette.muted,
                     ),
                   ),
                 ],
@@ -260,23 +302,100 @@ class _SyncSettingsPageState extends State<SyncSettingsPage> {
   }
 }
 
+class _AppearanceCard extends StatelessWidget {
+  const _AppearanceCard({required this.themeMode, required this.onChanged});
+
+  final ThemeMode themeMode;
+  final ValueChanged<ThemeMode> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = QingxuPalette.of(context);
+    return _SettingsCard(
+      children: [
+        Row(
+          children: [
+            DecoratedBox(
+              decoration: BoxDecoration(
+                color: palette.accentSoft,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(9),
+                child: Icon(
+                  Icons.palette_outlined,
+                  color: palette.accent,
+                  size: 20,
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            const Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '外观',
+                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+                  ),
+                  SizedBox(height: 2),
+                  Text('日间使用米白雾蓝，夜间使用近黑苔绿', style: TextStyle(fontSize: 12)),
+                ],
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 18),
+        SizedBox(
+          width: double.infinity,
+          child: SegmentedButton<ThemeMode>(
+            segments: const [
+              ButtonSegment(
+                value: ThemeMode.system,
+                icon: Icon(Icons.brightness_auto_outlined),
+                label: Text('系统'),
+              ),
+              ButtonSegment(
+                value: ThemeMode.light,
+                icon: Icon(Icons.light_mode_outlined),
+                label: Text('日间'),
+              ),
+              ButtonSegment(
+                value: ThemeMode.dark,
+                icon: Icon(Icons.dark_mode_outlined),
+                label: Text('夜间'),
+              ),
+            ],
+            selected: {themeMode},
+            showSelectedIcon: false,
+            onSelectionChanged: (selection) => onChanged(selection.first),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class _SettingsCard extends StatelessWidget {
   const _SettingsCard({required this.children});
 
   final List<Widget> children;
 
   @override
-  Widget build(BuildContext context) => DecoratedBox(
-    decoration: BoxDecoration(
-      color: const Color(0xFFFBFAF7),
-      borderRadius: BorderRadius.circular(16),
-      border: Border.all(color: const Color(0xFFE5E1DA)),
-    ),
-    child: Padding(
-      padding: const EdgeInsets.all(22),
-      child: Column(children: children),
-    ),
-  );
+  Widget build(BuildContext context) {
+    final palette = QingxuPalette.of(context);
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: palette.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: palette.border),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(22),
+        child: Column(children: children),
+      ),
+    );
+  }
 }
 
 class _StatusCard extends StatelessWidget {
@@ -288,25 +407,14 @@ class _StatusCard extends StatelessWidget {
   Widget build(BuildContext context) => AnimatedBuilder(
     animation: controller,
     builder: (context, _) {
+      final palette = QingxuPalette.of(context);
       final (icon, color) = switch (controller.syncActivity) {
         SyncActivity.testing ||
-        SyncActivity.syncing => (Icons.sync_rounded, const Color(0xFF4F78A6)),
-        SyncActivity.success => (
-          Icons.cloud_done_outlined,
-          const Color(0xFF54845A),
-        ),
-        SyncActivity.error => (
-          Icons.cloud_off_outlined,
-          const Color(0xFFB45A4D),
-        ),
-        SyncActivity.idle => (
-          Icons.cloud_queue_outlined,
-          const Color(0xFF77736B),
-        ),
-        SyncActivity.unconfigured => (
-          Icons.cloud_outlined,
-          const Color(0xFF99958C),
-        ),
+        SyncActivity.syncing => (Icons.sync_rounded, palette.info),
+        SyncActivity.success => (Icons.cloud_done_outlined, palette.success),
+        SyncActivity.error => (Icons.cloud_off_outlined, palette.danger),
+        SyncActivity.idle => (Icons.cloud_queue_outlined, palette.muted),
+        SyncActivity.unconfigured => (Icons.cloud_outlined, palette.faint),
       };
       return DecoratedBox(
         decoration: BoxDecoration(
@@ -332,10 +440,7 @@ class _StatusCard extends StatelessWidget {
                       const SizedBox(height: 3),
                       Text(
                         '上次同步：${_formatTime(syncedAt)}',
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: Color(0xFF77736B),
-                        ),
+                        style: TextStyle(fontSize: 12, color: palette.muted),
                       ),
                     ],
                   ],

@@ -3,6 +3,7 @@ import 'package:forui/forui.dart';
 
 import '../models/task_item.dart';
 import '../state/task_controller.dart';
+import 'design_system.dart';
 
 class TaskEditor extends StatefulWidget {
   const TaskEditor({required this.controller, required this.task, super.key});
@@ -43,46 +44,58 @@ class _TaskEditorState extends State<TaskEditor> {
   }
 
   Future<void> pickStartDate() async {
+    await _pickDate(isDeadline: false);
+  }
+
+  Future<void> pickDeadlineDate() async {
+    await _pickDate(isDeadline: true);
+  }
+
+  Future<void> _pickDate({required bool isDeadline}) async {
+    final current = isDeadline ? widget.task.deadlineAt : widget.task.startAt;
     final selected = await showDatePicker(
       context: context,
-      initialDate: widget.task.startAt?.toLocal() ?? DateTime.now(),
+      initialDate: current?.toLocal() ?? DateTime.now(),
       firstDate: DateTime(2020),
       lastDate: DateTime(2100),
       locale: const Locale('zh', 'CN'),
     );
     if (selected != null) {
+      final value = DateTime(
+        selected.year,
+        selected.month,
+        selected.day,
+        isDeadline ? 23 : 9,
+        isDeadline ? 59 : 0,
+      ).toUtc();
       widget.controller.updateTask(
-        widget.task.copyWith(
-          startAt: DateTime(
-            selected.year,
-            selected.month,
-            selected.day,
-            9,
-          ).toUtc(),
-        ),
+        isDeadline
+            ? widget.task.copyWith(deadlineAt: value)
+            : widget.task.copyWith(startAt: value),
       );
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final palette = QingxuPalette.of(context);
     return ColoredBox(
-      color: const Color(0xFFF7F6F2),
+      color: palette.canvas,
       child: Column(
         children: [
           Container(
             height: 58,
             padding: const EdgeInsets.symmetric(horizontal: 16),
-            decoration: const BoxDecoration(
-              border: Border(bottom: BorderSide(color: Color(0xFFDEDBD3))),
+            decoration: BoxDecoration(
+              border: Border(bottom: BorderSide(color: palette.border)),
             ),
             child: Row(
               children: [
-                const Text(
+                Text(
                   '任务详情',
                   style: TextStyle(
                     fontSize: 12,
-                    color: Color(0xFF85827A),
+                    color: palette.muted,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -113,6 +126,9 @@ class _TaskEditorState extends State<TaskEditor> {
                     ),
                     decoration: const InputDecoration(
                       border: InputBorder.none,
+                      enabledBorder: InputBorder.none,
+                      focusedBorder: InputBorder.none,
+                      filled: false,
                       isDense: true,
                     ),
                   ),
@@ -124,13 +140,13 @@ class _TaskEditorState extends State<TaskEditor> {
                     decoration: InputDecoration(
                       hintText: '备注',
                       filled: true,
-                      fillColor: const Color(0x99FFFFFF),
+                      fillColor: palette.surface,
                       border: OutlineInputBorder(
-                        borderSide: const BorderSide(color: Color(0xFFE5E1DA)),
+                        borderSide: BorderSide(color: palette.border),
                         borderRadius: BorderRadius.circular(9),
                       ),
                       enabledBorder: OutlineInputBorder(
-                        borderSide: const BorderSide(color: Color(0xFFE5E1DA)),
+                        borderSide: BorderSide(color: palette.border),
                         borderRadius: BorderRadius.circular(9),
                       ),
                     ),
@@ -146,7 +162,7 @@ class _TaskEditorState extends State<TaskEditor> {
                     icon: Icons.flag_outlined,
                     label: '截止日期',
                     value: _dateLabel(widget.task.deadlineAt),
-                    onTap: () {},
+                    onTap: pickDeadlineDate,
                   ),
                   _ProjectField(
                     controller: widget.controller,
@@ -191,13 +207,16 @@ class _EditorField extends StatelessWidget {
   final VoidCallback onTap;
 
   @override
-  Widget build(BuildContext context) => FItem(
-    prefix: Icon(icon, size: 17, color: const Color(0xFF77736B)),
-    title: Text(label),
-    details: Text(value),
-    suffix: const Icon(FLucideIcons.chevronRight, size: 15),
-    onPress: onTap,
-  );
+  Widget build(BuildContext context) {
+    final palette = QingxuPalette.of(context);
+    return FItem(
+      prefix: Icon(icon, size: 17, color: palette.muted),
+      title: Text(label),
+      details: Text(value),
+      suffix: const Icon(FLucideIcons.chevronRight, size: 15),
+      onPress: onTap,
+    );
+  }
 }
 
 class _ProjectField extends StatelessWidget {
@@ -207,41 +226,47 @@ class _ProjectField extends StatelessWidget {
   final TaskItem task;
 
   @override
-  Widget build(BuildContext context) => Container(
-    height: 45,
-    padding: const EdgeInsets.symmetric(horizontal: 12),
-    color: const Color(0x8AFFFFFF),
-    child: Row(
-      children: [
-        const Icon(
-          Icons.format_list_bulleted_rounded,
-          size: 18,
-          color: Color(0xFF77736B),
-        ),
-        const SizedBox(width: 10),
-        const Text(
-          '项目',
-          style: TextStyle(fontSize: 12, color: Color(0xFF6C6962)),
-        ),
-        const Spacer(),
-        DropdownButtonHideUnderline(
-          child: DropdownButton<String>(
-            value: task.projectId ?? '',
-            style: const TextStyle(fontSize: 11, color: Color(0xFF77736B)),
-            items: [
-              const DropdownMenuItem(value: '', child: Text('无项目')),
-              for (final project in TaskController.projects)
-                DropdownMenuItem(value: project.id, child: Text(project.title)),
-            ],
-            onChanged: (value) => controller.updateTask(
-              task.copyWith(
-                projectId: value,
-                clearProject: value == null || value.isEmpty,
+  Widget build(BuildContext context) {
+    final palette = QingxuPalette.of(context);
+    return Container(
+      height: 45,
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      decoration: BoxDecoration(
+        color: palette.surface,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            Icons.format_list_bulleted_rounded,
+            size: 18,
+            color: palette.muted,
+          ),
+          const SizedBox(width: 10),
+          Text('项目', style: TextStyle(fontSize: 12, color: palette.muted)),
+          const Spacer(),
+          DropdownButtonHideUnderline(
+            child: DropdownButton<String>(
+              value: task.projectId ?? '',
+              style: TextStyle(fontSize: 11, color: palette.muted),
+              items: [
+                const DropdownMenuItem(value: '', child: Text('无项目')),
+                for (final project in TaskController.projects)
+                  DropdownMenuItem(
+                    value: project.id,
+                    child: Text(project.title),
+                  ),
+              ],
+              onChanged: (value) => controller.updateTask(
+                task.copyWith(
+                  projectId: value,
+                  clearProject: value == null || value.isEmpty,
+                ),
               ),
             ),
           ),
-        ),
-      ],
-    ),
-  );
+        ],
+      ),
+    );
+  }
 }

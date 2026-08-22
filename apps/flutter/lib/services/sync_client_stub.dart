@@ -1,4 +1,5 @@
 import '../models/sync_settings.dart';
+import '../models/pomodoro_state.dart';
 import '../models/task_item.dart';
 import 'sync_client_base.dart';
 
@@ -15,7 +16,11 @@ class SyncClient implements SyncClientBase {
   }
 
   @override
-  Future<SyncResponse> sync(SyncSettings settings, List<TaskItem> tasks) {
+  Future<SyncResponse> sync(
+    SyncSettings settings,
+    List<TaskItem> tasks,
+    PomodoroState pomodoro,
+  ) {
     throw const SyncException('当前平台暂不支持同步');
   }
 }

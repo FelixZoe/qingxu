@@ -120,6 +120,40 @@ func TestParseTaskRejectsDeletedAtAfterUpdatedAt(t *testing.T) {
 	}
 }
 
+func TestPomodoroMergePersistsNewestState(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "store.json")
+	taskStore, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := ParsePomodoro(json.RawMessage(`{"mode":"focus","status":"running","updatedAt":"2026-08-22T10:00:00Z"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, merged, err := taskStore.MergeAll(nil, &first)
+	if err != nil || !strings.Contains(string(merged), `"status":"running"`) {
+		t.Fatalf("MergeAll(first) = %s, %v", merged, err)
+	}
+
+	stale, err := ParsePomodoro(json.RawMessage(`{"mode":"focus","status":"paused","updatedAt":"2026-08-22T09:00:00Z"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, merged, err = taskStore.MergeAll(nil, &stale)
+	if err != nil || !strings.Contains(string(merged), `"status":"running"`) {
+		t.Fatalf("stale pomodoro won: %s, %v", merged, err)
+	}
+
+	reopened, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, merged, err = reopened.MergeAll(nil, nil)
+	if err != nil || !strings.Contains(string(merged), `"status":"running"`) {
+		t.Fatalf("persisted pomodoro lost: %s, %v", merged, err)
+	}
+}
+
 func TestCapacityLimitsTaskCountAndJSONSize(t *testing.T) {
 	tasks := make(map[string]Task, maxStoredTasks+1)
 	for index := 0; index <= maxStoredTasks; index++ {

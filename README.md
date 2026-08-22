@@ -4,83 +4,91 @@
 
 <h1 align="center">清序 Qingxu</h1>
 
-清序是一款面向个人的简体中文任务管理器：本地优先、跨端一致，并允许把同步服务完整部署在自己的服务器上。
+<p align="center">简体中文、本地优先、可自托管同步的跨平台任务与专注应用。</p>
 
-[在线使用](https://todo.darker.one) · [下载最新版本](https://github.com/FelixZoe/qingxu/releases/latest) · [构建状态](https://github.com/FelixZoe/qingxu/actions)
+<p align="center">
+  <a href="https://todo.darker.one">产品预览</a> ·
+  <a href="https://github.com/FelixZoe/qingxu/releases/latest">下载最新版</a> ·
+  <a href="https://github.com/FelixZoe/qingxu/actions">构建状态</a>
+</p>
 
-## 设计原则
+## 已有能力
 
-- **本地优先**：新增、编辑、完成和删除不依赖网络；恢复联网后再合并。
-- **数据可控**：同步服务器、域名、密钥和数据文件都归部署者所有。
-- **一致体验**：同一套 Flutter 业务层覆盖 Web、Windows 和 iOS；iOS 底部导航使用系统原生 `UITabBar`，在 iOS 26+ 自动采用 Liquid Glass。
-- **轻量运行**：生产同步服务是单个 Go 进程，Docker 内存上限为 64 MiB；Web 由 OpenResty 直接提供静态文件。
-- **可维护发布**：每次推送 `main` 都会检查、测试、构建、创建 Release，并原子更新生产站点；部署失败不会替换当前 Web 版本。
+- 收集箱、今天、项目、备注、截止时间与完成状态，断网时照常编辑。
+- 番茄钟在 iOS、Android、Windows、macOS 间自动同步，运行中使用服务端时间校准剩余时间。
+- iOS 使用原生底部导航；支持锁屏实时活动、灵动岛、今日任务与专注状态小组件。
+- 米白蓝日间主题与黑绿夜间主题，跟随系统或手动切换。
+- 单用户自托管同步服务；真实密钥只保存在服务端 `.env` 与客户端系统安全存储。
+- `main` 每次更新自动分析、测试并构建四个平台，同时发布 Docker 镜像、Release、SHA-256 校验和与构建来源证明。
 
-## 平台与交付物
+## 下载
 
-| 平台 | 交付形式 | 说明 |
+| 平台 | Release 文件 | 状态 |
 | --- | --- | --- |
-| Web | `https://todo.darker.one` / Web ZIP | 浏览器直接使用；当前数据保存在该浏览器本地 |
-| Windows | Portable ZIP / Setup EXE | 两种文件都随 GitHub Release 发布 |
-| iOS | unsigned IPA | 供个人证书或自签工具签名 |
+| iOS | `Qingxu-<版本>-iOS-unsigned.ipa` | 自签安装；包含原生导航、灵动岛与小组件 |
+| Android | `Qingxu-<版本>-Android.apk` | 直接安装 APK |
+| Windows | `Windows-Portable.zip` / `Windows-Setup.exe` | 便携版与安装版 |
+| macOS | `macOS-Portable.zip` / `macOS.dmg` | 当前为临时签名构建 |
 
-GitHub Release 中的文件统一带版本号：
+请只从[本仓库 Releases](https://github.com/FelixZoe/qingxu/releases/latest)下载，并用同一 Release 的 `SHA256SUMS.txt` 校验文件。未配置商业证书时，Windows SmartScreen 或 macOS Gatekeeper 可能提示未知发布者；工作流已预留 Windows 可信 PFX 签名变量。
 
-- `Qingxu-<版本>-Windows-Portable.zip`
-- `Qingxu-<版本>-Windows-Setup.exe`
-- `Qingxu-<版本>-Web.zip`
-- `Qingxu-<版本>-iOS-unsigned.ipa`
-- `SHA256SUMS.txt`
+## 3 分钟部署自己的同步服务
 
-每个 Release 都会生成 SHA-256 校验清单和 GitHub 构建来源证明。Windows 版目前没有配置商业代码签名证书，因此浏览器或 SmartScreen 可能把新版本提示为“不常下载”或“未知发布者”；这不等于文件已损坏。建议优先下载 Portable ZIP，并仅从本仓库 Release 获取文件。工作流已预留受信任 PFX 证书签名，配置仓库机密 `WINDOWS_SIGNING_CERTIFICATE`（Base64）和 `WINDOWS_SIGNING_PASSWORD` 后，会自动签名主程序与安装包。
+服务器需要 Docker Compose v2 和一个已启用 HTTPS 的域名。
 
-## 自托管同步
-
-部署时生成一个 64 个十六进制字符的随机密钥（256 bit）。在 iOS 和 Windows 的“同步设置”中填写服务器地址与同一密钥，即可接入自己的服务器：
-
-```text
-服务器地址：https://todo.darker.one
-同步密钥：<openssl rand -hex 32 生成的值>
+```bash
+git clone https://github.com/FelixZoe/qingxu.git
+cd qingxu
+cp .env.example .env
+TOKEN=$(openssl rand -hex 32)
+sed -i "s/^SYNC_TOKEN=.*/SYNC_TOKEN=$TOKEN/" .env
+chmod 600 .env
+sudo install -d -m 700 -o 65532 -g 65532 data
+docker compose pull
+docker compose up -d
+curl http://127.0.0.1:8080/health
+echo "$TOKEN"
 ```
 
-密钥不会由公开接口返回，也不会提交到 GitHub。客户端在 iOS 使用 Keychain、在 Windows 使用平台安全凭据存储；普通设置文件只保存服务器地址、设备名和自动同步开关。
+在 Nginx、Caddy 或 1Panel 中把域名的 `/v1/` 和 `/health` 反向代理到 `http://127.0.0.1:8080`。然后在每台清序客户端的“设置 → 多端同步”填写：
 
-同步采用版本化 JSON 协议，以任务 ID 和更新时间合并，并保留删除墓碑，防止离线旧设备恢复已删除任务。应用始终先写本地，网络故障不会阻塞日常使用。
+```text
+服务器地址：https://你的域名
+同步密钥：上一步生成的 64 位十六进制 TOKEN
+自动同步：开启
+```
 
-> 当前服务定位为单用户、单实例自托管。HTTPS 保护传输，Bearer 密钥负责访问控制；服务端数据文件本身不是端到端加密文件，请同时做好主机权限与备份保护。
+客户端会自动同步全部用户数据；不需要手动创建账号，也不要在服务器地址后追加 `/v1/sync`。完整的反向代理、更新、备份与恢复步骤见[部署文档](docs/DEPLOYMENT.md)。
 
-## 部署
+## 数据与同步
 
-生产环境推荐使用现有 OpenResty/1Panel 直接托管 Web 静态文件，只运行同步服务容器，以减少内存占用。仓库同时提供完整 Docker Compose 方案。
-
-环境变量模板均已提交，真实 `.env` 被 Git 忽略：
-
-- [`services/sync/.env.example`](services/sync/.env.example)：仅部署同步服务
-- [`deploy/.env.example`](deploy/.env.example)：Docker 同时部署 Web 与同步服务
-
-完整的 Web、Docker、HTTPS、GitHub 自动部署、备份和回滚说明见 [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md)。按照要求，仓库不重复提供 iOS/Windows 安装教程。
+- 任务先原子写入本机，再异步同步；服务器不可用不会阻塞日常操作。
+- 同一任务按 `updatedAt` 合并，删除墓碑优先，避免旧设备复活已删除任务。
+- 番茄钟以共享的 `endsAt` 和服务端时间计算剩余秒数；开始、暂停、重置、跳过和阶段完成都会自动同步。
+- 服务端数据保存在 Docker 卷 `/data/store.json`。同步不是备份，请定期备份该文件。
+- 当前服务面向一个人使用；一套部署对应一个 256-bit 随机同步密钥。
 
 ## 项目结构
 
 ```text
-apps/flutter/       Flutter 客户端（Web / Windows / iOS）
-services/sync/      Go 同步 API、持久化与容器配置
-deploy/             完整 Docker 部署与 Nginx 配置
-scripts/deploy/     生产服务器原子发布脚本
-docs/               产品、架构、同步协议和部署文档
-.github/workflows/  测试、构建、Release、镜像与生产部署
+apps/flutter/       iOS / Android / Windows / macOS 客户端
+services/sync/      Go 同步服务与容器镜像
+scripts/ios/        可重复生成 iOS 小组件扩展目标的构建脚本
+scripts/windows/    Windows 安装包配置
+docs/               产品、架构、协议与自托管文档
+.github/workflows/  四端构建、Docker 与自动 Release
 ```
 
-## 开发与验证
+`todo.darker.one` 是介绍与下载预览站，不是 Web 客户端；站点源码与产品仓库分离，不会随本仓库发布。
 
-Flutter：
+## 开发
 
-```powershell
+```bash
 cd apps/flutter
 flutter pub get
 flutter analyze
 flutter test
-flutter run -d chrome
+flutter run -d windows   # 也可选择 android / ios / macos
 ```
 
 同步服务：
@@ -91,30 +99,4 @@ go test ./...
 go vet ./...
 ```
 
-完整 Docker 环境：
-
-```bash
-cd deploy
-install -m 600 .env.example .env
-# 把 SYNC_TOKEN 替换为：openssl rand -hex 32
-docker compose up -d --build
-curl http://127.0.0.1:8090/health
-```
-
-## 自动版本与发布
-
-推送到 `main` 后，GitHub Actions 自动递增补丁版本，并行构建 Web、Windows、iOS 与同步服务。全部检查通过后才会：
-
-1. 发布同步服务容器镜像到 GitHub Packages；
-2. 通过受限部署账号原子更新 `todo.darker.one`；
-3. 生产探活成功后创建或更新对应 GitHub Release；
-4. 将最终版本号回写源码（提交带 `[skip ci]`，不会造成循环构建）。
-
-生产部署使用独立 SSH Key 与 GitHub Actions Secrets。服务器私钥、同步密钥和真实 `.env` 永远不进入仓库。
-
-## 文档
-
-- [`docs/PRODUCT.md`](docs/PRODUCT.md)：产品范围与交互原则
-- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)：客户端、同步服务和部署架构
-- [`docs/SYNC_PROTOCOL.md`](docs/SYNC_PROTOCOL.md)：同步数据结构与冲突规则
-- [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md)：Web / Docker 部署、维护、备份和回滚
+更多资料：[产品范围](docs/PRODUCT.md) · [架构](docs/ARCHITECTURE.md) · [同步协议](docs/SYNC_PROTOCOL.md) · [部署](docs/DEPLOYMENT.md)

@@ -1,0 +1,27 @@
+name: qingxu
+
+services:
+  sync:
+    image: ghcr.io/felixzoe/qingxu-sync:latest
+    restart: unless-stopped
+    environment:
+      SYNC_TOKEN: ${SYNC_TOKEN:?请在 .env 中配置 64 位十六进制 SYNC_TOKEN}
+      SYNC_MAX_BODY_BYTES: ${SYNC_MAX_BODY_BYTES:-2097152}
+      GOMEMLIMIT: ${GOMEMLIMIT:-48MiB}
+    ports:
+      - "${SYNC_LISTEN:-127.0.0.1:8080}:8080"
+    volumes:
+      - "${SYNC_DATA_DIR:-./data}:/data"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 64
+    mem_limit: 64m
+    healthcheck:
+      test: ["CMD", "/qingxu-sync", "healthcheck"]
+      interval: 30s
+      timeout: 5s
+      start_period: 5s
+      retries: 3
+    stop_grace_period: 15s

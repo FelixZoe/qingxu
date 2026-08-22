@@ -1,11 +1,17 @@
 import '../models/sync_settings.dart';
+import '../models/pomodoro_state.dart';
 import '../models/task_item.dart';
 
 class SyncResponse {
-  const SyncResponse({required this.tasks, required this.serverTime});
+  const SyncResponse({
+    required this.tasks,
+    required this.serverTime,
+    this.pomodoro,
+  });
 
   final List<TaskItem> tasks;
   final String serverTime;
+  final PomodoroState? pomodoro;
 }
 
 abstract interface class SyncClientBase {
@@ -15,7 +21,11 @@ abstract interface class SyncClientBase {
 
   Future<void> testConnection(SyncSettings settings);
 
-  Future<SyncResponse> sync(SyncSettings settings, List<TaskItem> tasks);
+  Future<SyncResponse> sync(
+    SyncSettings settings,
+    List<TaskItem> tasks,
+    PomodoroState pomodoro,
+  );
 }
 
 class SyncException implements Exception {

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:forui/forui.dart';
 
 import '../state/task_controller.dart';
+import 'design_system.dart';
 
 class Sidebar extends StatelessWidget {
   const Sidebar({
@@ -15,8 +16,9 @@ class Sidebar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = QingxuPalette.of(context);
     return ColoredBox(
-      color: const Color(0xFFEAE8E2),
+      color: palette.sidebar,
       child: FSidebar(
         header: Column(
           children: [
@@ -28,7 +30,7 @@ class Sidebar extends StatelessWidget {
                     width: 29,
                     height: 29,
                     decoration: BoxDecoration(
-                      color: const Color(0xFFE7B83F),
+                      color: palette.accent,
                       borderRadius: BorderRadius.circular(8),
                     ),
                     alignment: Alignment.center,
@@ -60,18 +62,12 @@ class Sidebar extends StatelessWidget {
                 },
                 decoration: InputDecoration(
                   hintText: '搜索任务',
-                  hintStyle: const TextStyle(
-                    fontSize: 13,
-                    color: Color(0xFF8B887F),
-                  ),
+                  hintStyle: TextStyle(fontSize: 13, color: palette.muted),
                   prefixIcon: const Icon(FLucideIcons.search, size: 17),
                   suffixText: '⌘K',
-                  suffixStyle: const TextStyle(
-                    fontSize: 10,
-                    color: Color(0xFFA7A39A),
-                  ),
+                  suffixStyle: TextStyle(fontSize: 10, color: palette.faint),
                   filled: true,
-                  fillColor: const Color(0xCFFFFFFF),
+                  fillColor: palette.surface.withValues(alpha: 0.76),
                   isDense: true,
                   contentPadding: const EdgeInsets.symmetric(vertical: 10),
                   border: OutlineInputBorder(
@@ -127,27 +123,17 @@ class _SyncFooter extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = QingxuPalette.of(context);
     final (color, label) = controller.syncSupported
         ? switch (controller.syncActivity) {
-            SyncActivity.syncing || SyncActivity.testing => (
-              const Color(0xFF6687AD),
-              controller.syncMessage,
-            ),
-            SyncActivity.success => (
-              const Color(0xFF75AA78),
-              controller.syncMessage,
-            ),
-            SyncActivity.error => (
-              const Color(0xFFBD6A5C),
-              controller.syncMessage,
-            ),
-            SyncActivity.idle => (
-              const Color(0xFF75AA78),
-              controller.syncMessage,
-            ),
-            SyncActivity.unconfigured => (const Color(0xFFAAA69D), '仅保存在本地'),
+            SyncActivity.syncing ||
+            SyncActivity.testing => (palette.info, controller.syncMessage),
+            SyncActivity.success => (palette.success, controller.syncMessage),
+            SyncActivity.error => (palette.danger, controller.syncMessage),
+            SyncActivity.idle => (palette.success, controller.syncMessage),
+            SyncActivity.unconfigured => (palette.faint, '仅保存在本地'),
           }
-        : (const Color(0xFF75AA78), '本地数据已保存');
+        : (palette.success, '本地数据已保存');
     return Padding(
       padding: const EdgeInsets.all(20),
       child: Row(
@@ -162,7 +148,7 @@ class _SyncFooter extends StatelessWidget {
               label,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 11, color: Color(0xFF969289)),
+              style: TextStyle(fontSize: 11, color: palette.faint),
             ),
           ),
         ],
