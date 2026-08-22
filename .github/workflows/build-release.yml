@@ -1,0 +1,109 @@
+name: Build and Release
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  flutter-web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/flutter
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter analyze
+      - run: flutter test
+      - run: flutter build web --release
+      - name: Package Web
+        run: cd build/web && zip -r ../../../../Qingxu-Web.zip .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: qingxu-web
+          path: Qingxu-Web.zip
+
+  flutter-windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: apps/flutter
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter build windows --release
+      - name: Add VC runtime and package portable ZIP
+        shell: pwsh
+        run: |
+          $release = Resolve-Path "build\windows\x64\runner\Release"
+          $runtime = Join-Path $env:VCToolsRedistDir "x64\Microsoft.VC143.CRT"
+          if (Test-Path $runtime) {
+            Copy-Item "$runtime\msvcp140.dll" $release
+            Copy-Item "$runtime\vcruntime140.dll" $release
+            Copy-Item "$runtime\vcruntime140_1.dll" $release
+          }
+          Compress-Archive -Path "$release\*" -DestinationPath "..\..\Qingxu-Windows-Portable.zip"
+      - name: Build installer EXE
+        shell: pwsh
+        working-directory: ${{ github.workspace }}
+        run: |
+          New-Item -ItemType Directory -Force artifacts | Out-Null
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" scripts\windows\Qingxu.iss
+      - uses: actions/upload-artifact@v4
+        with:
+          name: qingxu-windows
+          path: |
+            Qingxu-Windows-Portable.zip
+            artifacts/Qingxu-Windows-Setup.exe
+
+  flutter-ios:
+    runs-on: macos-15
+    defaults:
+      run:
+        working-directory: apps/flutter
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - name: Build unsigned iOS app
+        run: flutter build ios --release --no-codesign
+      - name: Package unsigned IPA
+        run: |
+          mkdir -p build/ipa/Payload
+          cp -R build/ios/iphoneos/Runner.app build/ipa/Payload/Qingxu.app
+          cd build/ipa && zip -r ../../Qingxu-iOS-unsigned.ipa Payload
+      - uses: actions/upload-artifact@v4
+        with:
+          name: qingxu-ios
+          path: apps/flutter/Qingxu-iOS-unsigned.ipa
+
+  github-release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [flutter-web, flutter-windows, flutter-ios]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" release-assets/* --generate-notes --title "清序 $GITHUB_REF_NAME"
