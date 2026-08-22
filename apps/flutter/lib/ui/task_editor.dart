@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:forui/forui.dart';
 
 import '../models/task_item.dart';
 import '../state/task_controller.dart';
@@ -174,11 +173,17 @@ class _TaskEditorState extends State<TaskEditor> {
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(22, 0, 22, 20),
-            child: FButton(
-              variant: FButtonVariant.destructive,
-              prefix: const Icon(FLucideIcons.trash2, size: 17),
-              onPress: () => widget.controller.deleteTask(widget.task),
-              child: const Text('删除任务'),
+            child: SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: palette.danger,
+                  side: BorderSide(color: palette.danger.withValues(alpha: 0.4)),
+                ),
+                onPressed: () => widget.controller.deleteTask(widget.task),
+                icon: const Icon(Icons.delete_outline_rounded, size: 18),
+                label: const Text('删除任务'),
+              ),
             ),
           ),
         ],
@@ -209,12 +214,26 @@ class _EditorField extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = QingxuPalette.of(context);
-    return FItem(
-      prefix: Icon(icon, size: 17, color: palette.muted),
-      title: Text(label),
-      details: Text(value),
-      suffix: const Icon(FLucideIcons.chevronRight, size: 15),
-      onPress: onTap,
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(10),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 13),
+          child: Row(
+            children: [
+              Icon(icon, size: 18, color: palette.muted),
+              const SizedBox(width: 10),
+              Text(label, style: TextStyle(fontSize: 13, color: palette.muted)),
+              const Spacer(),
+              Text(value, style: TextStyle(fontSize: 12, color: palette.ink)),
+              const SizedBox(width: 4),
+              Icon(Icons.chevron_right_rounded, size: 18, color: palette.faint),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

@@ -65,8 +65,24 @@ final class QingxuTabBarController: UITabBarController, UITabBarControllerDelega
   override func viewDidLoad() {
     super.viewDidLoad()
     delegate = self
-    view.backgroundColor = .qingxuSurface
+    view.backgroundColor = .qingxuCanvas
+    flutterViewController.view.backgroundColor = .qingxuCanvas
     tabBar.tintColor = .qingxuAccent
+    tabBar.unselectedItemTintColor = .qingxuMuted
+    tabBar.isTranslucent = true
+
+    // Keep UIKit's native tab bar and Liquid Glass behavior, while removing
+    // the extra opaque material that previously looked like a second dark
+    // layer below Flutter's page background.
+    let appearance = UITabBarAppearance()
+    appearance.configureWithTransparentBackground()
+    appearance.backgroundColor = .clear
+    appearance.shadowColor = .clear
+    configureItems(appearance.stackedLayoutAppearance)
+    configureItems(appearance.inlineLayoutAppearance)
+    configureItems(appearance.compactInlineLayoutAppearance)
+    tabBar.standardAppearance = appearance
+    tabBar.scrollEdgeAppearance = appearance
 
     viewControllers = qingxuTabs.map { tab in
       let controller = FlutterTabContentController()
@@ -80,6 +96,19 @@ final class QingxuTabBarController: UITabBarController, UITabBarControllerDelega
     }
 
     select(.today)
+  }
+
+  private func configureItems(_ appearance: UITabBarItemAppearance) {
+    appearance.normal.iconColor = .qingxuMuted
+    appearance.normal.titleTextAttributes = [
+      .foregroundColor: UIColor.qingxuMuted,
+      .font: UIFont.systemFont(ofSize: 10.5, weight: .medium),
+    ]
+    appearance.selected.iconColor = .qingxuAccent
+    appearance.selected.titleTextAttributes = [
+      .foregroundColor: UIColor.qingxuAccent,
+      .font: UIFont.systemFont(ofSize: 10.5, weight: .semibold),
+    ]
   }
 
   func select(_ tab: QingxuTab) {
@@ -126,7 +155,7 @@ private final class FlutterTabContentController: UIViewController {
 
   override func viewDidLoad() {
     super.viewDidLoad()
-    view.backgroundColor = .qingxuSurface
+    view.backgroundColor = .qingxuCanvas
   }
 
   func embed(_ flutterViewController: FlutterViewController) {
@@ -169,15 +198,21 @@ private final class FlutterTabContentController: UIViewController {
 }
 
 private extension UIColor {
-  static let qingxuSurface = UIColor { traits in
+  static let qingxuCanvas = UIColor { traits in
     traits.userInterfaceStyle == .dark
-      ? UIColor(red: 0.071, green: 0.090, blue: 0.078, alpha: 1)
-      : UIColor(red: 0.980, green: 0.973, blue: 0.949, alpha: 1)
+      ? UIColor(red: 0.043, green: 0.063, blue: 0.051, alpha: 1)
+      : UIColor(red: 0.957, green: 0.945, blue: 0.918, alpha: 1)
   }
 
   static let qingxuAccent = UIColor { traits in
     traits.userInterfaceStyle == .dark
-      ? UIColor(red: 0.431, green: 0.682, blue: 0.525, alpha: 1)
-      : UIColor(red: 0.325, green: 0.459, blue: 0.561, alpha: 1)
+      ? UIColor(red: 0.471, green: 0.702, blue: 0.553, alpha: 1)
+      : UIColor(red: 0.345, green: 0.490, blue: 0.588, alpha: 1)
+  }
+
+  static let qingxuMuted = UIColor { traits in
+    traits.userInterfaceStyle == .dark
+      ? UIColor(red: 0.643, green: 0.690, blue: 0.659, alpha: 1)
+      : UIColor(red: 0.400, green: 0.455, blue: 0.482, alpha: 1)
   }
 }

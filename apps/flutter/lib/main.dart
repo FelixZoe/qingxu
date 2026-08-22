@@ -123,11 +123,11 @@ class _QingxuAppState extends State<QingxuApp> {
 ThemeData _buildTheme(Brightness brightness, bool touch) {
   final dark = brightness == Brightness.dark;
   final palette = dark ? QingxuPalette.dark : QingxuPalette.light;
-  final foruiTheme = dark
-      ? (touch ? FTheme.neutral.dark.touch : FTheme.neutral.dark.desktop)
-      : (touch ? FTheme.neutral.light.touch : FTheme.neutral.light.desktop);
-  final base = foruiTheme.toApproximateMaterialTheme();
   final (fontFamily, fontFallback) = _platformFonts();
+  final base = ThemeData(
+    useMaterial3: true,
+    brightness: brightness,
+  );
   final textTheme = base.textTheme.apply(
     bodyColor: palette.ink,
     displayColor: palette.ink,
@@ -142,6 +142,10 @@ ThemeData _buildTheme(Brightness brightness, bool touch) {
       ).copyWith(
         primary: palette.accent,
         secondary: palette.success,
+        primaryContainer: palette.accentSoft,
+        onPrimaryContainer: palette.accentStrong,
+        surfaceContainer: palette.surface,
+        surfaceContainerHigh: palette.surfaceRaised,
         onSurface: palette.ink,
         outline: palette.border,
         error: palette.danger,
@@ -158,15 +162,18 @@ ThemeData _buildTheme(Brightness brightness, bool touch) {
     extensions: [palette],
     splashFactory: NoSplash.splashFactory,
     visualDensity: VisualDensity.standard,
+    materialTapTargetSize: touch
+        ? MaterialTapTargetSize.padded
+        : MaterialTapTargetSize.shrinkWrap,
     appBarTheme: AppBarTheme(
-      backgroundColor: palette.surface,
+      backgroundColor: palette.canvas,
       foregroundColor: palette.ink,
       surfaceTintColor: Colors.transparent,
       elevation: 0,
     ),
     inputDecorationTheme: base.inputDecorationTheme.copyWith(
       filled: true,
-      fillColor: dark ? palette.sidebar : Colors.white.withValues(alpha: 0.7),
+      fillColor: palette.surfaceRaised,
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
         borderSide: BorderSide(color: palette.border),
@@ -178,6 +185,61 @@ ThemeData _buildTheme(Brightness brightness, bool touch) {
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
         borderSide: BorderSide(color: palette.accent, width: 1.4),
+      ),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+    ),
+    filledButtonTheme: FilledButtonThemeData(
+      style: FilledButton.styleFrom(
+        backgroundColor: palette.accentStrong,
+        foregroundColor: Colors.white,
+        disabledBackgroundColor: palette.border,
+        disabledForegroundColor: palette.faint,
+        elevation: 0,
+        minimumSize: const Size(0, 46),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+      ),
+    ),
+    outlinedButtonTheme: OutlinedButtonThemeData(
+      style: OutlinedButton.styleFrom(
+        foregroundColor: palette.accentStrong,
+        minimumSize: const Size(0, 46),
+        side: BorderSide(color: palette.border),
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+      ),
+    ),
+    iconButtonTheme: IconButtonThemeData(
+      style: IconButton.styleFrom(
+        foregroundColor: palette.muted,
+        highlightColor: palette.accentSoft,
+      ),
+    ),
+    switchTheme: SwitchThemeData(
+      trackColor: WidgetStateProperty.resolveWith(
+        (states) => states.contains(WidgetState.selected)
+            ? palette.accent
+            : palette.border,
+      ),
+      thumbColor: const WidgetStatePropertyAll(Colors.white),
+      trackOutlineColor: const WidgetStatePropertyAll(Colors.transparent),
+    ),
+    navigationBarTheme: NavigationBarThemeData(
+      backgroundColor: palette.surface,
+      surfaceTintColor: Colors.transparent,
+      indicatorColor: palette.accentSoft,
+      labelTextStyle: WidgetStateProperty.resolveWith(
+        (states) => TextStyle(
+          color: states.contains(WidgetState.selected)
+              ? palette.accentStrong
+              : palette.muted,
+          fontSize: 11,
+          fontWeight: states.contains(WidgetState.selected)
+              ? FontWeight.w600
+              : FontWeight.w500,
+        ),
       ),
     ),
   );

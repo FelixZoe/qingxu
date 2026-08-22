@@ -88,7 +88,7 @@ class _AppShellState extends State<AppShell> {
                       ? const BoxConstraints()
                       : const BoxConstraints(maxWidth: 1440, minHeight: 600),
                   decoration: BoxDecoration(
-                    color: palette.surface,
+                    color: palette.canvas,
                     borderRadius: useFullBleedDesktop
                         ? BorderRadius.zero
                         : BorderRadius.circular(18),
@@ -109,7 +109,7 @@ class _AppShellState extends State<AppShell> {
                   child: Row(
                     children: [
                       SizedBox(
-                        width: 252,
+                        width: 244,
                         child: Sidebar(
                           controller: widget.controller,
                           searchFocus: searchFocus,
@@ -163,7 +163,9 @@ class _CompactShell extends StatelessWidget {
   Widget build(BuildContext context) {
     if (controller.selectedTask != null && _viewIndex(controller) == 0) {
       return Scaffold(
+        backgroundColor: QingxuPalette.of(context).canvas,
         body: SafeArea(
+          bottom: false,
           child: TaskEditor(
             key: ValueKey(controller.selectedTask!.id),
             controller: controller,
@@ -179,6 +181,7 @@ class _CompactShell extends StatelessWidget {
     final useMobileTabs = useNativeIosTabs || useAndroidTabs;
     return Builder(
       builder: (context) => Scaffold(
+        backgroundColor: QingxuPalette.of(context).canvas,
         drawer: useMobileTabs
             ? null
             : Drawer(
@@ -191,6 +194,7 @@ class _CompactShell extends StatelessWidget {
                 ),
               ),
         body: SafeArea(
+          bottom: false,
           child: Builder(
             builder: (context) => _Workspace(
               controller: controller,
@@ -203,6 +207,11 @@ class _CompactShell extends StatelessWidget {
         ),
         bottomNavigationBar: useAndroidTabs
             ? NavigationBar(
+                height: 72,
+                backgroundColor: QingxuPalette.of(context).surface,
+                surfaceTintColor: Colors.transparent,
+                indicatorColor: QingxuPalette.of(context).accentSoft,
+                labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
                 selectedIndex: _navigationIndex(controller),
                 onDestinationSelected: (index) =>
                     controller.selectView(_navigationViews[index]),
