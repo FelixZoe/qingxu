@@ -31,6 +31,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: qingxu-web
+          retention-days: 7
           path: Qingxu-Web.zip
 
   flutter-windows:
@@ -50,11 +51,22 @@ jobs:
         shell: pwsh
         run: |
           $release = Resolve-Path "build\windows\x64\runner\Release"
-          $runtime = Join-Path $env:VCToolsRedistDir "x64\Microsoft.VC143.CRT"
-          if (Test-Path $runtime) {
-            Copy-Item "$runtime\msvcp140.dll" $release
-            Copy-Item "$runtime\vcruntime140.dll" $release
-            Copy-Item "$runtime\vcruntime140_1.dll" $release
+          $runtime = $null
+          if ($env:VCToolsRedistDir) {
+            $candidate = Join-Path $env:VCToolsRedistDir "x64\Microsoft.VC143.CRT"
+            if (Test-Path $candidate) { $runtime = $candidate }
+          }
+          if (-not $runtime) {
+            $runtime = Get-ChildItem "${env:ProgramFiles(x86)}\Microsoft Visual Studio\2022\*\VC\Redist\MSVC\*\x64\Microsoft.VC143.CRT" -Directory -ErrorAction SilentlyContinue |
+              Sort-Object FullName -Descending |
+              Select-Object -First 1 -ExpandProperty FullName
+          }
+          if ($runtime) {
+            Copy-Item "$runtime\msvcp140.dll" $release -ErrorAction Stop
+            Copy-Item "$runtime\vcruntime140.dll" $release -ErrorAction Stop
+            Copy-Item "$runtime\vcruntime140_1.dll" $release -ErrorAction Stop
+          } else {
+            Write-Warning "VC++ runtime directory was not found; packaging Flutter build without bundled runtime DLLs."
           }
           Compress-Archive -Path "$release\*" -DestinationPath "..\..\Qingxu-Windows-Portable.zip"
       - name: Build installer EXE
@@ -66,6 +78,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: qingxu-windows
+          retention-days: 7
           path: |
             Qingxu-Windows-Portable.zip
             artifacts/Qingxu-Windows-Setup.exe
@@ -92,6 +105,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: qingxu-ios
+          retention-days: 7
           path: apps/flutter/Qingxu-iOS-unsigned.ipa
 
   github-release:
