@@ -84,9 +84,8 @@ class TaskController extends ChangeNotifier {
     return const {
           'inbox': '收集箱',
           'today': '今天',
-          'upcoming': '计划',
-          'anytime': '随时',
-          'logbook': '日志',
+          'pomodoro': '番茄钟',
+          'settings': '设置',
         }[activeView] ??
         '今天';
   }
@@ -106,14 +105,12 @@ class TaskController extends ChangeNotifier {
         return task.isOpen &&
             task.projectId == activeView.substring('project:'.length);
       }
-      if (activeView == 'logbook') return task.status == TaskStatus.completed;
       if (!task.isOpen) return false;
       final start = task.startAt?.toLocal();
       return switch (activeView) {
         'today' => start != null && start.isBefore(startTomorrow),
-        'upcoming' => start != null && !start.isBefore(startTomorrow),
-        'anytime' => start == null,
-        _ => task.projectId == null && start == null,
+        'inbox' => start == null,
+        _ => false,
       };
     }).toList();
 

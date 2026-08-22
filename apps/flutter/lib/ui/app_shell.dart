@@ -1,7 +1,9 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../state/task_controller.dart';
+import 'pomodoro_page.dart';
 import 'sidebar.dart';
 import 'sync_settings_page.dart';
 import 'task_editor.dart';
@@ -19,15 +21,6 @@ class AppShell extends StatefulWidget {
 class _AppShellState extends State<AppShell> {
   final quickAddFocus = FocusNode();
   final searchFocus = FocusNode();
-
-  void _openSyncSettings() {
-    if (!widget.controller.syncSupported) return;
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (context) => SyncSettingsPage(controller: widget.controller),
-      ),
-    );
-  }
 
   @override
   void dispose() {
@@ -56,34 +49,46 @@ class _AppShellState extends State<AppShell> {
           builder: (context, _) => LayoutBuilder(
             builder: (context, constraints) {
               final compact = constraints.maxWidth < 760;
+              final useNativeIosTabs =
+                  !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS;
+              final useFullBleedWindows =
+                  !kIsWeb && defaultTargetPlatform == TargetPlatform.windows;
               final showEditor = widget.controller.selectedTask != null;
-              if (compact) {
+              if (compact || useNativeIosTabs) {
                 return _CompactShell(
                   controller: widget.controller,
                   quickAddFocus: quickAddFocus,
                   searchFocus: searchFocus,
-                  onOpenSyncSettings: _openSyncSettings,
                 );
               }
               return Center(
                 child: Container(
-                  width: constraints.maxWidth - 32,
-                  height: constraints.maxHeight - 32,
-                  constraints: const BoxConstraints(
-                    maxWidth: 1440,
-                    minHeight: 600,
-                  ),
+                  width: useFullBleedWindows
+                      ? constraints.maxWidth
+                      : constraints.maxWidth - 32,
+                  height: useFullBleedWindows
+                      ? constraints.maxHeight
+                      : constraints.maxHeight - 32,
+                  constraints: useFullBleedWindows
+                      ? const BoxConstraints()
+                      : const BoxConstraints(maxWidth: 1440, minHeight: 600),
                   decoration: BoxDecoration(
                     color: const Color(0xFFFBFAF7),
-                    borderRadius: BorderRadius.circular(18),
-                    border: Border.all(color: const Color(0x1A5A533F)),
-                    boxShadow: const [
-                      BoxShadow(
-                        color: Color(0x14504A38),
-                        blurRadius: 55,
-                        offset: Offset(0, 18),
-                      ),
-                    ],
+                    borderRadius: useFullBleedWindows
+                        ? BorderRadius.zero
+                        : BorderRadius.circular(18),
+                    border: useFullBleedWindows
+                        ? null
+                        : Border.all(color: const Color(0x1A5A533F)),
+                    boxShadow: useFullBleedWindows
+                        ? null
+                        : const [
+                            BoxShadow(
+                              color: Color(0x14504A38),
+                              blurRadius: 55,
+                              offset: Offset(0, 18),
+                            ),
+                          ],
                   ),
                   clipBehavior: Clip.antiAlias,
                   child: Row(
@@ -93,16 +98,15 @@ class _AppShellState extends State<AppShell> {
                         child: Sidebar(
                           controller: widget.controller,
                           searchFocus: searchFocus,
-                          onOpenSyncSettings: _openSyncSettings,
                         ),
                       ),
                       Expanded(
-                        child: TaskListPane(
+                        child: _Workspace(
                           controller: widget.controller,
                           quickAddFocus: quickAddFocus,
                         ),
                       ),
-                      if (showEditor)
+                      if (showEditor && _viewIndex(widget.controller) == 0)
                         SizedBox(
                           width: constraints.maxWidth < 1080 ? 300 : 350,
                           child: TaskEditor(
@@ -128,17 +132,15 @@ class _CompactShell extends StatelessWidget {
     required this.controller,
     required this.quickAddFocus,
     required this.searchFocus,
-    required this.onOpenSyncSettings,
   });
 
   final TaskController controller;
   final FocusNode quickAddFocus;
   final FocusNode searchFocus;
-  final VoidCallback onOpenSyncSettings;
 
   @override
   Widget build(BuildContext context) {
-    if (controller.selectedTask != null) {
+    if (controller.selectedTask != null && _viewIndex(controller) == 0) {
       return Scaffold(
         body: SafeArea(
           child: TaskEditor(
@@ -149,26 +151,63 @@ class _CompactShell extends StatelessWidget {
         ),
       );
     }
-    return Scaffold(
-      drawer: Drawer(
-        width: 270,
-        child: SafeArea(
-          child: Sidebar(
-            controller: controller,
-            searchFocus: searchFocus,
-            onOpenSyncSettings: onOpenSyncSettings,
-          ),
-        ),
-      ),
-      body: SafeArea(
-        child: Builder(
-          builder: (context) => TaskListPane(
-            controller: controller,
-            quickAddFocus: quickAddFocus,
-            onMenu: Scaffold.of(context).openDrawer,
+    final useNativeIosTabs =
+        !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS;
+    return Builder(
+      builder: (context) => Scaffold(
+        drawer: useNativeIosTabs
+            ? null
+            : Drawer(
+                width: 270,
+                child: SafeArea(
+                  child: Sidebar(
+                    controller: controller,
+                    searchFocus: searchFocus,
+                  ),
+                ),
+              ),
+        body: SafeArea(
+          child: Builder(
+            builder: (context) => _Workspace(
+              controller: controller,
+              quickAddFocus: quickAddFocus,
+              onMenu: useNativeIosTabs ? null : Scaffold.of(context).openDrawer,
+            ),
           ),
         ),
       ),
     );
   }
 }
+
+class _Workspace extends StatelessWidget {
+  const _Workspace({
+    required this.controller,
+    required this.quickAddFocus,
+    this.onMenu,
+  });
+
+  final TaskController controller;
+  final FocusNode quickAddFocus;
+  final VoidCallback? onMenu;
+
+  @override
+  Widget build(BuildContext context) => IndexedStack(
+    index: _viewIndex(controller),
+    children: [
+      TaskListPane(
+        controller: controller,
+        quickAddFocus: quickAddFocus,
+        onMenu: onMenu,
+      ),
+      PomodoroPage(onMenu: onMenu),
+      SyncSettingsPage(controller: controller, embedded: true, onMenu: onMenu),
+    ],
+  );
+}
+
+int _viewIndex(TaskController controller) => switch (controller.activeView) {
+  'pomodoro' => 1,
+  'settings' => 2,
+  _ => 0,
+};

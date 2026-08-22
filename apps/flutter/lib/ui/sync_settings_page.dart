@@ -5,9 +5,16 @@ import '../models/sync_settings.dart';
 import '../state/task_controller.dart';
 
 class SyncSettingsPage extends StatefulWidget {
-  const SyncSettingsPage({required this.controller, super.key});
+  const SyncSettingsPage({
+    required this.controller,
+    this.embedded = false,
+    this.onMenu,
+    super.key,
+  });
 
   final TaskController controller;
+  final bool embedded;
+  final VoidCallback? onMenu;
 
   @override
   State<SyncSettingsPage> createState() => _SyncSettingsPageState();
@@ -63,22 +70,79 @@ class _SyncSettingsPageState extends State<SyncSettingsPage> {
     if (await _save()) await widget.controller.syncNow();
   }
 
+  PreferredSizeWidget _buildAppBar({required bool enableSyncActions}) => AppBar(
+    automaticallyImplyLeading: !widget.embedded,
+    leading: widget.onMenu == null
+        ? null
+        : IconButton(
+            tooltip: '打开导航',
+            onPressed: widget.onMenu,
+            icon: const Icon(Icons.menu_rounded),
+          ),
+    title: const Text('设置'),
+    backgroundColor: const Color(0xFFFBFAF7),
+    surfaceTintColor: Colors.transparent,
+    actions: enableSyncActions
+        ? [
+            TextButton(
+              onPressed: _saving ? null : _save,
+              child: Text(_saving ? '保存中…' : '保存'),
+            ),
+            const SizedBox(width: 8),
+          ]
+        : null,
+  );
+
   @override
   Widget build(BuildContext context) {
+    if (!widget.controller.syncSupported) {
+      return Scaffold(
+        backgroundColor: const Color(0xFFF5F4F0),
+        appBar: _buildAppBar(enableSyncActions: false),
+        body: SafeArea(
+          top: false,
+          child: Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 520),
+                child: const _SettingsCard(
+                  children: [
+                    Icon(
+                      Icons.devices_outlined,
+                      size: 38,
+                      color: Color(0xFF85827A),
+                    ),
+                    SizedBox(height: 16),
+                    Text(
+                      'Web 版使用浏览器本地存储',
+                      style: TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    SizedBox(height: 8),
+                    Text(
+                      '服务器同步配置目前仅在 Windows 和 iOS 客户端开放。Web 端任务仍会保存在当前浏览器中。',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 13,
+                        height: 1.5,
+                        color: Color(0xFF77736B),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
       backgroundColor: const Color(0xFFF5F4F0),
-      appBar: AppBar(
-        title: const Text('同步设置'),
-        backgroundColor: const Color(0xFFFBFAF7),
-        surfaceTintColor: Colors.transparent,
-        actions: [
-          TextButton(
-            onPressed: _saving ? null : _save,
-            child: Text(_saving ? '保存中…' : '保存'),
-          ),
-          const SizedBox(width: 8),
-        ],
-      ),
+      appBar: _buildAppBar(enableSyncActions: true),
       body: SafeArea(
         top: false,
         child: Center(

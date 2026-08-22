@@ -13,13 +13,7 @@ final class NativeNavigationBridge {
   NativeNavigationBridge._(this._controller);
 
   static const _channel = MethodChannel('one.darker.qingxu/navigation');
-  static const _nativeTabs = <String>{
-    'inbox',
-    'today',
-    'upcoming',
-    'anytime',
-    'logbook',
-  };
+  static const _nativeTabs = <String>{'inbox', 'today', 'pomodoro', 'settings'};
 
   final TaskController _controller;
   String? _lastSyncedView;

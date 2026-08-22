@@ -7,13 +7,11 @@ class Sidebar extends StatelessWidget {
   const Sidebar({
     required this.controller,
     required this.searchFocus,
-    required this.onOpenSyncSettings,
     super.key,
   });
 
   final TaskController controller;
   final FocusNode searchFocus;
-  final VoidCallback onOpenSyncSettings;
 
   @override
   Widget build(BuildContext context) {
@@ -45,11 +43,6 @@ class Sidebar extends StatelessWidget {
                     '清序',
                     style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
                   ),
-                  const Spacer(),
-                  FBadge(
-                    variant: FBadgeVariant.outline,
-                    child: const Text('雏形'),
-                  ),
                 ],
               ),
             ),
@@ -57,7 +50,14 @@ class Sidebar extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
               child: TextField(
                 focusNode: searchFocus,
-                onChanged: controller.setSearch,
+                onChanged: (value) {
+                  if (value.trim().isNotEmpty &&
+                      (controller.activeView == 'pomodoro' ||
+                          controller.activeView == 'settings')) {
+                    controller.selectView('inbox');
+                  }
+                  controller.setSearch(value);
+                },
                 decoration: InputDecoration(
                   hintText: '搜索任务',
                   hintStyle: const TextStyle(
@@ -102,59 +102,18 @@ class Sidebar extends StatelessWidget {
               ),
               _NavItem(
                 controller: controller,
-                id: 'upcoming',
-                label: '计划',
-                icon: FLucideIcons.calendarDays,
+                id: 'pomodoro',
+                label: '番茄钟',
+                icon: FLucideIcons.timer,
               ),
               _NavItem(
                 controller: controller,
-                id: 'anytime',
-                label: '随时',
-                icon: FLucideIcons.circle,
-              ),
-              _NavItem(
-                controller: controller,
-                id: 'logbook',
-                label: '日志',
-                icon: FLucideIcons.archive,
+                id: 'settings',
+                label: '设置',
+                icon: FLucideIcons.settings,
               ),
             ],
           ),
-          FSidebarGroup(
-            label: const Text('项目'),
-            children: [
-              for (final project in TaskController.projects)
-                _NavItem(
-                  controller: controller,
-                  id: 'project:${project.id}',
-                  label: project.title,
-                  icon: FLucideIcons.listTodo,
-                  iconColor: Color(project.color),
-                ),
-            ],
-          ),
-          if (controller.syncSupported)
-            FSidebarGroup(
-              label: const Text('设置'),
-              children: [
-                FSidebarItem(
-                  icon: const Icon(Icons.sync_rounded, size: 18),
-                  label: const Text('多端同步'),
-                  onPress: () {
-                    final drawerOpen =
-                        Scaffold.maybeOf(context)?.isDrawerOpen ?? false;
-                    if (drawerOpen) {
-                      Navigator.of(context).pop();
-                      WidgetsBinding.instance.addPostFrameCallback(
-                        (_) => onOpenSyncSettings(),
-                      );
-                    } else {
-                      onOpenSyncSettings();
-                    }
-                  },
-                ),
-              ],
-            ),
         ],
       ),
     );
@@ -218,21 +177,19 @@ class _NavItem extends StatelessWidget {
     required this.id,
     required this.label,
     required this.icon,
-    this.iconColor,
   });
 
   final TaskController controller;
   final String id;
   final String label;
   final IconData icon;
-  final Color? iconColor;
 
   @override
   Widget build(BuildContext context) {
     final selected = controller.activeView == id && controller.search.isEmpty;
     return FSidebarItem(
       selected: selected,
-      icon: Icon(icon, size: 18, color: iconColor),
+      icon: Icon(icon, size: 18),
       label: Text(label),
       onPress: () {
         controller.selectView(id);

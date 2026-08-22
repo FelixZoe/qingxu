@@ -160,6 +160,8 @@ jobs:
     env:
       APP_VERSION: ${{ needs.version.outputs.version }}
       BUILD_NUMBER: ${{ needs.version.outputs.build_number }}
+      WINDOWS_SIGNING_CERTIFICATE: ${{ secrets.WINDOWS_SIGNING_CERTIFICATE }}
+      WINDOWS_SIGNING_PASSWORD: ${{ secrets.WINDOWS_SIGNING_PASSWORD }}
     steps:
       - uses: actions/checkout@v7
       - uses: subosito/flutter-action@v2
@@ -218,6 +220,28 @@ jobs:
 
           Get-Item ($required | ForEach-Object { Join-Path $release $_ }) |
             Select-Object Name, Length, VersionInfo
+
+          if (-not [string]::IsNullOrWhiteSpace($env:WINDOWS_SIGNING_CERTIFICATE)) {
+            $certificate = Join-Path $env:RUNNER_TEMP "qingxu-signing.pfx"
+            [IO.File]::WriteAllBytes(
+              $certificate,
+              [Convert]::FromBase64String($env:WINDOWS_SIGNING_CERTIFICATE)
+            )
+            $signTool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin" `
+              -Filter signtool.exe -Recurse |
+              Where-Object { $_.FullName -match '\\x64\\signtool\.exe$' } |
+              Sort-Object FullName -Descending |
+              Select-Object -First 1
+            if (-not $signTool) { throw "signtool.exe was not found" }
+            & $signTool.FullName sign /fd SHA256 /f $certificate `
+              /p $env:WINDOWS_SIGNING_PASSWORD /tr http://timestamp.digicert.com `
+              /td SHA256 "$release\Qingxu.exe"
+            if ($LASTEXITCODE -ne 0) { throw "Signing Qingxu.exe failed" }
+            Remove-Item -LiteralPath $certificate -Force
+          } else {
+            Write-Host "No trusted signing certificate configured; publishing an unsigned beta build."
+          }
+
           $portable = "..\..\Qingxu-$($env:APP_VERSION)-Windows-Portable.zip"
           Compress-Archive -Path "$release\*" -DestinationPath $portable
       - name: Build installer EXE
@@ -226,6 +250,31 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force artifacts | Out-Null
           & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "/DMyAppVersion=$env:APP_VERSION" scripts\windows\Qingxu.iss
+      - name: Sign installer when a trusted certificate is configured
+        if: env.WINDOWS_SIGNING_CERTIFICATE != ''
+        shell: pwsh
+        working-directory: ${{ github.workspace }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          $certificate = Join-Path $env:RUNNER_TEMP "qingxu-signing.pfx"
+          [IO.File]::WriteAllBytes(
+            $certificate,
+            [Convert]::FromBase64String($env:WINDOWS_SIGNING_CERTIFICATE)
+          )
+          $signTool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin" `
+            -Filter signtool.exe -Recurse |
+            Where-Object { $_.FullName -match '\\x64\\signtool\.exe$' } |
+            Sort-Object FullName -Descending |
+            Select-Object -First 1
+          if (-not $signTool) { throw "signtool.exe was not found" }
+          $installer = "artifacts\Qingxu-$($env:APP_VERSION)-Windows-Setup.exe"
+          & $signTool.FullName sign /fd SHA256 /f $certificate `
+            /p $env:WINDOWS_SIGNING_PASSWORD /tr http://timestamp.digicert.com `
+            /td SHA256 $installer
+          if ($LASTEXITCODE -ne 0) { throw "Signing the installer failed" }
+          & $signTool.FullName verify /pa /v $installer
+          if ($LASTEXITCODE -ne 0) { throw "Installer signature verification failed" }
+          Remove-Item -LiteralPath $certificate -Force
       - uses: actions/upload-artifact@v7
         with:
           name: qingxu-${{ needs.version.outputs.version }}-windows
@@ -282,6 +331,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      id-token: write
+      attestations: write
     env:
       APP_VERSION: ${{ needs.version.outputs.version }}
       BUILD_NUMBER: ${{ needs.version.outputs.build_number }}
@@ -296,6 +347,18 @@ jobs:
           pattern: qingxu-${{ needs.version.outputs.version }}-*
           path: release-assets
           merge-multiple: true
+      - name: Generate SHA-256 checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd release-assets
+          find . -maxdepth 1 -type f ! -name SHA256SUMS.txt -printf '%f\0' \
+            | sort -z \
+            | xargs -0 sha256sum > SHA256SUMS.txt
+      - name: Attest release build provenance
+        uses: actions/attest@v4
+        with:
+          subject-path: release-assets/*
       - name: Publish GitHub Release
         shell: bash
         run: |

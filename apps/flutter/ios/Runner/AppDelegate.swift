@@ -4,17 +4,15 @@ import UIKit
 enum QingxuTab: String, CaseIterable, Hashable {
   case inbox
   case today
-  case upcoming
-  case anytime
-  case logbook
+  case pomodoro
+  case settings
 
   var title: String {
     switch self {
     case .inbox: return "收集箱"
     case .today: return "今天"
-    case .upcoming: return "计划"
-    case .anytime: return "随时"
-    case .logbook: return "日志"
+    case .pomodoro: return "番茄钟"
+    case .settings: return "设置"
     }
   }
 
@@ -22,9 +20,8 @@ enum QingxuTab: String, CaseIterable, Hashable {
     switch self {
     case .inbox: return "tray"
     case .today: return "sun.max"
-    case .upcoming: return "calendar"
-    case .anytime: return "circle"
-    case .logbook: return "checkmark.circle"
+    case .pomodoro: return "timer"
+    case .settings: return "gearshape"
     }
   }
 }

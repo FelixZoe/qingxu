@@ -30,6 +30,9 @@ GitHub Release 中的文件统一带版本号：
 - `Qingxu-<版本>-Windows-Setup.exe`
 - `Qingxu-<版本>-Web.zip`
 - `Qingxu-<版本>-iOS-unsigned.ipa`
+- `SHA256SUMS.txt`
+
+每个 Release 都会生成 SHA-256 校验清单和 GitHub 构建来源证明。Windows 版目前没有配置商业代码签名证书，因此浏览器或 SmartScreen 可能把新版本提示为“不常下载”或“未知发布者”；这不等于文件已损坏。建议优先下载 Portable ZIP，并仅从本仓库 Release 获取文件。工作流已预留受信任 PFX 证书签名，配置仓库机密 `WINDOWS_SIGNING_CERTIFICATE`（Base64）和 `WINDOWS_SIGNING_PASSWORD` 后，会自动签名主程序与安装包。
 
 ## 自托管同步
 

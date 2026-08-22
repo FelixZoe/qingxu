@@ -29,4 +29,22 @@ void main() {
     await restored.initialize();
     expect(restored.visibleTasks.any((task) => task.title == '测试任务'), isTrue);
   });
+
+  test('uses the four primary navigation destinations', () async {
+    final controller = TaskController(
+      storage: TaskStorage(),
+      syncSettingsStorage: SyncSettingsStorage(),
+      secureTokenStorage: SecureTokenStorage(),
+    );
+    await controller.initialize();
+
+    controller.selectView('inbox');
+    expect(controller.currentTitle, '收集箱');
+    controller.selectView('pomodoro');
+    expect(controller.currentTitle, '番茄钟');
+    expect(controller.visibleTasks, isEmpty);
+    controller.selectView('settings');
+    expect(controller.currentTitle, '设置');
+    expect(controller.visibleTasks, isEmpty);
+  });
 }
