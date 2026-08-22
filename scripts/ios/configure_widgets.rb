@@ -15,6 +15,8 @@ end
 runner_group = project.main_group.find_subpath('Runner', true)
 shared_group = project.main_group.find_subpath('Shared', true)
 widgets_group = project.main_group.find_subpath('QingxuWidgets', true)
+shared_group.path = 'Shared'
+widgets_group.path = 'QingxuWidgets'
 
 bridge = file_reference(runner_group, 'IOSSystemFeaturesBridge.swift')
 attributes = file_reference(shared_group, 'QingxuPomodoroAttributes.swift')

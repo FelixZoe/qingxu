@@ -151,9 +151,9 @@ class TaskController extends ChangeNotifier {
   }
 
   Future<void> _loadPomodoro() async {
-    final encoded = await _pomodoroStorage.load();
-    if (encoded == null || encoded.isEmpty) return;
     try {
+      final encoded = await _pomodoroStorage.load();
+      if (encoded == null || encoded.isEmpty) return;
       _pomodoro = PomodoroState.fromJson(
         Map<String, Object?>.from(jsonDecode(encoded) as Map<dynamic, dynamic>),
       );
