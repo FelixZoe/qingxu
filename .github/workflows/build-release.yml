@@ -50,24 +50,53 @@ jobs:
       - name: Add VC runtime and package portable ZIP
         shell: pwsh
         run: |
-          $release = Resolve-Path "build\windows\x64\runner\Release"
+          $ErrorActionPreference = "Stop"
+          $release = (Resolve-Path "build\windows\x64\runner\Release").Path
           $runtime = $null
+
           if ($env:VCToolsRedistDir) {
             $candidate = Join-Path $env:VCToolsRedistDir "x64\Microsoft.VC143.CRT"
             if (Test-Path $candidate) { $runtime = $candidate }
           }
+
           if (-not $runtime) {
-            $runtime = Get-ChildItem "${env:ProgramFiles(x86)}\Microsoft Visual Studio\2022\*\VC\Redist\MSVC\*\x64\Microsoft.VC143.CRT" -Directory -ErrorAction SilentlyContinue |
-              Sort-Object FullName -Descending |
-              Select-Object -First 1 -ExpandProperty FullName
+            $vswhere = Join-Path "${env:ProgramFiles(x86)}" "Microsoft Visual Studio\Installer\vswhere.exe"
+            if (Test-Path $vswhere) {
+              $vsInstall = & $vswhere -latest -products * -property installationPath
+              if ($vsInstall) {
+                $redistRoot = Join-Path $vsInstall "VC\Redist\MSVC"
+                if (Test-Path $redistRoot) {
+                  $runtime = Get-ChildItem $redistRoot -Directory |
+                    Sort-Object Name -Descending |
+                    ForEach-Object { Join-Path $_.FullName "x64\Microsoft.VC143.CRT" } |
+                    Where-Object { Test-Path $_ } |
+                    Select-Object -First 1
+                }
+              }
+            }
           }
+
           if ($runtime) {
-            Copy-Item "$runtime\msvcp140.dll" $release -ErrorAction Stop
-            Copy-Item "$runtime\vcruntime140.dll" $release -ErrorAction Stop
-            Copy-Item "$runtime\vcruntime140_1.dll" $release -ErrorAction Stop
-          } else {
-            Write-Warning "VC++ runtime directory was not found; packaging Flutter build without bundled runtime DLLs."
+            Write-Host "Bundling VC++ runtime from $runtime"
+            Copy-Item "$runtime\*.dll" $release -Force
           }
+
+          $required = @("msvcp140.dll", "vcruntime140.dll", "vcruntime140_1.dll")
+          foreach ($dll in $required) {
+            $destination = Join-Path $release $dll
+            if (-not (Test-Path $destination)) {
+              $fallback = Join-Path "$env:SystemRoot\System32" $dll
+              if (Test-Path $fallback) {
+                Copy-Item $fallback $destination -Force
+              }
+            }
+            if (-not (Test-Path $destination)) {
+              throw "Required VC++ runtime DLL is missing: $dll"
+            }
+          }
+
+          Get-Item ($required | ForEach-Object { Join-Path $release $_ }) |
+            Select-Object Name, Length, VersionInfo
           Compress-Archive -Path "$release\*" -DestinationPath "..\..\Qingxu-Windows-Portable.zip"
       - name: Build installer EXE
         shell: pwsh
