@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:forui/forui.dart';
 
+import 'services/native_navigation.dart';
 import 'state/task_controller.dart';
 import 'ui/app_shell.dart';
 
@@ -10,6 +11,7 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final controller = TaskController();
   await controller.initialize();
+  NativeNavigationBridge.attach(controller);
   runApp(QingxuApp(controller: controller));
 }
 

@@ -1,5 +1,7 @@
 #define MyAppName "清序"
-#define MyAppVersion "0.1.0"
+#ifndef MyAppVersion
+#define MyAppVersion "0.1.1"
+#endif
 #define MyAppPublisher "Qingxu"
 #define MyAppExeName "Qingxu.exe"
 #define ReleaseDir SourcePath + "..\..\apps\flutter\build\windows\x64\runner\Release"
@@ -14,7 +16,7 @@ DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
 OutputDir=..\..\artifacts
-OutputBaseFilename=Qingxu-Windows-Setup
+OutputBaseFilename=Qingxu-{#MyAppVersion}-Windows-Setup
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
