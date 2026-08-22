@@ -72,7 +72,7 @@ struct AppearanceSettingsView: View {
 
   var body: some View {
     Form {
-      Section("配色") {
+      Section {
         ForEach(AppearanceMode.allCases) { mode in
           Button {
             appearance = mode.rawValue
@@ -87,6 +87,8 @@ struct AppearanceSettingsView: View {
           }
           .buttonStyle(.plain)
         }
+      } header: {
+        Text("配色")
       } footer: {
         Text("日间使用低饱和米白与雾蓝；暗色使用近黑背景与柔和绿色，所有页面共用同一套语义色。")
       }
