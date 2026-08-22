@@ -57,13 +57,35 @@ class _PomodoroPageState extends State<PomodoroPage> {
     unawaited(HapticFeedback.selectionClick());
   }
 
+  Future<void> _openDurationSettings() async {
+    final state = widget.controller.pomodoro;
+    final values = await showModalBottomSheet<List<int>>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      barrierColor: Colors.black.withValues(alpha: 0.36),
+      builder: (context) => _DurationSettingsSheet(
+        focusMinutes: state.focusMinutes,
+        shortBreakMinutes: state.shortBreakMinutes,
+        longBreakMinutes: state.longBreakMinutes,
+      ),
+    );
+    if (!mounted || values == null) return;
+    widget.controller.updatePomodoroDurations(
+      focusMinutes: values[0],
+      shortBreakMinutes: values[1],
+      longBreakMinutes: values[2],
+    );
+    unawaited(HapticFeedback.selectionClick());
+  }
+
   @override
   Widget build(BuildContext context) {
     final palette = QingxuPalette.of(context);
     final state = widget.controller.pomodoro;
     final remainingSeconds = widget.controller.pomodoroRemainingSeconds;
     final remaining = Duration(seconds: remainingSeconds);
-    final totalSeconds = PomodoroState.durationFor(state.mode).inSeconds;
+    final totalSeconds = state.configuredDurationFor(state.mode).inSeconds;
     final isRunning = state.status == PomodoroStatus.running;
     final isPaused = state.status == PomodoroStatus.paused;
     final modeLabel = switch (state.mode) {
@@ -86,7 +108,19 @@ class _PomodoroPageState extends State<PomodoroPage> {
                     onPressed: widget.onMenu,
                     icon: const Icon(Icons.menu_rounded),
                   ),
-            trailing: _SyncDot(active: widget.controller.syncSettings.isConfigured),
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                IconButton(
+                  key: const ValueKey('pomodoro-duration-settings'),
+                  tooltip: '自定义计时时长',
+                  onPressed: _openDurationSettings,
+                  icon: const Icon(Icons.tune_rounded, size: 21),
+                ),
+                const SizedBox(width: 8),
+                _SyncDot(active: widget.controller.syncSettings.isConfigured),
+              ],
+            ),
           ),
           Expanded(
             child: LayoutBuilder(
@@ -112,7 +146,10 @@ class _PomodoroPageState extends State<PomodoroPage> {
                           RepaintBoundary(
                             child: _FocusDial(
                               size: compactHeight ? 210 : 246,
-                              progress: (remainingSeconds / totalSeconds).clamp(0, 1),
+                              progress: (remainingSeconds / totalSeconds).clamp(
+                                0,
+                                1,
+                              ),
                               time: _formatDuration(remaining),
                               label: modeLabel,
                               active: isRunning,
@@ -143,7 +180,7 @@ class _PomodoroPageState extends State<PomodoroPage> {
   }
 
   static String _formatDuration(Duration duration) {
-    final totalSeconds = duration.inSeconds.clamp(0, 99 * 60);
+    final totalSeconds = duration.inSeconds.clamp(0, 999 * 60);
     final minutes = (totalSeconds ~/ 60).toString().padLeft(2, '0');
     final seconds = (totalSeconds % 60).toString().padLeft(2, '0');
     return '$minutes:$seconds';
@@ -159,9 +196,6 @@ class _ModePicker extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = QingxuPalette.of(context);
-    final selected = state.mode == PomodoroMode.focus
-        ? PomodoroMode.focus
-        : PomodoroMode.shortBreak;
     return Material(
       color: palette.surface,
       shape: RoundedRectangleBorder(
@@ -171,17 +205,247 @@ class _ModePicker extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.all(4),
         child: Row(
-          mainAxisSize: MainAxisSize.min,
           children: [
-            _ModeButton(
-              label: '专注 25 分钟',
-              selected: selected == PomodoroMode.focus,
-              onTap: () => onSelected(PomodoroMode.focus),
+            Expanded(
+              child: _ModeButton(
+                label: '专注 ${state.focusMinutes}',
+                selected: state.mode == PomodoroMode.focus,
+                onTap: () => onSelected(PomodoroMode.focus),
+              ),
             ),
-            _ModeButton(
-              label: state.mode == PomodoroMode.longBreak ? '长休息 15 分钟' : '休息 5 分钟',
-              selected: selected == PomodoroMode.shortBreak,
-              onTap: () => onSelected(PomodoroMode.shortBreak),
+            Expanded(
+              child: _ModeButton(
+                label: '短休 ${state.shortBreakMinutes}',
+                selected: state.mode == PomodoroMode.shortBreak,
+                onTap: () => onSelected(PomodoroMode.shortBreak),
+              ),
+            ),
+            Expanded(
+              child: _ModeButton(
+                label: '长休 ${state.longBreakMinutes}',
+                selected: state.mode == PomodoroMode.longBreak,
+                onTap: () => onSelected(PomodoroMode.longBreak),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _DurationSettingsSheet extends StatefulWidget {
+  const _DurationSettingsSheet({
+    required this.focusMinutes,
+    required this.shortBreakMinutes,
+    required this.longBreakMinutes,
+  });
+
+  final int focusMinutes;
+  final int shortBreakMinutes;
+  final int longBreakMinutes;
+
+  @override
+  State<_DurationSettingsSheet> createState() => _DurationSettingsSheetState();
+}
+
+class _DurationSettingsSheetState extends State<_DurationSettingsSheet> {
+  late int _focusMinutes = widget.focusMinutes;
+  late int _shortBreakMinutes = widget.shortBreakMinutes;
+  late int _longBreakMinutes = widget.longBreakMinutes;
+
+  void _resetDefaults() {
+    setState(() {
+      _focusMinutes = PomodoroState.defaultFocusMinutes;
+      _shortBreakMinutes = PomodoroState.defaultShortBreakMinutes;
+      _longBreakMinutes = PomodoroState.defaultLongBreakMinutes;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = QingxuPalette.of(context);
+    return SafeArea(
+      top: false,
+      child: Align(
+        alignment: Alignment.bottomCenter,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 560),
+          child: Material(
+            color: palette.surfaceRaised,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+            clipBehavior: Clip.antiAlias,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 38,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: palette.border,
+                      borderRadius: BorderRadius.circular(99),
+                    ),
+                  ),
+                  const SizedBox(height: 22),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '计时时长',
+                              style: TextStyle(
+                                color: palette.ink,
+                                fontSize: 22,
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: -0.5,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              '保存后会从当前阶段的新时长重新开始，并同步到其他设备。',
+                              style: TextStyle(
+                                color: palette.muted,
+                                fontSize: 12.5,
+                                height: 1.4,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: _resetDefaults,
+                        child: const Text('恢复默认'),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 20),
+                  _DurationStepper(
+                    label: '专注',
+                    detail: '1–180 分钟',
+                    value: _focusMinutes,
+                    minimum: 1,
+                    maximum: 180,
+                    onChanged: (value) => setState(() => _focusMinutes = value),
+                  ),
+                  const SizedBox(height: 10),
+                  _DurationStepper(
+                    label: '短休息',
+                    detail: '1–60 分钟',
+                    value: _shortBreakMinutes,
+                    minimum: 1,
+                    maximum: 60,
+                    onChanged: (value) =>
+                        setState(() => _shortBreakMinutes = value),
+                  ),
+                  const SizedBox(height: 10),
+                  _DurationStepper(
+                    label: '长休息',
+                    detail: '1–120 分钟',
+                    value: _longBreakMinutes,
+                    minimum: 1,
+                    maximum: 120,
+                    onChanged: (value) =>
+                        setState(() => _longBreakMinutes = value),
+                  ),
+                  const SizedBox(height: 22),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton(
+                      key: const ValueKey('save-pomodoro-durations'),
+                      onPressed: () => Navigator.of(context).pop([
+                        _focusMinutes,
+                        _shortBreakMinutes,
+                        _longBreakMinutes,
+                      ]),
+                      child: const Text('保存时长'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _DurationStepper extends StatelessWidget {
+  const _DurationStepper({
+    required this.label,
+    required this.detail,
+    required this.value,
+    required this.minimum,
+    required this.maximum,
+    required this.onChanged,
+  });
+
+  final String label;
+  final String detail;
+  final int value;
+  final int minimum;
+  final int maximum;
+  final ValueChanged<int> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = QingxuPalette.of(context);
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: palette.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: palette.border),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 10, 12),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    label,
+                    style: TextStyle(
+                      color: palette.ink,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    detail,
+                    style: TextStyle(color: palette.muted, fontSize: 11.5),
+                  ),
+                ],
+              ),
+            ),
+            IconButton(
+              tooltip: '减少 1 分钟',
+              onPressed: value > minimum ? () => onChanged(value - 1) : null,
+              icon: const Icon(Icons.remove_rounded),
+            ),
+            SizedBox(
+              width: 64,
+              child: Text(
+                '$value 分钟',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: palette.ink,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  fontFeatures: const [FontFeature.tabularFigures()],
+                ),
+              ),
+            ),
+            IconButton(
+              tooltip: '增加 1 分钟',
+              onPressed: value < maximum ? () => onChanged(value + 1) : null,
+              icon: const Icon(Icons.add_rounded),
             ),
           ],
         ),
@@ -191,7 +455,11 @@ class _ModePicker extends StatelessWidget {
 }
 
 class _ModeButton extends StatelessWidget {
-  const _ModeButton({required this.label, required this.selected, required this.onTap});
+  const _ModeButton({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
 
   final String label;
   final bool selected;
@@ -290,7 +558,10 @@ class _FocusDial extends StatelessWidget {
                         ),
                         const SizedBox(width: 7),
                       ],
-                      Text(label, style: TextStyle(fontSize: 13, color: palette.muted)),
+                      Text(
+                        label,
+                        style: TextStyle(fontSize: 13, color: palette.muted),
+                      ),
                     ],
                   ),
                 ),
@@ -414,7 +685,9 @@ class _SessionSummary extends StatelessWidget {
                 width: index < completedInRound ? 26 : 8,
                 height: 8,
                 decoration: BoxDecoration(
-                  color: index < completedInRound ? palette.accent : palette.border,
+                  color: index < completedInRound
+                      ? palette.accent
+                      : palette.border,
                   borderRadius: BorderRadius.circular(99),
                 ),
               ),

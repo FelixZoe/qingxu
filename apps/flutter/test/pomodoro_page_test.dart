@@ -20,4 +20,27 @@ void main() {
     expect(find.text('开始专注'), findsOneWidget);
     controller.dispose();
   });
+
+  testWidgets('pomodoro durations can be customized', (tester) async {
+    final controller = TaskController();
+    await tester.pumpWidget(
+      MaterialApp(home: PomodoroPage(controller: controller)),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('pomodoro-duration-settings')));
+    await tester.pumpAndSettle();
+    expect(find.text('计时时长'), findsOneWidget);
+
+    for (var index = 0; index < 5; index++) {
+      await tester.tap(find.byIcon(Icons.add_rounded).first);
+      await tester.pump();
+    }
+    await tester.tap(find.byKey(const ValueKey('save-pomodoro-durations')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('30:00'), findsOneWidget);
+    expect(find.text('专注 30'), findsOneWidget);
+    expect(controller.pomodoro.focusMinutes, 30);
+    controller.dispose();
+  });
 }

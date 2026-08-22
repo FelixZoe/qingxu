@@ -60,6 +60,9 @@
     "status": "running",
     "remainingSeconds": 1500,
     "completedFocusSessions": 2,
+    "focusMinutes": 25,
+    "shortBreakMinutes": 5,
+    "longBreakMinutes": 15,
     "endsAt": "2026-08-22T10:25:00.000Z",
     "updatedAt": "2026-08-22T10:00:00.000Z"
   }
@@ -76,6 +79,9 @@
     "status": "running",
     "remainingSeconds": 1500,
     "completedFocusSessions": 2,
+    "focusMinutes": 25,
+    "shortBreakMinutes": 5,
+    "longBreakMinutes": 15,
     "endsAt": "2026-08-22T10:25:00.000Z",
     "updatedAt": "2026-08-22T10:00:00.000Z"
   },
@@ -95,7 +101,7 @@
 6. 比服务器当前时间超前超过 5 分钟的 `updatedAt` 会被拒绝，避免错误设备时钟长期锁死任务。
 7. 重复提交相同快照是幂等的。
 
-番茄钟是单例 LWW 文档，同样比较 `updatedAt`。运行状态用绝对 UTC `endsAt` 表示；`remainingSeconds` 是暂停或空闲时的权威值。客户端根据响应中的 `serverTime` 估算时钟偏移，因此各端不会依赖各自设备时钟单独递减。
+番茄钟是单例 LWW 文档，同样比较 `updatedAt`。运行状态用绝对 UTC `endsAt` 表示；`remainingSeconds` 是暂停或空闲时的权威值。`focusMinutes`、`shortBreakMinutes` 与 `longBreakMinutes` 保存三段自定义时长，旧客户端缺少这些字段时按 25/5/15 分钟处理。客户端根据响应中的 `serverTime` 估算时钟偏移，因此各端不会依赖各自设备时钟单独递减。
 
 这是文档级 LWW，不是逐字段合并。两个设备同时编辑同一任务时，时间较新的完整任务覆盖较旧任务；客户端应使用系统 UTC 时间并保持自动校时。
 

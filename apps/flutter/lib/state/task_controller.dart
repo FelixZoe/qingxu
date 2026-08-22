@@ -327,7 +327,7 @@ class TaskController extends ChangeNotifier {
     }
     final remaining = _pomodoro.remainingSeconds > 0
         ? _pomodoro.remainingSeconds
-        : PomodoroState.durationFor(_pomodoro.mode).inSeconds;
+        : _pomodoro.configuredDurationFor(_pomodoro.mode).inSeconds;
     _setPomodoro(
       _pomodoro.copyWith(
         status: PomodoroStatus.running,
@@ -343,7 +343,9 @@ class TaskController extends ChangeNotifier {
     _setPomodoro(
       _pomodoro.copyWith(
         status: PomodoroStatus.idle,
-        remainingSeconds: PomodoroState.durationFor(_pomodoro.mode).inSeconds,
+        remainingSeconds: _pomodoro
+            .configuredDurationFor(_pomodoro.mode)
+            .inSeconds,
         clearEndsAt: true,
         updatedAt: now,
       ),
@@ -356,7 +358,7 @@ class TaskController extends ChangeNotifier {
       _pomodoro.copyWith(
         mode: mode,
         status: PomodoroStatus.idle,
-        remainingSeconds: PomodoroState.durationFor(mode).inSeconds,
+        remainingSeconds: _pomodoro.configuredDurationFor(mode).inSeconds,
         clearEndsAt: true,
         updatedAt: now,
       ),
@@ -364,6 +366,27 @@ class TaskController extends ChangeNotifier {
   }
 
   void skipPomodoro() => _advancePomodoro(countFocus: false);
+
+  void updatePomodoroDurations({
+    required int focusMinutes,
+    required int shortBreakMinutes,
+    required int longBreakMinutes,
+  }) {
+    final now = estimatedServerNow;
+    final updated = _pomodoro.copyWith(
+      status: PomodoroStatus.idle,
+      focusMinutes: focusMinutes.clamp(1, 180),
+      shortBreakMinutes: shortBreakMinutes.clamp(1, 60),
+      longBreakMinutes: longBreakMinutes.clamp(1, 120),
+      clearEndsAt: true,
+      updatedAt: now,
+    );
+    _setPomodoro(
+      updated.copyWith(
+        remainingSeconds: updated.configuredDurationFor(updated.mode).inSeconds,
+      ),
+    );
+  }
 
   bool advancePomodoroIfNeeded() {
     if (_pomodoro.status != PomodoroStatus.running ||
@@ -386,8 +409,11 @@ class TaskController extends ChangeNotifier {
       PomodoroState(
         mode: nextMode,
         status: PomodoroStatus.idle,
-        remainingSeconds: PomodoroState.durationFor(nextMode).inSeconds,
+        remainingSeconds: _pomodoro.configuredDurationFor(nextMode).inSeconds,
         completedFocusSessions: completed,
+        focusMinutes: _pomodoro.focusMinutes,
+        shortBreakMinutes: _pomodoro.shortBreakMinutes,
+        longBreakMinutes: _pomodoro.longBreakMinutes,
         updatedAt: now,
       ),
     );

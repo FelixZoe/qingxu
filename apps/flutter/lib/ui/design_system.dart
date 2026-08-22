@@ -19,42 +19,42 @@ class QingxuPalette extends ThemeExtension<QingxuPalette> {
     required this.info,
   });
 
-  // Warm paper and restrained slate blue. The background is intentionally
-  // warmer than the cards so sections remain legible without heavy borders.
+  // Porcelain ivory with a restrained mineral blue. Warmth is kept subtle so
+  // large areas stay clean instead of reading as yellow or aged paper.
   static const light = QingxuPalette(
-    accent: Color(0xFF587D96),
-    accentStrong: Color(0xFF365F7B),
-    accentSoft: Color(0xFFDCE8EE),
-    canvas: Color(0xFFF4F1EA),
-    surface: Color(0xFFFBFAF6),
+    accent: Color(0xFF5B7D92),
+    accentStrong: Color(0xFF365D74),
+    accentSoft: Color(0xFFE3ECF0),
+    canvas: Color(0xFFF5F5F1),
+    surface: Color(0xFFFCFCF9),
     surfaceRaised: Color(0xFFFFFFFF),
-    sidebar: Color(0xFFE9EEF0),
-    ink: Color(0xFF17242B),
-    muted: Color(0xFF66747B),
-    faint: Color(0xFF929B9D),
-    border: Color(0xFFDDE2E1),
-    success: Color(0xFF56806A),
-    danger: Color(0xFFB75F58),
-    info: Color(0xFF587D96),
+    sidebar: Color(0xFFEDF1F2),
+    ink: Color(0xFF18262D),
+    muted: Color(0xFF68767C),
+    faint: Color(0xFF96A0A3),
+    border: Color(0xFFE0E5E4),
+    success: Color(0xFF547B67),
+    danger: Color(0xFFB55F59),
+    info: Color(0xFF5B7D92),
   );
 
-  // Near-black forest tones: green is reserved for focus and positive state,
-  // never used as a blanket tint over every surface.
+  // Neutral graphite surfaces with forest green reserved for interaction and
+  // progress. This avoids the previous all-over green cast in dark mode.
   static const dark = QingxuPalette(
-    accent: Color(0xFF78B38D),
-    accentStrong: Color(0xFF9CC8A9),
-    accentSoft: Color(0xFF20382A),
-    canvas: Color(0xFF0B100D),
-    surface: Color(0xFF111813),
-    surfaceRaised: Color(0xFF172019),
-    sidebar: Color(0xFF121C16),
-    ink: Color(0xFFEAF1EC),
-    muted: Color(0xFFA4B0A8),
-    faint: Color(0xFF738078),
-    border: Color(0xFF29352D),
-    success: Color(0xFF78B38D),
+    accent: Color(0xFF73A385),
+    accentStrong: Color(0xFF9AC3A7),
+    accentSoft: Color(0xFF203029),
+    canvas: Color(0xFF0E100F),
+    surface: Color(0xFF151816),
+    surfaceRaised: Color(0xFF1B1F1C),
+    sidebar: Color(0xFF121614),
+    ink: Color(0xFFEEF1EF),
+    muted: Color(0xFFA4ACA7),
+    faint: Color(0xFF727A75),
+    border: Color(0xFF2B312D),
+    success: Color(0xFF73A385),
     danger: Color(0xFFD27B72),
-    info: Color(0xFF82AFC1),
+    info: Color(0xFF7DA4B6),
   );
 
   static QingxuPalette of(BuildContext context) =>
@@ -144,7 +144,8 @@ abstract final class QingxuLayout {
   static const contentMaxWidth = 720.0;
   static const sectionRadius = 20.0;
 
-  static double gutterFor(double width) => width < 700 ? mobileGutter : desktopGutter;
+  static double gutterFor(double width) =>
+      width < 700 ? mobileGutter : desktopGutter;
 }
 
 class QingxuPageHeader extends StatelessWidget {
@@ -228,7 +229,9 @@ class QingxuSurface extends StatelessWidget {
       decoration: BoxDecoration(
         color: palette.surface,
         borderRadius: BorderRadius.circular(radius),
-        border: Border.all(color: palette.border.withValues(alpha: dark ? 0.9 : 0.75)),
+        border: Border.all(
+          color: palette.border.withValues(alpha: dark ? 0.9 : 0.75),
+        ),
         boxShadow: dark
             ? null
             : const [

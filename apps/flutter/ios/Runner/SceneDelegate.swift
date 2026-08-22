@@ -200,19 +200,19 @@ private final class FlutterTabContentController: UIViewController {
 private extension UIColor {
   static let qingxuCanvas = UIColor { traits in
     traits.userInterfaceStyle == .dark
-      ? UIColor(red: 0.043, green: 0.063, blue: 0.051, alpha: 1)
-      : UIColor(red: 0.957, green: 0.945, blue: 0.918, alpha: 1)
+      ? UIColor(red: 0.055, green: 0.063, blue: 0.059, alpha: 1)
+      : UIColor(red: 0.961, green: 0.961, blue: 0.945, alpha: 1)
   }
 
   static let qingxuAccent = UIColor { traits in
     traits.userInterfaceStyle == .dark
-      ? UIColor(red: 0.471, green: 0.702, blue: 0.553, alpha: 1)
-      : UIColor(red: 0.345, green: 0.490, blue: 0.588, alpha: 1)
+      ? UIColor(red: 0.451, green: 0.639, blue: 0.522, alpha: 1)
+      : UIColor(red: 0.357, green: 0.490, blue: 0.573, alpha: 1)
   }
 
   static let qingxuMuted = UIColor { traits in
     traits.userInterfaceStyle == .dark
-      ? UIColor(red: 0.643, green: 0.690, blue: 0.659, alpha: 1)
-      : UIColor(red: 0.400, green: 0.455, blue: 0.482, alpha: 1)
+      ? UIColor(red: 0.643, green: 0.675, blue: 0.655, alpha: 1)
+      : UIColor(red: 0.408, green: 0.463, blue: 0.486, alpha: 1)
   }
 }
