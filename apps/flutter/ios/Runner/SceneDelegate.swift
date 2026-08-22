@@ -33,7 +33,7 @@ class SceneDelegate: FlutterSceneDelegate {
 /// tab bar, without a custom blur or a hand-drawn glass imitation.
 final class QingxuTabBarController: UITabBarController, UITabBarControllerDelegate {
   private let flutterViewController: FlutterViewController
-  private let navigationBridge: NativeNavigationBridge
+  private let qingxuNavigationBridge: NativeNavigationBridge
   private let tabs = QingxuTab.allCases
 
   init(
@@ -41,7 +41,7 @@ final class QingxuTabBarController: UITabBarController, UITabBarControllerDelega
     navigationBridge: NativeNavigationBridge
   ) {
     self.flutterViewController = flutterViewController
-    self.navigationBridge = navigationBridge
+    self.qingxuNavigationBridge = navigationBridge
     super.init(nibName: nil, bundle: nil)
   }
 
@@ -94,7 +94,7 @@ final class QingxuTabBarController: UITabBarController, UITabBarControllerDelega
     }
 
     contentController.embed(flutterViewController)
-    navigationBridge.userSelected(tabs[index])
+    qingxuNavigationBridge.userSelected(tabs[index])
   }
 }
 
