@@ -23,7 +23,7 @@ jobs:
       build_number: ${{ steps.resolve.outputs.build_number }}
       should_release: ${{ steps.resolve.outputs.should_release }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - name: Resolve build version
@@ -84,7 +84,7 @@ jobs:
       APP_VERSION: ${{ needs.version.outputs.version }}
       BUILD_NUMBER: ${{ needs.version.outputs.build_number }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
@@ -100,7 +100,7 @@ jobs:
             > build/web/version.json
       - name: Package Web
         run: cd build/web && zip -r "../../../../Qingxu-${APP_VERSION}-Web.zip" .
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: qingxu-${{ needs.version.outputs.version }}-web
           retention-days: 7
@@ -112,8 +112,8 @@ jobs:
       run:
         working-directory: services/sync
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version-file: services/sync/go.mod
           cache-dependency-path: services/sync/go.mod
@@ -132,13 +132,13 @@ jobs:
       contents: read
       packages: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: docker/login-action@v3
+      - uses: actions/checkout@v7
+      - uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - uses: docker/build-push-action@v6
+      - uses: docker/build-push-action@v7
         with:
           context: services/sync
           push: true
@@ -161,7 +161,7 @@ jobs:
       APP_VERSION: ${{ needs.version.outputs.version }}
       BUILD_NUMBER: ${{ needs.version.outputs.build_number }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
@@ -226,7 +226,7 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force artifacts | Out-Null
           & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "/DMyAppVersion=$env:APP_VERSION" scripts\windows\Qingxu.iss
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: qingxu-${{ needs.version.outputs.version }}-windows
           retention-days: 7
@@ -244,7 +244,7 @@ jobs:
       APP_VERSION: ${{ needs.version.outputs.version }}
       BUILD_NUMBER: ${{ needs.version.outputs.build_number }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: maxim-lobanov/setup-xcode@v1
         with:
           xcode-version: latest-stable
@@ -262,7 +262,7 @@ jobs:
           mkdir -p build/ipa/Payload
           cp -R build/ios/iphoneos/Runner.app build/ipa/Payload/Qingxu.app
           cd build/ipa && zip -r "../../Qingxu-${APP_VERSION}-iOS-unsigned.ipa" Payload
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: qingxu-${{ needs.version.outputs.version }}-ios
           retention-days: 7
@@ -288,10 +288,10 @@ jobs:
       RELEASE_TAG: ${{ needs.version.outputs.tag }}
       GH_TOKEN: ${{ github.token }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: qingxu-${{ needs.version.outputs.version }}-*
           path: release-assets
@@ -326,7 +326,7 @@ jobs:
     env:
       APP_VERSION: ${{ needs.version.outputs.version }}
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: qingxu-${{ needs.version.outputs.version }}-web
           path: deploy-staging
@@ -401,7 +401,7 @@ jobs:
       BUILD_NUMBER: ${{ needs.version.outputs.build_number }}
       RELEASE_TAG: ${{ needs.version.outputs.tag }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - name: Persist released version in source
