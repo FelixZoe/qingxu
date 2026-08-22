@@ -30,8 +30,19 @@ web_base="/opt/1panel/www/sites/todo.darker.one"
 web_release="$web_base/releases/${version}-${short_sha}"
 sync_base="/opt/qingxu/sync"
 sync_release="$sync_base/releases/$git_sha"
-previous_web="$(readlink -f "$web_base/current" 2>/dev/null || true)"
-previous_sync="$(readlink -f "$sync_base/current" 2>/dev/null || true)"
+
+resolve_current() {
+  local link="$1"
+  if [[ -L "$link" ]]; then
+    readlink -f "$link"
+  elif [[ -e "$link" ]]; then
+    echo "Current path exists but is not a symbolic link: $link" >&2
+    return 1
+  fi
+}
+
+previous_web="$(resolve_current "$web_base/current")"
+previous_sync="$(resolve_current "$sync_base/current")"
 web_candidate=""
 sync_candidate=""
 source_workspace=""
