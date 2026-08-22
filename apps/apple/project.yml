@@ -1,0 +1,87 @@
+name: QingxuApple
+options:
+  minimumXcodeGenVersion: 2.42.0
+  deploymentTarget:
+    iOS: "16.2"
+    macOS: "13.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    CLANG_ENABLE_MODULES: YES
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+targets:
+  QingxuiOS:
+    type: application
+    platform: iOS
+    sources:
+      - path: Shared
+      - path: iOS
+      - path: ../flutter/ios/Shared/QingxuPomodoroAttributes.swift
+    resources:
+      - path: ../flutter/ios/Runner/Assets.xcassets
+    dependencies:
+      - target: QingxuWidgets
+        embed: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: one.darker.qingxu
+        PRODUCT_NAME: Qingxu
+        INFOPLIST_KEY_CFBundleDisplayName: 清序
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        CODE_SIGN_ENTITLEMENTS: Configuration/QingxuiOS.entitlements
+        SUPPORTS_MACCATALYST: NO
+        TARGETED_DEVICE_FAMILY: "1,2"
+    info:
+      path: Generated/QingxuiOS-Info.plist
+      properties:
+        CFBundleDisplayName: 清序
+        UILaunchScreen: {}
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        CFBundleURLTypes:
+          - CFBundleURLName: one.darker.qingxu
+            CFBundleURLSchemes: [qingxu]
+        NSSupportsLiveActivities: true
+  QingxuWidgets:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: ../flutter/ios/QingxuWidgets/QingxuWidgets.swift
+      - path: ../flutter/ios/Shared/QingxuPomodoroAttributes.swift
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: one.darker.qingxu.widgets
+        PRODUCT_NAME: QingxuWidgets
+        CODE_SIGN_ENTITLEMENTS: Configuration/QingxuWidgets.entitlements
+        SKIP_INSTALL: YES
+        TARGETED_DEVICE_FAMILY: "1,2"
+    info:
+      path: Configuration/QingxuWidgets-Info.plist
+      properties:
+        CFBundleDisplayName: 清序小组件
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+        NSSupportsLiveActivities: true
+  QingxumacOS:
+    type: application
+    platform: macOS
+    sources:
+      - path: Shared
+      - path: macOS
+    resources:
+      - path: ../flutter/macos/Runner/Assets.xcassets
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: one.darker.qingxu
+        PRODUCT_NAME: Qingxu
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        CODE_SIGN_ENTITLEMENTS: Configuration/QingxumacOS.entitlements
+        ENABLE_HARDENED_RUNTIME: YES
+    info:
+      path: Generated/QingxumacOS-Info.plist
+      properties:
+        CFBundleDisplayName: 清序
+        LSApplicationCategoryType: public.app-category.productivity

@@ -16,7 +16,8 @@
 
 - 收集箱、今天、项目、备注、截止时间与完成状态，断网时照常编辑。
 - 番茄钟支持自定义专注、短休息和长休息时长，并在 iOS、Android、Windows、macOS 间自动同步；运行中使用服务端时间校准剩余时间。
-- iOS 使用原生底部导航；支持锁屏实时活动、灵动岛、今日任务与专注状态小组件。
+- iOS 与 macOS 使用完整 SwiftUI 原生客户端；iOS 支持系统底部导航、锁屏实时活动、灵动岛、今日任务与专注状态小组件。
+- Android 与 Windows 使用 Flutter 客户端，四端共用同一份同步数据与协议。
 - 米白蓝日间主题与黑绿夜间主题，跟随系统或手动切换。
 - 单用户自托管同步服务；真实密钥只保存在服务端 `.env` 与客户端系统安全存储。
 - `main` 每次更新自动分析、测试并构建四个平台，同时发布 Docker 镜像、Release、SHA-256 校验和与构建来源证明。
@@ -25,10 +26,10 @@
 
 | 平台 | Release 文件 | 状态 |
 | --- | --- | --- |
-| iOS | `Qingxu-<版本>-iOS-unsigned.ipa` | 自签安装；包含原生导航、灵动岛与小组件 |
+| iOS | `Qingxu-<版本>-iOS-unsigned.ipa` | SwiftUI 原生；自签安装；包含灵动岛与小组件 |
 | Android | `Qingxu-<版本>-Android.apk` | 直接安装 APK |
 | Windows | `Windows-Portable.zip` / `Windows-Setup.exe` | 便携版与安装版 |
-| macOS | `macOS-Portable.zip` / `macOS.dmg` | 当前为临时签名构建 |
+| macOS | `macOS-Portable.zip` / `macOS.dmg` | SwiftUI 原生；当前为未公证构建 |
 
 请只从[本仓库 Releases](https://github.com/FelixZoe/qingxu/releases/latest)下载，并用同一 Release 的 `SHA256SUMS.txt` 校验文件。未配置商业证书时，Windows SmartScreen 或 macOS Gatekeeper 可能提示未知发布者；工作流已预留 Windows 可信 PFX 签名变量。
 
@@ -71,7 +72,8 @@ echo "$TOKEN"
 ## 项目结构
 
 ```text
-apps/flutter/       iOS / Android / Windows / macOS 客户端
+apps/apple/         SwiftUI iOS / macOS 客户端与 XcodeGen 工程定义
+apps/flutter/       Flutter Android / Windows 客户端
 services/sync/      Go 同步服务与容器镜像
 scripts/ios/        可重复生成 iOS 小组件扩展目标的构建脚本
 scripts/windows/    Windows 安装包配置
@@ -88,7 +90,15 @@ cd apps/flutter
 flutter pub get
 flutter analyze
 flutter test
-flutter run -d windows   # 也可选择 android / ios / macos
+flutter run -d windows   # 或 android
+```
+
+Apple 原生端需要 macOS、Xcode 与 XcodeGen：
+
+```bash
+cd apps/apple
+xcodegen generate
+open QingxuApple.xcodeproj
 ```
 
 同步服务：

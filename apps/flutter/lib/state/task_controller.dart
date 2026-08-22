@@ -262,9 +262,9 @@ class TaskController extends ChangeNotifier {
     _notifyListeners();
   }
 
-  void addTask(String title) {
+  TaskItem? addTask(String title, {bool openEditor = false}) {
     final value = title.trim();
-    if (value.isEmpty) return;
+    if (value.isEmpty) return null;
     final now = DateTime.now().toUtc();
     final local = DateTime.now();
     final today = DateTime(local.year, local.month, local.day, 9).toUtc();
@@ -285,8 +285,9 @@ class TaskController extends ChangeNotifier {
       deletedAt: null,
     );
     _tasks.add(task);
-    selectedTaskId = task.id;
+    if (openEditor) selectedTaskId = task.id;
     _changed();
+    return task;
   }
 
   void updateTask(TaskItem updated) {
@@ -310,6 +311,10 @@ class TaskController extends ChangeNotifier {
   void deleteTask(TaskItem task) {
     selectedTaskId = null;
     updateTask(task.copyWith(deletedAt: DateTime.now().toUtc()));
+  }
+
+  void restoreTask(TaskItem task) {
+    updateTask(task.copyWith(clearDeletedAt: true));
   }
 
   void togglePomodoro() {

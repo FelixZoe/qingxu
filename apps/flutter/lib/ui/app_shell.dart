@@ -178,11 +178,14 @@ class _CompactShell extends StatelessWidget {
         !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS;
     final useAndroidTabs =
         !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
-    final useMobileTabs = useNativeIosTabs || useAndroidTabs;
+    final useCompactWindowsTabs =
+        !kIsWeb && defaultTargetPlatform == TargetPlatform.windows;
+    final useBottomTabs =
+        useNativeIosTabs || useAndroidTabs || useCompactWindowsTabs;
     return Builder(
       builder: (context) => Scaffold(
         backgroundColor: QingxuPalette.of(context).canvas,
-        drawer: useMobileTabs
+        drawer: useBottomTabs
             ? null
             : Drawer(
                 width: 270,
@@ -201,14 +204,15 @@ class _CompactShell extends StatelessWidget {
               quickAddFocus: quickAddFocus,
               themeMode: themeMode,
               onThemeModeChanged: onThemeModeChanged,
-              onMenu: useMobileTabs ? null : Scaffold.of(context).openDrawer,
+              onMenu: useBottomTabs ? null : Scaffold.of(context).openDrawer,
             ),
           ),
         ),
-        bottomNavigationBar: useAndroidTabs
+        bottomNavigationBar: (useAndroidTabs || useCompactWindowsTabs)
             ? NavigationBar(
                 height: 72,
-                backgroundColor: QingxuPalette.of(context).surface,
+                elevation: 0,
+                backgroundColor: QingxuPalette.of(context).canvas,
                 surfaceTintColor: Colors.transparent,
                 indicatorColor: QingxuPalette.of(context).accentSoft,
                 labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,

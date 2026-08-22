@@ -5,6 +5,8 @@ import '../models/sync_settings.dart';
 import '../state/task_controller.dart';
 import 'design_system.dart';
 
+enum _SettingsSection { overview, appearance, sync }
+
 class SyncSettingsPage extends StatefulWidget {
   const SyncSettingsPage({
     required this.controller,
@@ -32,6 +34,7 @@ class _SyncSettingsPageState extends State<SyncSettingsPage> {
   late bool _autoSync;
   bool _hideToken = true;
   bool _saving = false;
+  _SettingsSection _section = _SettingsSection.overview;
 
   @override
   void initState() {
@@ -76,33 +79,261 @@ class _SyncSettingsPageState extends State<SyncSettingsPage> {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => switch (_section) {
+    _SettingsSection.overview => _buildOverview(context),
+    _SettingsSection.appearance => _buildAppearance(context),
+    _SettingsSection.sync => _buildSync(context),
+  };
+
+  Widget _buildOverview(BuildContext context) {
+    final configured = widget.controller.syncSettings.isConfigured;
+    final syncDetail = configured
+        ? Uri.tryParse(widget.controller.syncSettings.serverUrl)?.host ?? '已配置'
+        : '尚未配置';
+    final appearanceDetail = switch (widget.themeMode) {
+      ThemeMode.system => '跟随系统',
+      ThemeMode.light => '浅色',
+      ThemeMode.dark => '深色',
+    };
+    return _settingsPage(
+      context,
+      title: '设置',
+      subtitle: '按类别管理，不把配置项堆在一个页面里',
+      children: [
+        const _SectionLabel(title: '偏好'),
+        const SizedBox(height: 9),
+        _SettingsGroup(
+          children: [
+            _SettingsTile(
+              icon: Icons.palette_outlined,
+              title: '外观',
+              subtitle: appearanceDetail,
+              onTap: () =>
+                  setState(() => _section = _SettingsSection.appearance),
+            ),
+          ],
+        ),
+        const SizedBox(height: 26),
+        const _SectionLabel(title: '数据'),
+        const SizedBox(height: 9),
+        _SettingsGroup(
+          children: [
+            _SettingsTile(
+              icon: configured
+                  ? Icons.cloud_done_outlined
+                  : Icons.cloud_outlined,
+              title: '自托管同步',
+              subtitle: syncDetail,
+              statusColor: configured
+                  ? QingxuPalette.of(context).success
+                  : QingxuPalette.of(context).faint,
+              onTap: () => setState(() => _section = _SettingsSection.sync),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        Text(
+          configured ? '任务、番茄钟和计时设置会自动同步。' : '应用可以完全离线使用；需要跨设备时再配置服务器。',
+          style: TextStyle(
+            color: QingxuPalette.of(context).muted,
+            fontSize: 12,
+            height: 1.5,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildAppearance(BuildContext context) => _settingsPage(
+    context,
+    title: '外观',
+    subtitle: '选择清序在这台设备上的显示方式',
+    showBack: true,
+    children: [
+      const _SectionLabel(title: '主题'),
+      const SizedBox(height: 9),
+      _AppearanceSection(
+        themeMode: widget.themeMode,
+        onChanged: widget.onThemeModeChanged,
+      ),
+      const SizedBox(height: 16),
+      Text(
+        '跟随系统会根据设备的日间与夜间模式自动切换。外观属于设备偏好，不会同步到其他设备。',
+        style: TextStyle(
+          color: QingxuPalette.of(context).muted,
+          fontSize: 12,
+          height: 1.55,
+        ),
+      ),
+    ],
+  );
+
+  Widget _buildSync(BuildContext context) => _settingsPage(
+    context,
+    title: '自托管同步',
+    subtitle: '连接你自己的清序同步服务器',
+    showBack: true,
+    trailing: FilledButton(
+      onPressed: _saving || !widget.controller.syncSupported ? null : _save,
+      child: Text(_saving ? '保存中…' : '保存'),
+    ),
+    children: [
+      const _SectionLabel(title: '同步状态'),
+      const SizedBox(height: 9),
+      _SyncStatus(controller: widget.controller),
+      if (widget.controller.syncSupported) ...[
+        const SizedBox(height: 26),
+        const _SectionLabel(title: '服务器'),
+        const SizedBox(height: 9),
+        QingxuSurface(
+          padding: const EdgeInsets.fromLTRB(18, 18, 18, 8),
+          child: Column(
+            children: [
+              _Field(
+                label: '服务器地址',
+                helper: '填写根地址，不需要添加 /v1/sync',
+                child: TextField(
+                  controller: _serverController,
+                  keyboardType: TextInputType.url,
+                  autocorrect: false,
+                  enableSuggestions: false,
+                  decoration: const InputDecoration(
+                    hintText: 'https://todo.darker.one',
+                    prefixIcon: Icon(Icons.dns_outlined),
+                  ),
+                ),
+              ),
+              _Field(
+                label: '同步密钥',
+                helper: '服务器生成的 64 位十六进制密钥',
+                child: TextField(
+                  controller: _tokenController,
+                  obscureText: _hideToken,
+                  autocorrect: false,
+                  enableSuggestions: false,
+                  maxLength: 64,
+                  inputFormatters: [
+                    FilteringTextInputFormatter.allow(RegExp(r'[0-9a-fA-F]')),
+                  ],
+                  decoration: InputDecoration(
+                    hintText: '输入同步密钥',
+                    counterText: '',
+                    prefixIcon: const Icon(Icons.key_outlined),
+                    suffixIcon: IconButton(
+                      tooltip: _hideToken ? '显示密钥' : '隐藏密钥',
+                      onPressed: () => setState(() => _hideToken = !_hideToken),
+                      icon: Icon(
+                        _hideToken
+                            ? Icons.visibility_outlined
+                            : Icons.visibility_off_outlined,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              _Field(
+                label: '设备名称',
+                helper: '便于识别，例如「Felix 的 iPhone」',
+                child: TextField(
+                  controller: _deviceController,
+                  autocorrect: false,
+                  decoration: const InputDecoration(
+                    hintText: '这台设备的名称',
+                    prefixIcon: Icon(Icons.devices_outlined),
+                  ),
+                ),
+              ),
+              _SettingSwitch(
+                title: '自动同步',
+                subtitle: '启动时同步，本地修改后约 1 秒上传',
+                value: _autoSync,
+                onChanged: (value) => setState(() => _autoSync = value),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+        AnimatedBuilder(
+          animation: widget.controller,
+          builder: (context, _) {
+            final busy = widget.controller.isSyncBusy || _saving;
+            return Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: busy ? null : _testConnection,
+                    icon: const Icon(Icons.wifi_tethering_rounded),
+                    label: const Text('测试连接'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: busy ? null : _syncNow,
+                    icon: const Icon(Icons.sync_rounded),
+                    label: const Text('立即同步'),
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
+      ],
+      const SizedBox(height: 18),
+      Text(
+        widget.controller.syncSupported
+            ? '密钥仅保存在当前设备。断网时可以继续使用，恢复网络后自动合并全部数据。'
+            : '当前平台仅使用本地数据。',
+        style: TextStyle(
+          fontSize: 12,
+          height: 1.55,
+          color: QingxuPalette.of(context).muted,
+        ),
+      ),
+    ],
+  );
+
+  Widget _settingsPage(
+    BuildContext context, {
+    required String title,
+    required String subtitle,
+    required List<Widget> children,
+    bool showBack = false,
+    Widget? trailing,
+  }) {
     final palette = QingxuPalette.of(context);
     return ColoredBox(
       color: palette.canvas,
       child: Column(
         children: [
           QingxuPageHeader(
-            title: '设置',
-            subtitle: '外观、设备与自托管同步',
-            leading: widget.onMenu == null
+            title: title,
+            subtitle: subtitle,
+            leading: showBack
+                ? IconButton(
+                    tooltip: '返回设置',
+                    onPressed: () {
+                      FocusManager.instance.primaryFocus?.unfocus();
+                      setState(() => _section = _SettingsSection.overview);
+                    },
+                    icon: const Icon(Icons.arrow_back_rounded),
+                  )
+                : widget.onMenu == null
                 ? null
                 : IconButton(
                     tooltip: '打开导航',
                     onPressed: widget.onMenu,
                     icon: const Icon(Icons.menu_rounded),
                   ),
-            trailing: FilledButton(
-              onPressed: _saving || !widget.controller.syncSupported ? null : _save,
-              child: Text(_saving ? '保存中…' : '保存'),
-            ),
+            trailing: trailing,
           ),
           Expanded(
             child: LayoutBuilder(
               builder: (context, constraints) {
                 final gutter = QingxuLayout.gutterFor(constraints.maxWidth);
                 return SingleChildScrollView(
-                  keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+                  keyboardDismissBehavior:
+                      ScrollViewKeyboardDismissBehavior.onDrag,
                   padding: EdgeInsets.fromLTRB(gutter, 0, gutter, 44),
                   child: Center(
                     child: ConstrainedBox(
@@ -111,131 +342,7 @@ class _SyncSettingsPageState extends State<SyncSettingsPage> {
                       ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          _SectionLabel(title: '外观'),
-                          const SizedBox(height: 9),
-                          _AppearanceSection(
-                            themeMode: widget.themeMode,
-                            onChanged: widget.onThemeModeChanged,
-                          ),
-                          const SizedBox(height: 26),
-                          _SectionLabel(title: '同步状态'),
-                          const SizedBox(height: 9),
-                          _SyncStatus(controller: widget.controller),
-                          if (widget.controller.syncSupported) ...[
-                            const SizedBox(height: 26),
-                            _SectionLabel(title: '自托管服务器'),
-                            const SizedBox(height: 9),
-                            QingxuSurface(
-                              padding: const EdgeInsets.fromLTRB(18, 18, 18, 8),
-                              child: Column(
-                                children: [
-                                  _Field(
-                                    label: '服务器地址',
-                                    helper: '填写根地址，不需要添加 /v1/sync',
-                                    child: TextField(
-                                      controller: _serverController,
-                                      keyboardType: TextInputType.url,
-                                      autocorrect: false,
-                                      enableSuggestions: false,
-                                      decoration: const InputDecoration(
-                                        hintText: 'https://todo.darker.one',
-                                        prefixIcon: Icon(Icons.dns_outlined),
-                                      ),
-                                    ),
-                                  ),
-                                  _Field(
-                                    label: '同步密钥',
-                                    helper: '服务器生成的 64 位十六进制密钥',
-                                    child: TextField(
-                                      controller: _tokenController,
-                                      obscureText: _hideToken,
-                                      autocorrect: false,
-                                      enableSuggestions: false,
-                                      maxLength: 64,
-                                      inputFormatters: [
-                                        FilteringTextInputFormatter.allow(
-                                          RegExp(r'[0-9a-fA-F]'),
-                                        ),
-                                      ],
-                                      decoration: InputDecoration(
-                                        hintText: '输入同步密钥',
-                                        counterText: '',
-                                        prefixIcon: const Icon(Icons.key_outlined),
-                                        suffixIcon: IconButton(
-                                          tooltip: _hideToken ? '显示密钥' : '隐藏密钥',
-                                          onPressed: () => setState(
-                                            () => _hideToken = !_hideToken,
-                                          ),
-                                          icon: Icon(
-                                            _hideToken
-                                                ? Icons.visibility_outlined
-                                                : Icons.visibility_off_outlined,
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                  _Field(
-                                    label: '设备名称',
-                                    helper: '便于识别，例如「Felix 的 iPhone」',
-                                    child: TextField(
-                                      controller: _deviceController,
-                                      autocorrect: false,
-                                      decoration: const InputDecoration(
-                                        hintText: '这台设备的名称',
-                                        prefixIcon: Icon(Icons.devices_outlined),
-                                      ),
-                                    ),
-                                  ),
-                                  _SettingSwitch(
-                                    title: '自动同步',
-                                    subtitle: '启动时同步，本地修改后约 1 秒上传',
-                                    value: _autoSync,
-                                    onChanged: (value) => setState(() => _autoSync = value),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(height: 16),
-                            AnimatedBuilder(
-                              animation: widget.controller,
-                              builder: (context, _) {
-                                final busy = widget.controller.isSyncBusy || _saving;
-                                return Row(
-                                  children: [
-                                    Expanded(
-                                      child: OutlinedButton.icon(
-                                        onPressed: busy ? null : _testConnection,
-                                        icon: const Icon(Icons.wifi_tethering_rounded),
-                                        label: const Text('测试连接'),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 12),
-                                    Expanded(
-                                      child: FilledButton.icon(
-                                        onPressed: busy ? null : _syncNow,
-                                        icon: const Icon(Icons.sync_rounded),
-                                        label: const Text('立即同步'),
-                                      ),
-                                    ),
-                                  ],
-                                );
-                              },
-                            ),
-                          ],
-                          const SizedBox(height: 18),
-                          Text(
-                            widget.controller.syncSupported
-                                ? '密钥仅保存在当前设备。断网时可以继续使用，恢复网络后自动合并全部数据。'
-                                : '当前平台仅使用本地数据。',
-                            style: TextStyle(
-                              fontSize: 12,
-                              height: 1.55,
-                              color: palette.muted,
-                            ),
-                          ),
-                        ],
+                        children: children,
                       ),
                     ),
                   ),
@@ -244,6 +351,98 @@ class _SyncSettingsPageState extends State<SyncSettingsPage> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _SettingsGroup extends StatelessWidget {
+  const _SettingsGroup({required this.children});
+
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = QingxuPalette.of(context);
+    return QingxuSurface(
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(QingxuLayout.sectionRadius),
+        child: Column(
+          children: [
+            for (var index = 0; index < children.length; index++) ...[
+              children[index],
+              if (index != children.length - 1)
+                Divider(height: 1, indent: 66, color: palette.border),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SettingsTile extends StatelessWidget {
+  const _SettingsTile({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+    this.statusColor,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+  final Color? statusColor;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = QingxuPalette.of(context);
+    final color = statusColor ?? palette.accent;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 13, 12, 13),
+          child: Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(icon, size: 20, color: color),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  title,
+                  style: TextStyle(
+                    color: palette.ink,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Flexible(
+                child: Text(
+                  subtitle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.right,
+                  style: TextStyle(color: palette.muted, fontSize: 12),
+                ),
+              ),
+              const SizedBox(width: 4),
+              Icon(Icons.chevron_right_rounded, color: palette.faint, size: 20),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -368,8 +567,8 @@ class _SyncStatus extends StatelessWidget {
     builder: (context, _) {
       final palette = QingxuPalette.of(context);
       final (icon, color) = switch (controller.syncActivity) {
-        SyncActivity.testing || SyncActivity.syncing =>
-          (Icons.sync_rounded, palette.info),
+        SyncActivity.testing ||
+        SyncActivity.syncing => (Icons.sync_rounded, palette.info),
         SyncActivity.success => (Icons.cloud_done_outlined, palette.success),
         SyncActivity.error => (Icons.cloud_off_outlined, palette.danger),
         SyncActivity.idle => (Icons.cloud_queue_outlined, palette.success),
@@ -433,7 +632,11 @@ class _SyncStatus extends StatelessWidget {
 }
 
 class _Field extends StatelessWidget {
-  const _Field({required this.label, required this.helper, required this.child});
+  const _Field({
+    required this.label,
+    required this.helper,
+    required this.child,
+  });
 
   final String label;
   final String helper;
@@ -501,7 +704,10 @@ class _SettingSwitch extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 3),
-                Text(subtitle, style: TextStyle(fontSize: 11.5, color: palette.muted)),
+                Text(
+                  subtitle,
+                  style: TextStyle(fontSize: 11.5, color: palette.muted),
+                ),
               ],
             ),
           ),

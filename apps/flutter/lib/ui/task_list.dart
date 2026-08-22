@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/task_item.dart';
 import '../state/task_controller.dart';
 import 'design_system.dart';
+import 'task_actions.dart';
 
 class TaskListPane extends StatefulWidget {
   const TaskListPane({
@@ -21,121 +22,178 @@ class TaskListPane extends StatefulWidget {
 }
 
 class _TaskListPaneState extends State<TaskListPane> {
-  final addController = TextEditingController();
+  bool _quickAddOpen = false;
 
-  @override
-  void dispose() {
-    addController.dispose();
-    super.dispose();
+  void submit(String title) {
+    if (title.trim().isEmpty) return;
+    final task = widget.controller.addTask(title);
+    if (task == null) return;
+    final destination = widget.controller.activeView == 'today' ? '今天' : '收集箱';
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text('已添加到$destination'),
+          duration: const Duration(seconds: 2),
+          action: SnackBarAction(
+            label: '编辑',
+            onPressed: () => widget.controller.selectTask(task.id),
+          ),
+        ),
+      );
   }
 
-  void submit() {
-    if (addController.text.trim().isEmpty) return;
-    widget.controller.addTask(addController.text);
-    addController.clear();
+  Future<void> openQuickAdd() async {
+    if (_quickAddOpen) return;
+    _quickAddOpen = true;
+    try {
+      final title = await showDialog<String>(
+        context: context,
+        builder: (_) => const _QuickAddDialog(),
+      );
+      if (title != null && mounted) submit(title);
+    } finally {
+      _quickAddOpen = false;
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final tasks = widget.controller.visibleTasks;
     final palette = QingxuPalette.of(context);
-    final isToday = widget.controller.activeView == 'today';
     return ColoredBox(
       color: palette.canvas,
-      child: Column(
+      child: Stack(
         children: [
-          QingxuPageHeader(
-            title: widget.controller.currentTitle,
-            subtitle: _taskViewDescription(widget.controller.activeView),
-            leading: widget.onMenu == null
-                ? null
-                : IconButton(
-                    tooltip: '打开导航',
-                    onPressed: widget.onMenu,
-                    icon: const Icon(Icons.menu_rounded),
-                  ),
-            trailing: _TaskCount(count: tasks.length),
-          ),
-          Expanded(
-            child: CustomScrollView(
-              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-              slivers: [
-                SliverLayoutBuilder(
-                  builder: (context, constraints) {
-                    final gutter = QingxuLayout.gutterFor(
-                      constraints.crossAxisExtent,
-                    );
-                    return SliverPadding(
-                      padding: EdgeInsets.fromLTRB(gutter, 0, gutter, 14),
-                      sliver: SliverToBoxAdapter(
-                        child: Center(
-                          child: ConstrainedBox(
-                            constraints: const BoxConstraints(
-                              maxWidth: QingxuLayout.contentMaxWidth,
-                            ),
-                            child: _QuickAdd(
-                              controller: addController,
-                              focusNode: widget.quickAddFocus,
-                              onSubmit: submit,
-                              isToday: isToday,
-                            ),
-                          ),
-                        ),
+          Column(
+            children: [
+              QingxuPageHeader(
+                title: widget.controller.currentTitle,
+                subtitle: _taskViewDescription(widget.controller.activeView),
+                leading: widget.onMenu == null
+                    ? null
+                    : IconButton(
+                        tooltip: '打开导航',
+                        onPressed: widget.onMenu,
+                        icon: const Icon(Icons.menu_rounded),
                       ),
-                    );
-                  },
-                ),
-                if (tasks.isEmpty)
-                  SliverFillRemaining(
-                    hasScrollBody: false,
-                    child: _EmptyState(view: widget.controller.activeView),
-                  )
-                else
-                  SliverLayoutBuilder(
-                    builder: (context, constraints) {
-                      final gutter = QingxuLayout.gutterFor(
-                        constraints.crossAxisExtent,
-                      );
-                      return SliverPadding(
-                        padding: EdgeInsets.fromLTRB(gutter, 0, gutter, 48),
-                        sliver: SliverToBoxAdapter(
-                          child: Center(
-                            child: ConstrainedBox(
-                              constraints: const BoxConstraints(
-                                maxWidth: QingxuLayout.contentMaxWidth,
-                              ),
-                              child: QingxuSurface(
-                                child: ClipRRect(
-                                  borderRadius: BorderRadius.circular(
-                                    QingxuLayout.sectionRadius,
-                                  ),
-                                  child: Column(
-                                    children: [
-                                      for (var index = 0;
-                                          index < tasks.length;
-                                          index++)
-                                        _TaskRow(
-                                          controller: widget.controller,
-                                          task: tasks[index],
-                                          showDivider: index != tasks.length - 1,
-                                        ),
-                                    ],
-                                  ),
+                trailing: _TaskCount(count: tasks.length),
+              ),
+              Expanded(
+                child: tasks.isEmpty
+                    ? _EmptyState(view: widget.controller.activeView)
+                    : LayoutBuilder(
+                        builder: (context, constraints) {
+                          final gutter = QingxuLayout.gutterFor(
+                            constraints.maxWidth,
+                          );
+                          return ListView.separated(
+                            keyboardDismissBehavior:
+                                ScrollViewKeyboardDismissBehavior.onDrag,
+                            padding: EdgeInsets.fromLTRB(
+                              gutter,
+                              10,
+                              gutter,
+                              104,
+                            ),
+                            itemCount: tasks.length,
+                            separatorBuilder: (_, _) => Divider(
+                              height: 1,
+                              color: palette.border.withValues(alpha: 0.8),
+                            ),
+                            itemBuilder: (context, index) => Center(
+                              child: ConstrainedBox(
+                                constraints: const BoxConstraints(
+                                  maxWidth: QingxuLayout.contentMaxWidth,
+                                ),
+                                child: _TaskRow(
+                                  controller: widget.controller,
+                                  task: tasks[index],
+                                  showDivider: false,
                                 ),
                               ),
                             ),
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-              ],
+                          );
+                        },
+                      ),
+              ),
+            ],
+          ),
+          Positioned(
+            right: QingxuLayout.mobileGutter,
+            bottom: 22,
+            child: Focus(
+              focusNode: widget.quickAddFocus,
+              onFocusChange: (focused) {
+                if (focused) {
+                  widget.quickAddFocus.unfocus();
+                  openQuickAdd();
+                }
+              },
+              child: FloatingActionButton(
+                key: const ValueKey('quick-add-button'),
+                tooltip: '新增任务',
+                elevation: 0,
+                highlightElevation: 0,
+                backgroundColor: palette.accent,
+                foregroundColor: Colors.white,
+                onPressed: openQuickAdd,
+                child: const Icon(Icons.add_rounded, size: 28),
+              ),
             ),
           ),
         ],
       ),
     );
   }
+}
+
+class _QuickAddDialog extends StatefulWidget {
+  const _QuickAddDialog();
+
+  @override
+  State<_QuickAddDialog> createState() => _QuickAddDialogState();
+}
+
+class _QuickAddDialogState extends State<_QuickAddDialog> {
+  final controller = TextEditingController();
+
+  @override
+  void dispose() {
+    controller.dispose();
+    super.dispose();
+  }
+
+  void submit() {
+    final value = controller.text.trim();
+    if (value.isNotEmpty) Navigator.pop(context, value);
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: const Text('新增任务'),
+    content: TextField(
+      key: const ValueKey('quick-add-field'),
+      controller: controller,
+      autofocus: true,
+      textInputAction: TextInputAction.done,
+      decoration: const InputDecoration(hintText: '要做什么？'),
+      onSubmitted: (_) => submit(),
+    ),
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.pop(context),
+        child: const Text('取消'),
+      ),
+      ValueListenableBuilder<TextEditingValue>(
+        valueListenable: controller,
+        builder: (context, value, _) => FilledButton(
+          onPressed: value.text.trim().isEmpty ? null : submit,
+          child: const Text('添加'),
+        ),
+      ),
+    ],
+  );
 }
 
 class _TaskCount extends StatelessWidget {
@@ -166,50 +224,6 @@ class _TaskCount extends StatelessWidget {
   }
 }
 
-class _QuickAdd extends StatelessWidget {
-  const _QuickAdd({
-    required this.controller,
-    required this.focusNode,
-    required this.onSubmit,
-    required this.isToday,
-  });
-
-  final TextEditingController controller;
-  final FocusNode focusNode;
-  final VoidCallback onSubmit;
-  final bool isToday;
-
-  @override
-  Widget build(BuildContext context) {
-    final palette = QingxuPalette.of(context);
-    return QingxuSurface(
-      radius: 16,
-      child: TextField(
-        controller: controller,
-        focusNode: focusNode,
-        textInputAction: TextInputAction.done,
-        onSubmitted: (_) => onSubmit(),
-        style: TextStyle(color: palette.ink, fontSize: 15),
-        decoration: InputDecoration(
-          hintText: isToday ? '添加今天要完成的事' : '快速记录一个想法或任务',
-          hintStyle: TextStyle(color: palette.faint, fontSize: 15),
-          prefixIcon: Icon(Icons.add_rounded, color: palette.accent, size: 22),
-          suffixIcon: IconButton(
-            tooltip: '添加任务',
-            onPressed: onSubmit,
-            icon: Icon(Icons.arrow_upward_rounded, color: palette.accent),
-          ),
-          filled: false,
-          border: InputBorder.none,
-          enabledBorder: InputBorder.none,
-          focusedBorder: InputBorder.none,
-          contentPadding: const EdgeInsets.symmetric(vertical: 16),
-        ),
-      ),
-    );
-  }
-}
-
 class _TaskRow extends StatelessWidget {
   const _TaskRow({
     required this.controller,
@@ -224,6 +238,7 @@ class _TaskRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = QingxuPalette.of(context);
+    final messenger = ScaffoldMessenger.of(context);
     final completed = task.status == TaskStatus.completed;
     final selected = controller.selectedTaskId == task.id;
     final project = task.projectId == null
@@ -234,90 +249,122 @@ class _TaskRow extends StatelessWidget {
     final scheduledAt = task.startAt?.toLocal();
     final showTime = scheduledAt != null && controller.activeView == 'today';
 
-    return Material(
-      color: selected ? palette.accentSoft.withValues(alpha: 0.46) : Colors.transparent,
-      child: InkWell(
-        onTap: () => controller.selectTask(task.id),
-        child: Container(
-          constraints: const BoxConstraints(minHeight: 70),
-          padding: const EdgeInsets.fromLTRB(18, 13, 16, 13),
-          decoration: BoxDecoration(
-            border: showDivider
-                ? Border(bottom: BorderSide(color: palette.border))
-                : null,
+    return Dismissible(
+      key: ValueKey('task-${task.id}'),
+      direction: DismissDirection.endToStart,
+      confirmDismiss: (_) => confirmTaskDeletion(context, task),
+      onDismissed: (_) {
+        controller.deleteTask(task);
+        showTaskDeletionUndo(messenger, controller, task);
+      },
+      background: ColoredBox(
+        color: palette.danger,
+        child: const Align(
+          alignment: Alignment.centerRight,
+          child: Padding(
+            padding: EdgeInsets.symmetric(horizontal: 22),
+            child: Icon(Icons.delete_outline_rounded, color: Colors.white),
           ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Semantics(
-                button: true,
-                label: completed ? '标记为未完成' : '标记为已完成',
-                child: InkResponse(
-                  onTap: () => controller.toggleTask(task),
-                  radius: 24,
-                  child: AnimatedContainer(
-                    duration: QingxuMotion.quick,
-                    width: 23,
-                    height: 23,
-                    margin: const EdgeInsets.only(top: 1),
-                    decoration: BoxDecoration(
-                      color: completed ? palette.accent : Colors.transparent,
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: completed ? palette.accent : palette.faint,
-                        width: 1.5,
+        ),
+      ),
+      child: Material(
+        color: selected
+            ? palette.accentSoft.withValues(alpha: 0.46)
+            : Colors.transparent,
+        child: InkWell(
+          onTap: () => controller.selectTask(task.id),
+          child: Container(
+            constraints: const BoxConstraints(minHeight: 70),
+            padding: const EdgeInsets.fromLTRB(18, 13, 16, 13),
+            decoration: BoxDecoration(
+              border: showDivider
+                  ? Border(bottom: BorderSide(color: palette.border))
+                  : null,
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Semantics(
+                  button: true,
+                  label: completed ? '标记为未完成' : '标记为已完成',
+                  child: InkResponse(
+                    onTap: () => controller.toggleTask(task),
+                    radius: 24,
+                    child: AnimatedContainer(
+                      duration: QingxuMotion.quick,
+                      width: 23,
+                      height: 23,
+                      margin: const EdgeInsets.only(top: 1),
+                      decoration: BoxDecoration(
+                        color: completed ? palette.accent : Colors.transparent,
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: completed ? palette.accent : palette.faint,
+                          width: 1.5,
+                        ),
                       ),
+                      child: completed
+                          ? const Icon(
+                              Icons.check_rounded,
+                              size: 15,
+                              color: Colors.white,
+                            )
+                          : null,
                     ),
-                    child: completed
-                        ? const Icon(Icons.check_rounded, size: 15, color: Colors.white)
-                        : null,
                   ),
                 ),
-              ),
-              const SizedBox(width: 13),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      task.title,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: completed ? palette.faint : palette.ink,
-                        fontSize: 15,
-                        height: 1.35,
-                        fontWeight: FontWeight.w500,
-                        decoration: completed ? TextDecoration.lineThrough : null,
+                const SizedBox(width: 13),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        task.title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: completed ? palette.faint : palette.ink,
+                          fontSize: 15,
+                          height: 1.35,
+                          fontWeight: FontWeight.w500,
+                          decoration: completed
+                              ? TextDecoration.lineThrough
+                              : null,
+                        ),
                       ),
-                    ),
-                    if (project != null || task.notes.isNotEmpty || showTime) ...[
-                      const SizedBox(height: 6),
-                      Wrap(
-                        spacing: 10,
-                        runSpacing: 4,
-                        children: [
-                          if (showTime)
-                            _TaskMeta(
-                              icon: Icons.schedule_rounded,
-                              label: _formatTime(scheduledAt),
-                            ),
-                          if (project != null)
-                            _ProjectMeta(project: project),
-                          if (task.notes.isNotEmpty)
-                            const _TaskMeta(
-                              icon: Icons.notes_rounded,
-                              label: '有备注',
-                            ),
-                        ],
-                      ),
+                      if (project != null ||
+                          task.notes.isNotEmpty ||
+                          showTime) ...[
+                        const SizedBox(height: 6),
+                        Wrap(
+                          spacing: 10,
+                          runSpacing: 4,
+                          children: [
+                            if (showTime)
+                              _TaskMeta(
+                                icon: Icons.schedule_rounded,
+                                label: _formatTime(scheduledAt),
+                              ),
+                            if (project != null) _ProjectMeta(project: project),
+                            if (task.notes.isNotEmpty)
+                              const _TaskMeta(
+                                icon: Icons.notes_rounded,
+                                label: '有备注',
+                              ),
+                          ],
+                        ),
+                      ],
                     ],
-                  ],
+                  ),
                 ),
-              ),
-              const SizedBox(width: 6),
-              Icon(Icons.chevron_right_rounded, size: 20, color: palette.faint),
-            ],
+                const SizedBox(width: 6),
+                Icon(
+                  Icons.chevron_right_rounded,
+                  size: 20,
+                  color: palette.faint,
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -370,7 +417,10 @@ class _ProjectMeta extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 5),
-        Text(project.title, style: TextStyle(fontSize: 11.5, color: palette.muted)),
+        Text(
+          project.title,
+          style: TextStyle(fontSize: 11.5, color: palette.muted),
+        ),
       ],
     );
   }

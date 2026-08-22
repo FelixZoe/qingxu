@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/task_item.dart';
 import '../state/task_controller.dart';
 import 'design_system.dart';
+import 'task_actions.dart';
 
 class TaskEditor extends StatefulWidget {
   const TaskEditor({required this.controller, required this.task, super.key});
@@ -48,6 +49,13 @@ class _TaskEditorState extends State<TaskEditor> {
 
   Future<void> pickDeadlineDate() async {
     await _pickDate(isDeadline: true);
+  }
+
+  Future<void> deleteTask() async {
+    if (!await confirmTaskDeletion(context, widget.task) || !mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    widget.controller.deleteTask(widget.task);
+    showTaskDeletionUndo(messenger, widget.controller, widget.task);
   }
 
   Future<void> _pickDate({required bool isDeadline}) async {
@@ -178,9 +186,11 @@ class _TaskEditorState extends State<TaskEditor> {
               child: OutlinedButton.icon(
                 style: OutlinedButton.styleFrom(
                   foregroundColor: palette.danger,
-                  side: BorderSide(color: palette.danger.withValues(alpha: 0.4)),
+                  side: BorderSide(
+                    color: palette.danger.withValues(alpha: 0.4),
+                  ),
                 ),
-                onPressed: () => widget.controller.deleteTask(widget.task),
+                onPressed: deleteTask,
                 icon: const Icon(Icons.delete_outline_rounded, size: 18),
                 label: const Text('删除任务'),
               ),

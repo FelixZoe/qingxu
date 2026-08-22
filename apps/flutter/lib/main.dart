@@ -124,10 +124,7 @@ ThemeData _buildTheme(Brightness brightness, bool touch) {
   final dark = brightness == Brightness.dark;
   final palette = dark ? QingxuPalette.dark : QingxuPalette.light;
   final (fontFamily, fontFallback) = _platformFonts();
-  final base = ThemeData(
-    useMaterial3: true,
-    brightness: brightness,
-  );
+  final base = ThemeData(useMaterial3: true, brightness: brightness);
   final textTheme = base.textTheme.apply(
     bodyColor: palette.ink,
     displayColor: palette.ink,
@@ -227,7 +224,8 @@ ThemeData _buildTheme(Brightness brightness, bool touch) {
       trackOutlineColor: const WidgetStatePropertyAll(Colors.transparent),
     ),
     navigationBarTheme: NavigationBarThemeData(
-      backgroundColor: palette.surface,
+      backgroundColor: palette.canvas,
+      elevation: 0,
       surfaceTintColor: Colors.transparent,
       indicatorColor: palette.accentSoft,
       labelTextStyle: WidgetStateProperty.resolveWith(

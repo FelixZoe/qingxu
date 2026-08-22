@@ -44,6 +44,7 @@ class TaskItem {
     DateTime? completedAt,
     bool clearCompletedAt = false,
     DateTime? deletedAt,
+    bool clearDeletedAt = false,
     DateTime? updatedAt,
   }) {
     return TaskItem(
@@ -58,7 +59,7 @@ class TaskItem {
       order: order,
       createdAt: createdAt,
       updatedAt: updatedAt ?? DateTime.now().toUtc(),
-      deletedAt: deletedAt ?? this.deletedAt,
+      deletedAt: clearDeletedAt ? null : (deletedAt ?? this.deletedAt),
     );
   }
 

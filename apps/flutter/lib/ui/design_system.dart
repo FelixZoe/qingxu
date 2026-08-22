@@ -168,7 +168,7 @@ class QingxuPageHeader extends StatelessWidget {
       final palette = QingxuPalette.of(context);
       final gutter = QingxuLayout.gutterFor(constraints.maxWidth);
       return Padding(
-        padding: EdgeInsets.fromLTRB(gutter, 22, gutter, 18),
+        padding: EdgeInsets.fromLTRB(gutter, 30, gutter, 24),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
@@ -181,7 +181,7 @@ class QingxuPageHeader extends StatelessWidget {
                     title,
                     style: TextStyle(
                       color: palette.ink,
-                      fontSize: constraints.maxWidth < 700 ? 30 : 34,
+                      fontSize: constraints.maxWidth < 700 ? 34 : 40,
                       height: 1.08,
                       fontWeight: FontWeight.w700,
                       letterSpacing: -1.1,

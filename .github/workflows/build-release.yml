@@ -110,7 +110,7 @@ jobs:
 
   docker-publish:
     if: needs.version.outputs.should_release == 'true'
-    needs: [version, sync-server, flutter-checks, flutter-windows, flutter-ios, flutter-android, flutter-macos]
+    needs: [version, sync-server, flutter-checks, flutter-windows, apple-ios, flutter-android, apple-macos]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -267,12 +267,12 @@ jobs:
             Qingxu-${{ needs.version.outputs.version }}-Windows-Portable.zip
             artifacts/Qingxu-${{ needs.version.outputs.version }}-Windows-Setup.exe
 
-  flutter-ios:
+  apple-ios:
     needs: version
     runs-on: macos-15
     defaults:
       run:
-        working-directory: apps/flutter
+        working-directory: apps/apple
     env:
       APP_VERSION: ${{ needs.version.outputs.version }}
       BUILD_NUMBER: ${{ needs.version.outputs.build_number }}
@@ -283,27 +283,37 @@ jobs:
           xcode-version: latest-stable
       - name: Show selected Xcode
         run: xcodebuild -version
-      - uses: subosito/flutter-action@v2
-        with:
-          channel: stable
-          cache: true
-      - run: flutter pub get
-      - name: Configure iOS widgets and Live Activity
+      - name: Install XcodeGen
         run: |
-          gem install xcodeproj --no-document
-          ruby ../../scripts/ios/configure_widgets.rb
-      - name: Build unsigned iOS app
-        run: flutter build ios --release --no-codesign --build-name "$APP_VERSION" --build-number "$BUILD_NUMBER"
+          brew install xcodegen
+          xcodegen version
+      - name: Generate native Apple project
+        run: xcodegen generate
+      - name: Build unsigned native iOS app
+        run: |
+          set -euo pipefail
+          xcodebuild \
+            -project QingxuApple.xcodeproj \
+            -scheme QingxuiOS \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build/DerivedData \
+            CODE_SIGNING_ALLOWED=NO \
+            MARKETING_VERSION="$APP_VERSION" \
+            CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
+            build
       - name: Package unsigned IPA
         run: |
+          set -euo pipefail
           mkdir -p build/ipa/Payload
-          cp -R build/ios/iphoneos/Runner.app build/ipa/Payload/Qingxu.app
+          cp -R build/DerivedData/Build/Products/Release-iphoneos/Qingxu.app build/ipa/Payload/Qingxu.app
           cd build/ipa && zip -r "../../Qingxu-${APP_VERSION}-iOS-unsigned.ipa" Payload
       - uses: actions/upload-artifact@v7
         with:
           name: qingxu-${{ needs.version.outputs.version }}-ios
           retention-days: 7
-          path: apps/flutter/Qingxu-${{ needs.version.outputs.version }}-iOS-unsigned.ipa
+          path: apps/apple/Qingxu-${{ needs.version.outputs.version }}-iOS-unsigned.ipa
 
   flutter-android:
     needs: version
@@ -331,28 +341,43 @@ jobs:
           retention-days: 7
           path: apps/flutter/Qingxu-${{ needs.version.outputs.version }}-Android.apk
 
-  flutter-macos:
+  apple-macos:
     needs: version
     runs-on: macos-15
     defaults:
       run:
-        working-directory: apps/flutter
+        working-directory: apps/apple
     env:
       APP_VERSION: ${{ needs.version.outputs.version }}
       BUILD_NUMBER: ${{ needs.version.outputs.build_number }}
     steps:
       - uses: actions/checkout@v7
-      - uses: subosito/flutter-action@v2
+      - uses: maxim-lobanov/setup-xcode@v1
         with:
-          channel: stable
-          cache: true
-      - run: flutter pub get
-      - name: Build macOS app
-        run: flutter build macos --release --build-name "$APP_VERSION" --build-number "$BUILD_NUMBER"
+          xcode-version: latest-stable
+      - name: Install XcodeGen
+        run: |
+          brew install xcodegen
+          xcodegen version
+      - name: Generate native Apple project
+        run: xcodegen generate
+      - name: Build native macOS app
+        run: |
+          set -euo pipefail
+          xcodebuild \
+            -project QingxuApple.xcodeproj \
+            -scheme QingxumacOS \
+            -configuration Release \
+            -destination 'platform=macOS' \
+            -derivedDataPath build/DerivedData \
+            CODE_SIGNING_ALLOWED=NO \
+            MARKETING_VERSION="$APP_VERSION" \
+            CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
+            build
       - name: Package macOS app
         run: |
           set -euo pipefail
-          app_path="$(find build/macos/Build/Products/Release -maxdepth 1 -name '*.app' -print -quit)"
+          app_path="$(find build/DerivedData/Build/Products/Release -maxdepth 1 -name '*.app' -print -quit)"
           test -n "$app_path"
           ditto -c -k --keepParent "$app_path" "Qingxu-${APP_VERSION}-macOS-Portable.zip"
           hdiutil create -volname "清序" -srcfolder "$app_path" -ov -format UDZO "Qingxu-${APP_VERSION}-macOS.dmg"
@@ -361,8 +386,8 @@ jobs:
           name: qingxu-${{ needs.version.outputs.version }}-macos
           retention-days: 7
           path: |
-            apps/flutter/Qingxu-${{ needs.version.outputs.version }}-macOS-Portable.zip
-            apps/flutter/Qingxu-${{ needs.version.outputs.version }}-macOS.dmg
+            apps/apple/Qingxu-${{ needs.version.outputs.version }}-macOS-Portable.zip
+            apps/apple/Qingxu-${{ needs.version.outputs.version }}-macOS.dmg
 
   github-release:
     if: >-
@@ -370,12 +395,12 @@ jobs:
       needs.version.outputs.should_release == 'true' &&
       needs.flutter-checks.result == 'success' &&
       needs.flutter-windows.result == 'success' &&
-      needs.flutter-ios.result == 'success' &&
+      needs.apple-ios.result == 'success' &&
       needs.flutter-android.result == 'success' &&
-      needs.flutter-macos.result == 'success' &&
+      needs.apple-macos.result == 'success' &&
       needs.sync-server.result == 'success' &&
       needs.docker-publish.result == 'success'
-    needs: [version, flutter-checks, flutter-windows, flutter-ios, flutter-android, flutter-macos, sync-server, docker-publish]
+    needs: [version, flutter-checks, flutter-windows, apple-ios, flutter-android, apple-macos, sync-server, docker-publish]
     runs-on: ubuntu-latest
     permissions:
       contents: write

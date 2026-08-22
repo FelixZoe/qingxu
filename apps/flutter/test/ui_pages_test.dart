@@ -26,17 +26,14 @@ void main() {
     });
   }
 
-  testWidgets('task list fits a compact phone without overflow', (tester) async {
+  testWidgets('task list fits a compact phone without overflow', (
+    tester,
+  ) async {
     await usePhoneSize(tester);
     final controller = TaskController();
     addTearDown(controller.dispose);
     await tester.pumpWidget(
-      host(
-        TaskListPane(
-          controller: controller,
-          quickAddFocus: FocusNode(),
-        ),
-      ),
+      host(TaskListPane(controller: controller, quickAddFocus: FocusNode())),
     );
     await tester.pumpAndSettle();
     expect(find.text('今天'), findsOneWidget);
@@ -53,7 +50,9 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('settings uses readable mobile groups without overflow', (tester) async {
+  testWidgets('settings opens compact detail pages without overflow', (
+    tester,
+  ) async {
     await usePhoneSize(tester);
     final controller = TaskController();
     addTearDown(controller.dispose);
@@ -66,9 +65,16 @@ void main() {
         ),
       ),
     );
-    await tester.pump();
-    expect(find.text('米白蓝'), findsOneWidget);
-    expect(find.text('黑绿'), findsOneWidget);
+    await tester.pumpAndSettle();
+    expect(find.text('自托管同步'), findsOneWidget);
+    expect(find.text('服务器地址'), findsNothing);
+    await tester.tap(find.text('自托管同步'));
+    await tester.pumpAndSettle();
+    expect(find.text('服务器地址'), findsOneWidget);
+    expect(find.text('同步密钥'), findsOneWidget);
+    await tester.tap(find.byTooltip('返回设置'));
+    await tester.pumpAndSettle();
+    expect(find.text('外观'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }

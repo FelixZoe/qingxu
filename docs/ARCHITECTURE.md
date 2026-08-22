@@ -2,21 +2,22 @@
 
 ## 客户端
 
-四个平台共用 `apps/flutter` 的任务模型、状态控制器、同步客户端与 UI 组件。
+四个平台共用同一份 JSON 同步协议与 Go 服务端，但客户端按平台分为两套实现。
 
-- iOS：Flutter 业务界面嵌入原生 `UITabBarController`；WidgetKit 扩展提供桌面小组件和 ActivityKit 实时活动。
-- Android：Flutter Material 底部导航。
-- Windows / macOS：适合桌面的侧边导航与自适应内容区。
-- 本机持久化使用应用支持目录；同步密钥由 `flutter_secure_storage` 写入平台安全存储。
+- iOS：`apps/apple` 的纯 SwiftUI 应用，使用系统 `TabView`、`NavigationStack`、WidgetKit 与 ActivityKit；不嵌入 Flutter 引擎。
+- macOS：`apps/apple` 的纯 SwiftUI 应用，使用 `NavigationSplitView` 和原生 Settings 场景。
+- Android：`apps/flutter` 的 Flutter 客户端与 Material 底部导航。
+- Windows：`apps/flutter` 的 Flutter 桌面客户端、侧边导航、便携包和安装包。
+- 本机持久化使用平台应用数据目录；同步密钥分别由 Apple Keychain 和 `flutter_secure_storage` 写入平台安全存储。
 
 主题设置属于设备偏好，不参与同步。任务、项目字段、备注、日期、完成/删除状态及番茄钟状态属于用户数据，会自动同步。
 
 ## 状态与同步
 
-`TaskController` 是当前应用级状态入口：
+Flutter 端由 `TaskController` 管理状态，Apple 原生端由 `AppStore` 管理状态；二者遵循相同流程：
 
-1. 启动后先显示首帧，再并行加载本地任务、番茄钟与同步设置。
-2. 编辑立即写本地原子文件，并在约 1.2 秒防抖后同步。
+1. 启动后优先载入本地任务、番茄钟与同步设置。
+2. 编辑立即写本地原子文件，并在短暂防抖后同步。
 3. 普通状态每 30 秒拉取；运行中的番茄钟每 3 秒拉取。
 4. 任务按 ID 和更新时间合并，删除墓碑优先。
 5. 番茄钟是单例 LWW 文档；运行状态保存绝对 `endsAt`，客户端使用 `serverTime` 校准后的时钟计算剩余值。
@@ -39,7 +40,7 @@ iOS 每次用户数据变化时还会把一个最小快照写入 App Group，供
 GitHub Actions 在每次 `main` 更新时：
 
 1. 运行 Flutter 分析与测试、Go 测试与 vet。
-2. 并行构建 iOS、Android、Windows、macOS。
+2. 并行用 Xcode 构建原生 iOS/macOS，并用 Flutter 构建 Android/Windows。
 3. 发布 `ghcr.io/felixzoe/qingxu-sync`。
 4. 生成 Release、SHA-256 校验和和 GitHub artifact attestation。
 5. 将最终版本号回写源码，提交带 `[skip ci]`，避免循环构建。
