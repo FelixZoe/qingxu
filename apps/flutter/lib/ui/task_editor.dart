@@ -87,27 +87,40 @@ class _TaskEditorState extends State<TaskEditor> {
   Widget build(BuildContext context) {
     final palette = QingxuPalette.of(context);
     return ColoredBox(
-      color: palette.canvas,
+      color: palette.surfaceRaised,
       child: Column(
         children: [
           Container(
-            height: 58,
-            padding: const EdgeInsets.symmetric(horizontal: 16),
+            height: 68,
+            padding: const EdgeInsets.fromLTRB(24, 0, 14, 0),
             decoration: BoxDecoration(
               border: Border(bottom: BorderSide(color: palette.border)),
             ),
             child: Row(
               children: [
-                Text(
-                  '任务详情',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: palette.muted,
-                    fontWeight: FontWeight.w600,
+                Expanded(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '任务详情',
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: palette.ink,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        '修改后自动保存',
+                        style: TextStyle(fontSize: 10.5, color: palette.faint),
+                      ),
+                    ],
                   ),
                 ),
-                const Spacer(),
                 IconButton(
+                  tooltip: '关闭详情',
                   onPressed: () {
                     saveText();
                     widget.controller.selectTask(null);
@@ -119,46 +132,65 @@ class _TaskEditorState extends State<TaskEditor> {
           ),
           Expanded(
             child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(22, 27, 22, 20),
+              padding: const EdgeInsets.fromLTRB(24, 30, 24, 24),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  _EditorLabel(label: '任务'),
+                  const SizedBox(height: 10),
                   TextField(
                     controller: titleController,
                     onSubmitted: (_) => saveText(),
                     onTapOutside: (_) => saveText(),
-                    style: const TextStyle(
-                      fontSize: 19,
-                      fontWeight: FontWeight.w700,
+                    minLines: 1,
+                    maxLines: 3,
+                    style: TextStyle(
+                      color: palette.ink,
+                      fontSize: 21,
+                      height: 1.35,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: -0.3,
                     ),
-                    decoration: const InputDecoration(
+                    decoration: InputDecoration(
                       border: InputBorder.none,
                       enabledBorder: InputBorder.none,
                       focusedBorder: InputBorder.none,
                       filled: false,
                       isDense: true,
+                      contentPadding: EdgeInsets.zero,
                     ),
                   ),
-                  const SizedBox(height: 15),
+                  const SizedBox(height: 28),
+                  _EditorLabel(label: '备注'),
+                  const SizedBox(height: 10),
                   TextField(
                     controller: notesController,
                     onTapOutside: (_) => saveText(),
-                    maxLines: 6,
+                    minLines: 5,
+                    maxLines: 10,
+                    style: TextStyle(
+                      color: palette.ink,
+                      fontSize: 13,
+                      height: 1.5,
+                    ),
                     decoration: InputDecoration(
-                      hintText: '备注',
+                      hintText: '补充背景、步骤或想法…',
                       filled: true,
-                      fillColor: palette.surface,
+                      fillColor: palette.canvas,
                       border: OutlineInputBorder(
                         borderSide: BorderSide(color: palette.border),
-                        borderRadius: BorderRadius.circular(9),
+                        borderRadius: BorderRadius.circular(10),
                       ),
                       enabledBorder: OutlineInputBorder(
                         borderSide: BorderSide(color: palette.border),
-                        borderRadius: BorderRadius.circular(9),
+                        borderRadius: BorderRadius.circular(10),
                       ),
                     ),
                   ),
-                  const SizedBox(height: 22),
+                  const SizedBox(height: 30),
+                  _EditorLabel(label: '安排'),
+                  const SizedBox(height: 8),
+                  Divider(height: 1, color: palette.border),
                   _EditorField(
                     icon: Icons.calendar_today_outlined,
                     label: '开始日期',
@@ -175,23 +207,19 @@ class _TaskEditorState extends State<TaskEditor> {
                     controller: widget.controller,
                     task: widget.task,
                   ),
+                  Divider(height: 1, color: palette.border),
                 ],
               ),
             ),
           ),
           Padding(
-            padding: const EdgeInsets.fromLTRB(22, 0, 22, 20),
-            child: SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: palette.danger,
-                  side: BorderSide(
-                    color: palette.danger.withValues(alpha: 0.4),
-                  ),
-                ),
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                style: TextButton.styleFrom(foregroundColor: palette.danger),
                 onPressed: deleteTask,
-                icon: const Icon(Icons.delete_outline_rounded, size: 18),
+                icon: const Icon(Icons.delete_outline_rounded, size: 17),
                 label: const Text('删除任务'),
               ),
             ),
@@ -205,6 +233,26 @@ class _TaskEditorState extends State<TaskEditor> {
     if (value == null) return '未设置';
     final local = value.toLocal();
     return '${local.year}-${local.month.toString().padLeft(2, '0')}-${local.day.toString().padLeft(2, '0')}';
+  }
+}
+
+class _EditorLabel extends StatelessWidget {
+  const _EditorLabel({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = QingxuPalette.of(context);
+    return Text(
+      label,
+      style: TextStyle(
+        color: palette.faint,
+        fontSize: 10.5,
+        fontWeight: FontWeight.w600,
+        letterSpacing: 0.7,
+      ),
+    );
   }
 }
 
@@ -227,10 +275,10 @@ class _EditorField extends StatelessWidget {
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(7),
         onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 13),
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 14),
           child: Row(
             children: [
               Icon(icon, size: 18, color: palette.muted),
@@ -257,13 +305,8 @@ class _ProjectField extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = QingxuPalette.of(context);
-    return Container(
-      height: 45,
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      decoration: BoxDecoration(
-        color: palette.surface,
-        borderRadius: BorderRadius.circular(10),
-      ),
+    return SizedBox(
+      height: 49,
       child: Row(
         children: [
           Icon(
@@ -277,7 +320,7 @@ class _ProjectField extends StatelessWidget {
           DropdownButtonHideUnderline(
             child: DropdownButton<String>(
               value: task.projectId ?? '',
-              style: TextStyle(fontSize: 11, color: palette.muted),
+              style: TextStyle(fontSize: 12, color: palette.ink),
               items: [
                 const DropdownMenuItem(value: '', child: Text('无项目')),
                 for (final project in TaskController.projects)

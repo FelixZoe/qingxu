@@ -94,6 +94,122 @@ class _PomodoroPageState extends State<PomodoroPage> {
       PomodoroMode.longBreak => isRunning ? '充分休息' : '完成一轮',
     };
 
+    if (qingxuIsDesktop) {
+      return ColoredBox(
+        color: palette.canvas,
+        child: Column(
+          children: [
+            QingxuPageHeader(
+              title: '番茄钟',
+              subtitle: isRunning ? '计时状态正自动同步到其他设备' : '为眼前这一件事留出完整时间',
+              trailing: _SyncDot(
+                active: widget.controller.syncSettings.isConfigured,
+              ),
+            ),
+            Expanded(
+              child: LayoutBuilder(
+                builder: (context, constraints) => SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(48, 10, 48, 40),
+                  child: Center(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(
+                        maxWidth: QingxuLayout.contentMaxWidth,
+                      ),
+                      child: Column(
+                        children: [
+                          _ModePicker(
+                            state: state,
+                            onSelected: widget.controller.selectPomodoroMode,
+                          ),
+                          const SizedBox(height: 44),
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.center,
+                            children: [
+                              Expanded(
+                                child: Center(
+                                  child: RepaintBoundary(
+                                    child: _FocusDial(
+                                      size: constraints.maxHeight < 610
+                                          ? 218
+                                          : 252,
+                                      progress:
+                                          (remainingSeconds / totalSeconds)
+                                              .clamp(0, 1),
+                                      time: _formatDuration(remaining),
+                                      label: modeLabel,
+                                      active: isRunning,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              Container(
+                                width: 1,
+                                height: 250,
+                                color: palette.border,
+                              ),
+                              const SizedBox(width: 54),
+                              SizedBox(
+                                width: 290,
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      isRunning ? '保持专注' : '准备开始',
+                                      style: TextStyle(
+                                        color: palette.ink,
+                                        fontSize: 24,
+                                        fontWeight: FontWeight.w600,
+                                        letterSpacing: -0.5,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      isRunning
+                                          ? '离开应用也不会中断，当前进度会继续同步。'
+                                          : '选择时长后开始，清序会记住这台设备的偏好。',
+                                      style: TextStyle(
+                                        color: palette.muted,
+                                        fontSize: 12.5,
+                                        height: 1.55,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 30),
+                                    _FocusActions(
+                                      isRunning: isRunning,
+                                      onToggle: _toggle,
+                                      onReset: widget.controller.resetPomodoro,
+                                      onSkip: widget.controller.skipPomodoro,
+                                    ),
+                                    const SizedBox(height: 28),
+                                    _SessionSummary(
+                                      completed: state.completedFocusSessions,
+                                    ),
+                                    const SizedBox(height: 18),
+                                    TextButton.icon(
+                                      onPressed: _openDurationSettings,
+                                      icon: const Icon(
+                                        Icons.tune_rounded,
+                                        size: 17,
+                                      ),
+                                      label: const Text('自定义计时时长'),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
     return ColoredBox(
       color: palette.canvas,
       child: Column(

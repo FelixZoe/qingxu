@@ -98,7 +98,7 @@ class _SyncSettingsPageState extends State<SyncSettingsPage> {
     return _settingsPage(
       context,
       title: '设置',
-      subtitle: '按类别管理，不把配置项堆在一个页面里',
+      subtitle: '管理这台设备的外观与数据连接',
       children: [
         const _SectionLabel(title: '偏好'),
         const SizedBox(height: 9),
@@ -364,6 +364,25 @@ class _SettingsGroup extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = QingxuPalette.of(context);
+    if (qingxuIsDesktop) {
+      return DecoratedBox(
+        decoration: BoxDecoration(
+          border: Border(
+            top: BorderSide(color: palette.border),
+            bottom: BorderSide(color: palette.border),
+          ),
+        ),
+        child: Column(
+          children: [
+            for (var index = 0; index < children.length; index++) ...[
+              children[index],
+              if (index != children.length - 1)
+                Divider(height: 1, indent: 48, color: palette.border),
+            ],
+          ],
+        ),
+      );
+    }
     return QingxuSurface(
       child: ClipRRect(
         borderRadius: BorderRadius.circular(QingxuLayout.sectionRadius),
@@ -400,22 +419,28 @@ class _SettingsTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final palette = QingxuPalette.of(context);
     final color = statusColor ?? palette.accent;
+    final desktop = qingxuIsDesktop;
     return Material(
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(14, 13, 12, 13),
+          padding: EdgeInsets.fromLTRB(
+            desktop ? 4 : 14,
+            desktop ? 16 : 13,
+            desktop ? 4 : 12,
+            desktop ? 16 : 13,
+          ),
           child: Row(
             children: [
               Container(
-                width: 40,
-                height: 40,
+                width: desktop ? 34 : 40,
+                height: desktop ? 34 : 40,
                 decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(12),
+                  color: color.withValues(alpha: desktop ? 0.08 : 0.12),
+                  borderRadius: BorderRadius.circular(desktop ? 9 : 12),
                 ),
-                child: Icon(icon, size: 20, color: color),
+                child: Icon(icon, size: desktop ? 18 : 20, color: color),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -487,13 +512,13 @@ class _AppearanceSection extends StatelessWidget {
         ),
         _ThemeChoice(
           icon: Icons.light_mode_rounded,
-          label: '米白蓝',
+          label: '明亮',
           selected: themeMode == ThemeMode.light,
           onTap: () => onChanged(ThemeMode.light),
         ),
         _ThemeChoice(
           icon: Icons.dark_mode_rounded,
-          label: '黑绿',
+          label: '深色',
           selected: themeMode == ThemeMode.dark,
           onTap: () => onChanged(ThemeMode.dark),
         ),

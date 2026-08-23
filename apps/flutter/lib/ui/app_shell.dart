@@ -62,11 +62,6 @@ class _AppShellState extends State<AppShell> {
                   !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS;
               final useAndroidTabs =
                   !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
-              final useFullBleedDesktop =
-                  !kIsWeb &&
-                  (defaultTargetPlatform == TargetPlatform.windows ||
-                      defaultTargetPlatform == TargetPlatform.macOS);
-              final showEditor = widget.controller.selectedTask != null;
               if (compact || useNativeIosTabs || useAndroidTabs) {
                 return _CompactShell(
                   controller: widget.controller,
@@ -76,69 +71,83 @@ class _AppShellState extends State<AppShell> {
                   onThemeModeChanged: widget.onThemeModeChanged,
                 );
               }
-              return Center(
-                child: Container(
-                  width: useFullBleedDesktop
-                      ? constraints.maxWidth
-                      : constraints.maxWidth - 32,
-                  height: useFullBleedDesktop
-                      ? constraints.maxHeight
-                      : constraints.maxHeight - 32,
-                  constraints: useFullBleedDesktop
-                      ? const BoxConstraints()
-                      : const BoxConstraints(maxWidth: 1440, minHeight: 600),
-                  decoration: BoxDecoration(
-                    color: palette.canvas,
-                    borderRadius: useFullBleedDesktop
-                        ? BorderRadius.zero
-                        : BorderRadius.circular(18),
-                    border: useFullBleedDesktop
-                        ? null
-                        : Border.all(color: palette.border),
-                    boxShadow: useFullBleedDesktop
-                        ? null
-                        : const [
-                            BoxShadow(
-                              color: Color(0x14504A38),
-                              blurRadius: 55,
-                              offset: Offset(0, 18),
-                            ),
-                          ],
-                  ),
-                  clipBehavior: Clip.antiAlias,
-                  child: Row(
-                    children: [
-                      SizedBox(
-                        width: 244,
-                        child: Sidebar(
-                          controller: widget.controller,
-                          searchFocus: searchFocus,
-                        ),
-                      ),
-                      Expanded(
-                        child: _Workspace(
-                          controller: widget.controller,
-                          quickAddFocus: quickAddFocus,
-                          themeMode: widget.themeMode,
-                          onThemeModeChanged: widget.onThemeModeChanged,
-                        ),
-                      ),
-                      if (showEditor && _viewIndex(widget.controller) == 0)
-                        SizedBox(
-                          width: constraints.maxWidth < 1080 ? 300 : 350,
-                          child: TaskEditor(
-                            key: ValueKey(widget.controller.selectedTask!.id),
-                            controller: widget.controller,
-                            task: widget.controller.selectedTask!,
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
+              return _DesktopShell(
+                controller: widget.controller,
+                quickAddFocus: quickAddFocus,
+                searchFocus: searchFocus,
+                themeMode: widget.themeMode,
+                onThemeModeChanged: widget.onThemeModeChanged,
+                palette: palette,
               );
             },
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _DesktopShell extends StatelessWidget {
+  const _DesktopShell({
+    required this.controller,
+    required this.quickAddFocus,
+    required this.searchFocus,
+    required this.themeMode,
+    required this.onThemeModeChanged,
+    required this.palette,
+  });
+
+  final TaskController controller;
+  final FocusNode quickAddFocus;
+  final FocusNode searchFocus;
+  final ThemeMode themeMode;
+  final ValueChanged<ThemeMode> onThemeModeChanged;
+  final QingxuPalette palette;
+
+  @override
+  Widget build(BuildContext context) {
+    final task = controller.selectedTask;
+    final showEditor = task != null && _viewIndex(controller) == 0;
+    return ColoredBox(
+      color: palette.surface,
+      child: Row(
+        children: [
+          SizedBox(
+            width: 264,
+            child: Sidebar(controller: controller, searchFocus: searchFocus),
+          ),
+          VerticalDivider(width: 1, thickness: 1, color: palette.border),
+          Expanded(
+            child: _Workspace(
+              controller: controller,
+              quickAddFocus: quickAddFocus,
+              themeMode: themeMode,
+              onThemeModeChanged: onThemeModeChanged,
+            ),
+          ),
+          AnimatedContainer(
+            duration: QingxuMotion.standard,
+            curve: QingxuMotion.curve,
+            width: showEditor ? 382 : 0,
+            clipBehavior: Clip.hardEdge,
+            decoration: BoxDecoration(
+              color: palette.surfaceRaised,
+              border: showEditor
+                  ? Border(left: BorderSide(color: palette.border))
+                  : null,
+            ),
+            child: showEditor
+                ? SizedBox(
+                    width: 382,
+                    child: TaskEditor(
+                      key: ValueKey(task.id),
+                      controller: controller,
+                      task: task,
+                    ),
+                  )
+                : const SizedBox.shrink(),
+          ),
+        ],
       ),
     );
   }

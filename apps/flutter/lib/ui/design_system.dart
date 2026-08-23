@@ -1,4 +1,11 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+
+bool get qingxuIsDesktop =>
+    !kIsWeb &&
+    (defaultTargetPlatform == TargetPlatform.windows ||
+        defaultTargetPlatform == TargetPlatform.macOS ||
+        defaultTargetPlatform == TargetPlatform.linux);
 
 @immutable
 class QingxuPalette extends ThemeExtension<QingxuPalette> {
@@ -19,40 +26,40 @@ class QingxuPalette extends ThemeExtension<QingxuPalette> {
     required this.info,
   });
 
-  // Editorial paper, charcoal ink, and a restrained terracotta accent.
+  // Cool porcelain and slate blue: quiet enough for long desktop sessions.
   static const light = QingxuPalette(
-    accent: Color(0xFFB7664D),
-    accentStrong: Color(0xFF8B4331),
-    accentSoft: Color(0xFFF0DED5),
-    canvas: Color(0xFFF4F1EA),
-    surface: Color(0xFFFBF9F4),
+    accent: Color(0xFF5278A5),
+    accentStrong: Color(0xFF315A89),
+    accentSoft: Color(0xFFE2EAF3),
+    canvas: Color(0xFFF4F6F8),
+    surface: Color(0xFFFAFBFC),
     surfaceRaised: Color(0xFFFFFFFF),
-    sidebar: Color(0xFFECE7DD),
-    ink: Color(0xFF22221F),
-    muted: Color(0xFF6F6C65),
-    faint: Color(0xFF9A958B),
-    border: Color(0xFFDED8CD),
-    success: Color(0xFF60796B),
-    danger: Color(0xFFB4544D),
-    info: Color(0xFF8A6B5A),
+    sidebar: Color(0xFFEBEFF4),
+    ink: Color(0xFF18222D),
+    muted: Color(0xFF64717F),
+    faint: Color(0xFF929DA8),
+    border: Color(0xFFDCE2E8),
+    success: Color(0xFF507866),
+    danger: Color(0xFFB65359),
+    info: Color(0xFF5278A5),
   );
 
-  // Warm graphite keeps dark mode neutral; copper is reserved for action.
+  // Deep blue graphite with no green cast and no pure-black slabs.
   static const dark = QingxuPalette(
-    accent: Color(0xFFC88761),
-    accentStrong: Color(0xFFE0A982),
-    accentSoft: Color(0xFF3A2A22),
-    canvas: Color(0xFF141412),
-    surface: Color(0xFF1C1C19),
-    surfaceRaised: Color(0xFF24231F),
-    sidebar: Color(0xFF181816),
-    ink: Color(0xFFF2EEE6),
-    muted: Color(0xFFA7A198),
-    faint: Color(0xFF77736C),
-    border: Color(0xFF34322D),
-    success: Color(0xFF7E9B88),
-    danger: Color(0xFFD07B70),
-    info: Color(0xFF9B8C7C),
+    accent: Color(0xFF87A9CF),
+    accentStrong: Color(0xFFAEC7E2),
+    accentSoft: Color(0xFF203249),
+    canvas: Color(0xFF10151B),
+    surface: Color(0xFF151B22),
+    surfaceRaised: Color(0xFF1B232D),
+    sidebar: Color(0xFF121922),
+    ink: Color(0xFFEDF2F6),
+    muted: Color(0xFF9AA7B4),
+    faint: Color(0xFF687583),
+    border: Color(0xFF293440),
+    success: Color(0xFF80A993),
+    danger: Color(0xFFD57D83),
+    info: Color(0xFF87A9CF),
   );
 
   static QingxuPalette of(BuildContext context) =>
@@ -138,9 +145,9 @@ abstract final class QingxuMotion {
 
 abstract final class QingxuLayout {
   static const mobileGutter = 20.0;
-  static const desktopGutter = 40.0;
-  static const contentMaxWidth = 720.0;
-  static const sectionRadius = 20.0;
+  static const desktopGutter = 48.0;
+  static const contentMaxWidth = 840.0;
+  static const sectionRadius = 16.0;
 
   static double gutterFor(double width) =>
       width < 700 ? mobileGutter : desktopGutter;
@@ -165,8 +172,14 @@ class QingxuPageHeader extends StatelessWidget {
     builder: (context, constraints) {
       final palette = QingxuPalette.of(context);
       final gutter = QingxuLayout.gutterFor(constraints.maxWidth);
+      final desktop = qingxuIsDesktop && constraints.maxWidth >= 760;
       return Padding(
-        padding: EdgeInsets.fromLTRB(gutter, 30, gutter, 24),
+        padding: EdgeInsets.fromLTRB(
+          gutter,
+          desktop ? 42 : 30,
+          gutter,
+          desktop ? 28 : 24,
+        ),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
@@ -179,10 +192,12 @@ class QingxuPageHeader extends StatelessWidget {
                     title,
                     style: TextStyle(
                       color: palette.ink,
-                      fontSize: constraints.maxWidth < 700 ? 34 : 40,
-                      height: 1.08,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: -1.1,
+                      fontSize: desktop
+                          ? 34
+                          : (constraints.maxWidth < 700 ? 34 : 40),
+                      height: 1.12,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: desktop ? -0.7 : -1.1,
                     ),
                   ),
                   const SizedBox(height: 6),

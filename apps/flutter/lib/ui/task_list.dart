@@ -61,6 +61,14 @@ class _TaskListPaneState extends State<TaskListPane> {
   Widget build(BuildContext context) {
     final tasks = widget.controller.visibleTasks;
     final palette = QingxuPalette.of(context);
+    if (qingxuIsDesktop) {
+      return _DesktopTaskList(
+        controller: widget.controller,
+        tasks: tasks,
+        quickAddFocus: widget.quickAddFocus,
+        onQuickAdd: openQuickAdd,
+      );
+    }
     return ColoredBox(
       color: palette.canvas,
       child: Stack(
@@ -170,30 +178,375 @@ class _QuickAddDialogState extends State<_QuickAddDialog> {
   }
 
   @override
-  Widget build(BuildContext context) => AlertDialog(
-    title: const Text('新增任务'),
-    content: TextField(
-      key: const ValueKey('quick-add-field'),
-      controller: controller,
-      autofocus: true,
-      textInputAction: TextInputAction.done,
-      decoration: const InputDecoration(hintText: '要做什么？'),
-      onSubmitted: (_) => submit(),
-    ),
-    actions: [
-      TextButton(
-        onPressed: () => Navigator.pop(context),
-        child: const Text('取消'),
+  Widget build(BuildContext context) {
+    final palette = QingxuPalette.of(context);
+    return Dialog(
+      backgroundColor: palette.surfaceRaised,
+      surfaceTintColor: Colors.transparent,
+      insetPadding: const EdgeInsets.all(24),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: palette.border),
       ),
-      ValueListenableBuilder<TextEditingValue>(
-        valueListenable: controller,
-        builder: (context, value, _) => FilledButton(
-          onPressed: value.text.trim().isEmpty ? null : submit,
-          child: const Text('添加'),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 520),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(24, 22, 24, 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '新增任务',
+                style: TextStyle(
+                  color: palette.ink,
+                  fontSize: 20,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: -0.3,
+                ),
+              ),
+              const SizedBox(height: 5),
+              Text(
+                '先写下来，日期和项目可以稍后补充。',
+                style: TextStyle(color: palette.muted, fontSize: 12),
+              ),
+              const SizedBox(height: 18),
+              TextField(
+                key: const ValueKey('quick-add-field'),
+                controller: controller,
+                autofocus: true,
+                textInputAction: TextInputAction.done,
+                decoration: const InputDecoration(hintText: '要做什么？'),
+                onSubmitted: (_) => submit(),
+              ),
+              const SizedBox(height: 18),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('取消'),
+                  ),
+                  const SizedBox(width: 8),
+                  ValueListenableBuilder<TextEditingValue>(
+                    valueListenable: controller,
+                    builder: (context, value, _) => FilledButton(
+                      onPressed: value.text.trim().isEmpty ? null : submit,
+                      child: const Text('添加任务'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
-    ],
-  );
+    );
+  }
+}
+
+class _DesktopTaskList extends StatelessWidget {
+  const _DesktopTaskList({
+    required this.controller,
+    required this.tasks,
+    required this.quickAddFocus,
+    required this.onQuickAdd,
+  });
+
+  final TaskController controller;
+  final List<TaskItem> tasks;
+  final FocusNode quickAddFocus;
+  final VoidCallback onQuickAdd;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = QingxuPalette.of(context);
+    return ColoredBox(
+      color: palette.canvas,
+      child: Stack(
+        children: [
+          Column(
+            children: [
+              QingxuPageHeader(
+                title: controller.currentTitle,
+                subtitle: _taskViewDescription(controller.activeView),
+                trailing: _TaskCount(count: tasks.length),
+              ),
+              Expanded(
+                child: LayoutBuilder(
+                  builder: (context, constraints) => Align(
+                    alignment: Alignment.topCenter,
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(
+                        maxWidth: QingxuLayout.contentMaxWidth,
+                      ),
+                      child: tasks.isEmpty
+                          ? _EmptyState(view: controller.activeView)
+                          : Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                Padding(
+                                  padding: const EdgeInsets.fromLTRB(
+                                    0,
+                                    8,
+                                    0,
+                                    12,
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Text(
+                                        controller.activeView == 'today'
+                                            ? '今日待办'
+                                            : '待整理',
+                                        style: TextStyle(
+                                          color: palette.muted,
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w600,
+                                          letterSpacing: 0.6,
+                                        ),
+                                      ),
+                                      const Spacer(),
+                                      Text(
+                                        '单击打开详情',
+                                        style: TextStyle(
+                                          color: palette.faint,
+                                          fontSize: 10.5,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                Expanded(
+                                  child: ListView.builder(
+                                    padding: const EdgeInsets.only(bottom: 92),
+                                    itemCount: tasks.length,
+                                    itemBuilder: (context, index) =>
+                                        _DesktopTaskRow(
+                                          controller: controller,
+                                          task: tasks[index],
+                                          first: index == 0,
+                                        ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          Positioned(
+            right: 30,
+            bottom: 28,
+            child: Focus(
+              focusNode: quickAddFocus,
+              onFocusChange: (focused) {
+                if (focused) {
+                  quickAddFocus.unfocus();
+                  onQuickAdd();
+                }
+              },
+              child: Tooltip(
+                message: '新增任务  Ctrl+N',
+                child: Material(
+                  color: palette.accentStrong,
+                  elevation: 5,
+                  shadowColor: palette.accent.withValues(alpha: 0.24),
+                  borderRadius: BorderRadius.circular(15),
+                  child: InkWell(
+                    key: const ValueKey('quick-add-button'),
+                    borderRadius: BorderRadius.circular(15),
+                    onTap: onQuickAdd,
+                    child: const SizedBox(
+                      width: 52,
+                      height: 52,
+                      child: Icon(
+                        Icons.add_rounded,
+                        size: 25,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DesktopTaskRow extends StatefulWidget {
+  const _DesktopTaskRow({
+    required this.controller,
+    required this.task,
+    required this.first,
+  });
+
+  final TaskController controller;
+  final TaskItem task;
+  final bool first;
+
+  @override
+  State<_DesktopTaskRow> createState() => _DesktopTaskRowState();
+}
+
+class _DesktopTaskRowState extends State<_DesktopTaskRow> {
+  bool hovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = QingxuPalette.of(context);
+    final task = widget.task;
+    final completed = task.status == TaskStatus.completed;
+    final selected = widget.controller.selectedTaskId == task.id;
+    final project = task.projectId == null
+        ? null
+        : TaskController.projects
+              .where((value) => value.id == task.projectId)
+              .firstOrNull;
+    final scheduledAt = task.startAt?.toLocal();
+    final showTime =
+        scheduledAt != null && widget.controller.activeView == 'today';
+    final highlighted = selected || hovered;
+
+    return MouseRegion(
+      onEnter: (_) => setState(() => hovered = true),
+      onExit: (_) => setState(() => hovered = false),
+      child: AnimatedContainer(
+        duration: QingxuMotion.quick,
+        decoration: BoxDecoration(
+          color: highlighted
+              ? palette.surfaceRaised.withValues(alpha: selected ? 1 : 0.68)
+              : Colors.transparent,
+          border: Border(
+            top: widget.first
+                ? BorderSide(color: palette.border)
+                : BorderSide.none,
+            bottom: BorderSide(color: palette.border),
+            left: BorderSide(
+              color: selected ? palette.accent : Colors.transparent,
+              width: 3,
+            ),
+          ),
+        ),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: () => widget.controller.selectTask(task.id),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 68),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(15, 13, 10, 13),
+                child: Row(
+                  children: [
+                    InkResponse(
+                      onTap: () => widget.controller.toggleTask(task),
+                      radius: 22,
+                      child: AnimatedContainer(
+                        duration: QingxuMotion.quick,
+                        width: 21,
+                        height: 21,
+                        decoration: BoxDecoration(
+                          color: completed
+                              ? palette.accent
+                              : Colors.transparent,
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: completed ? palette.accent : palette.faint,
+                            width: 1.4,
+                          ),
+                        ),
+                        child: completed
+                            ? const Icon(
+                                Icons.check_rounded,
+                                size: 14,
+                                color: Colors.white,
+                              )
+                            : null,
+                      ),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(
+                            task.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: completed ? palette.faint : palette.ink,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w500,
+                              decoration: completed
+                                  ? TextDecoration.lineThrough
+                                  : null,
+                            ),
+                          ),
+                          if (project != null ||
+                              task.notes.isNotEmpty ||
+                              showTime) ...[
+                            const SizedBox(height: 6),
+                            Wrap(
+                              spacing: 12,
+                              children: [
+                                if (showTime)
+                                  _TaskMeta(
+                                    icon: Icons.schedule_rounded,
+                                    label: _TaskRow._formatTime(scheduledAt),
+                                  ),
+                                if (project != null)
+                                  _ProjectMeta(project: project),
+                                if (task.notes.isNotEmpty)
+                                  const _TaskMeta(
+                                    icon: Icons.notes_rounded,
+                                    label: '有备注',
+                                  ),
+                              ],
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                    AnimatedOpacity(
+                      duration: QingxuMotion.quick,
+                      opacity: highlighted ? 1 : 0,
+                      child: IconButton(
+                        tooltip: '删除任务',
+                        visualDensity: VisualDensity.compact,
+                        onPressed: () async {
+                          if (!await confirmTaskDeletion(context, task) ||
+                              !context.mounted) {
+                            return;
+                          }
+                          final messenger = ScaffoldMessenger.of(context);
+                          widget.controller.deleteTask(task);
+                          showTaskDeletionUndo(
+                            messenger,
+                            widget.controller,
+                            task,
+                          );
+                        },
+                        icon: Icon(
+                          Icons.delete_outline_rounded,
+                          size: 18,
+                          color: palette.muted,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _TaskCount extends StatelessWidget {
