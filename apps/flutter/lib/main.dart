@@ -18,7 +18,7 @@ Future<void> main() async {
   if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows) {
     await windowManager.ensureInitialized();
     const options = WindowOptions(
-      size: Size(196, 72),
+      size: Size(192, 64),
       alwaysOnTop: true,
       backgroundColor: Colors.transparent,
       skipTaskbar: true,

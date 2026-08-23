@@ -29,14 +29,16 @@ class WindowsWidgetShell extends StatefulWidget {
 
 class _WindowsWidgetShellState extends State<WindowsWidgetShell>
     with tray.TrayListener, WindowListener {
-  static const _collapsedSize = Size(196, 72);
-  static const _expandedSize = Size(286, 296);
+  static const _collapsedSize = Size(192, 64);
+  static const _expandedSize = Size(292, 292);
   static const _settingsSize = Size(360, 560);
 
   Timer? _ticker;
   Timer? _collapseTimer;
   bool _showSettings = false;
   bool _expanded = false;
+  bool _pointerInside = false;
+  int _windowRequest = 0;
 
   @override
   void initState() {
@@ -45,7 +47,7 @@ class _WindowsWidgetShellState extends State<WindowsWidgetShell>
     windowManager.addListener(this);
     tray.trayManager.addListener(this);
     unawaited(_initializeTray());
-    _ticker = Timer.periodic(const Duration(milliseconds: 500), (_) {
+    _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
       widget.controller.advancePomodoroIfNeeded();
       if (mounted) setState(() {});
     });
@@ -139,6 +141,7 @@ class _WindowsWidgetShellState extends State<WindowsWidgetShell>
       setState(() {
         _showSettings = false;
         _expanded = false;
+        _pointerInside = false;
       });
     }
     await _resize(_collapsedSize);
@@ -161,23 +164,32 @@ class _WindowsWidgetShellState extends State<WindowsWidgetShell>
   Future<void> _expand() async {
     _collapseTimer?.cancel();
     if (_expanded || _showSettings) return;
+    final request = ++_windowRequest;
     await _resize(_expandedSize);
-    if (mounted) setState(() => _expanded = true);
+    if (mounted && request == _windowRequest && _pointerInside) {
+      setState(() => _expanded = true);
+    }
   }
 
   void _scheduleCollapse() {
     _collapseTimer?.cancel();
     if (_showSettings) return;
-    _collapseTimer = Timer(const Duration(milliseconds: 700), () async {
-      if (!mounted || _showSettings) return;
+    _collapseTimer = Timer(const Duration(milliseconds: 520), () async {
+      if (!mounted || _showSettings || _pointerInside) return;
+      final request = ++_windowRequest;
       setState(() => _expanded = false);
-      await Future<void>.delayed(const Duration(milliseconds: 16));
-      if (mounted && !_showSettings) await _resize(_collapsedSize);
+      if (mounted &&
+          request == _windowRequest &&
+          !_showSettings &&
+          !_pointerInside) {
+        await _resize(_collapsedSize);
+      }
     });
   }
 
   Future<void> _openSettings() async {
     _collapseTimer?.cancel();
+    ++_windowRequest;
     await windowManager.show();
     await _resize(_settingsSize);
     if (mounted) {
@@ -190,6 +202,7 @@ class _WindowsWidgetShellState extends State<WindowsWidgetShell>
   }
 
   Future<void> _closeSettings() async {
+    ++_windowRequest;
     if (mounted) {
       setState(() {
         _showSettings = false;
@@ -221,13 +234,8 @@ class _WindowsWidgetShellState extends State<WindowsWidgetShell>
     return tasks;
   }
 
-  Future<void> _addTask() async {
-    final title = await showDialog<String>(
-      context: context,
-      barrierColor: Colors.black.withValues(alpha: 0.14),
-      builder: (context) => const _WidgetAddDialog(),
-    );
-    if (title == null || title.trim().isEmpty) return;
+  void _addTask(String title) {
+    if (title.trim().isEmpty) return;
     widget.controller.selectView('today');
     widget.controller.addTask(title.trim());
   }
@@ -237,8 +245,14 @@ class _WindowsWidgetShellState extends State<WindowsWidgetShell>
     return Material(
       type: MaterialType.transparency,
       child: MouseRegion(
-        onEnter: (_) => unawaited(_expand()),
-        onExit: (_) => _scheduleCollapse(),
+        onEnter: (_) {
+          _pointerInside = true;
+          unawaited(_expand());
+        },
+        onExit: (_) {
+          _pointerInside = false;
+          _scheduleCollapse();
+        },
         child: Stack(
           children: [
             const Positioned.fill(
@@ -253,26 +267,30 @@ class _WindowsWidgetShellState extends State<WindowsWidgetShell>
               )
             else if (!_expanded)
               Center(
-                child: _TimerCapsule(
-                  controller: widget.controller,
-                  expanded: false,
+                child: RepaintBoundary(
+                  child: _TimerCapsule(
+                    controller: widget.controller,
+                    expanded: false,
+                  ),
                 ),
               )
             else
               Padding(
-                padding: const EdgeInsets.fromLTRB(8, 6, 8, 10),
+                padding: const EdgeInsets.fromLTRB(10, 4, 10, 10),
                 child: Column(
                   children: [
-                    _TimerCapsule(
-                      controller: widget.controller,
-                      expanded: true,
+                    RepaintBoundary(
+                      child: _TimerCapsule(
+                        controller: widget.controller,
+                        expanded: true,
+                      ),
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 10),
                     _TodayPanel(
                       controller: widget.controller,
                       tasks: _todayTasks,
                       onAdd: _addTask,
-                      height: 202,
+                      height: 212,
                       maxTasks: 3,
                     ),
                   ],
@@ -285,7 +303,7 @@ class _WindowsWidgetShellState extends State<WindowsWidgetShell>
   }
 }
 
-class _TodayPanel extends StatelessWidget {
+class _TodayPanel extends StatefulWidget {
   const _TodayPanel({
     required this.controller,
     required this.tasks,
@@ -296,18 +314,60 @@ class _TodayPanel extends StatelessWidget {
 
   final TaskController controller;
   final List<TaskItem> tasks;
-  final VoidCallback onAdd;
+  final ValueChanged<String> onAdd;
   final double height;
   final int maxTasks;
 
   @override
+  State<_TodayPanel> createState() => _TodayPanelState();
+}
+
+class _TodayPanelState extends State<_TodayPanel> {
+  final _quickAddController = TextEditingController();
+  final _quickAddFocus = FocusNode();
+  bool _adding = false;
+
+  @override
+  void dispose() {
+    _quickAddController.dispose();
+    _quickAddFocus.dispose();
+    super.dispose();
+  }
+
+  void _beginAdding() {
+    setState(() => _adding = true);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _quickAddFocus.requestFocus();
+    });
+  }
+
+  void _cancelAdding() {
+    _quickAddController.clear();
+    setState(() => _adding = false);
+  }
+
+  void _submit() {
+    final value = _quickAddController.text.trim();
+    if (value.isEmpty) {
+      _cancelAdding();
+      return;
+    }
+    widget.onAdd(value);
+    _quickAddController.clear();
+    setState(() => _adding = false);
+  }
+
+  @override
   Widget build(BuildContext context) {
     final palette = QingxuPalette.of(context);
-    final visible = tasks.take(maxTasks).toList();
+    final visible = widget.tasks
+        .take(_adding ? widget.maxTasks - 1 : widget.maxTasks)
+        .toList();
     return Container(
-      height: height,
-      padding: const EdgeInsets.fromLTRB(18, 15, 14, 12),
-      decoration: _floatingDecoration(context, radius: 22),
+      key: const ValueKey('windows-today-panel'),
+      height: widget.height,
+      padding: const EdgeInsets.fromLTRB(16, 14, 12, 12),
+      decoration: _floatingDecoration(context, radius: 20),
       child: Column(
         children: [
           Row(
@@ -331,36 +391,48 @@ class _TodayPanel extends StatelessWidget {
                 ],
               ),
               const Spacer(),
+              _SyncDot(activity: widget.controller.syncActivity),
+              const SizedBox(width: 6),
               Text(
-                '${tasks.length}',
-                style: TextStyle(color: palette.faint, fontSize: 11),
+                '${widget.tasks.length}',
+                style: TextStyle(color: palette.faint, fontSize: 10.5),
               ),
               const SizedBox(width: 3),
               _HoverButton(
                 tooltip: '新增今日任务',
                 icon: Icons.add_rounded,
-                onPressed: onAdd,
+                onPressed: _beginAdding,
               ),
             ],
           ),
           const SizedBox(height: 7),
           Expanded(
-            child: visible.isEmpty
+            child: visible.isEmpty && !_adding
                 ? Center(
                     child: Text(
-                      '今天没有待办',
+                      '今天很清静',
                       style: TextStyle(color: palette.muted, fontSize: 12),
                     ),
                   )
                 : Column(
                     children: [
+                      if (_adding)
+                        _QuickAddRow(
+                          controller: _quickAddController,
+                          focusNode: _quickAddFocus,
+                          onSubmitted: _submit,
+                          onCancel: _cancelAdding,
+                        ),
                       for (final task in visible)
-                        _TodayTaskRow(controller: controller, task: task),
-                      if (tasks.length > visible.length)
+                        _TodayTaskRow(
+                          controller: widget.controller,
+                          task: task,
+                        ),
+                      if (widget.tasks.length > visible.length)
                         Padding(
-                          padding: const EdgeInsets.only(top: 6),
+                          padding: const EdgeInsets.only(top: 4),
                           child: Text(
-                            '还有 ${tasks.length - visible.length} 项',
+                            '还有 ${widget.tasks.length - visible.length} 项',
                             style: TextStyle(
                               color: palette.faint,
                               fontSize: 10,
@@ -390,32 +462,115 @@ class _TodayTaskRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = QingxuPalette.of(context);
+    return Material(
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(10),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(10),
+        onTap: () => controller.toggleTask(task),
+        child: SizedBox(
+          height: 35,
+          child: Row(
+            children: [
+              const SizedBox(width: 4),
+              Container(
+                width: 16,
+                height: 16,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(color: palette.faint, width: 1.2),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  task.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: palette.ink,
+                    fontSize: 12,
+                    height: 1.2,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 6),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _QuickAddRow extends StatelessWidget {
+  const _QuickAddRow({
+    required this.controller,
+    required this.focusNode,
+    required this.onSubmitted,
+    required this.onCancel,
+  });
+
+  final TextEditingController controller;
+  final FocusNode focusNode;
+  final VoidCallback onSubmitted;
+  final VoidCallback onCancel;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = QingxuPalette.of(context);
     return SizedBox(
       height: 35,
-      child: Row(
-        children: [
-          InkResponse(
-            radius: 18,
-            onTap: () => controller.toggleTask(task),
-            child: Container(
-              width: 17,
-              height: 17,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(color: palette.faint, width: 1.2),
-              ),
-            ),
+      child: TextField(
+        key: const ValueKey('windows-quick-add'),
+        controller: controller,
+        focusNode: focusNode,
+        textInputAction: TextInputAction.done,
+        style: TextStyle(color: palette.ink, fontSize: 12),
+        onSubmitted: (_) => onSubmitted(),
+        decoration: InputDecoration(
+          hintText: '添加今天的任务',
+          hintStyle: TextStyle(color: palette.faint, fontSize: 12),
+          isDense: true,
+          contentPadding: const EdgeInsets.fromLTRB(11, 8, 4, 8),
+          suffixIconConstraints: const BoxConstraints.tightFor(
+            width: 30,
+            height: 30,
           ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              task.title,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(color: palette.ink, fontSize: 12),
-            ),
+          suffixIcon: IconButton(
+            tooltip: '取消',
+            padding: EdgeInsets.zero,
+            onPressed: onCancel,
+            icon: Icon(Icons.close_rounded, size: 15, color: palette.faint),
           ),
-        ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SyncDot extends StatelessWidget {
+  const _SyncDot({required this.activity});
+
+  final SyncActivity activity;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = QingxuPalette.of(context);
+    final (color, label) = switch (activity) {
+      SyncActivity.success => (palette.success, '同步完成'),
+      SyncActivity.syncing || SyncActivity.testing => (palette.accent, '正在同步'),
+      SyncActivity.error => (palette.danger, '同步异常'),
+      SyncActivity.idle => (palette.faint, '等待同步'),
+      SyncActivity.unconfigured => (palette.border, '仅保存在本地'),
+    };
+    return Tooltip(
+      message: label,
+      child: AnimatedContainer(
+        duration: QingxuMotion.quick,
+        width: 6,
+        height: 6,
+        decoration: BoxDecoration(color: color, shape: BoxShape.circle),
       ),
     );
   }
@@ -443,21 +598,22 @@ class _TimerCapsule extends StatelessWidget {
 
     return DragToMoveArea(
       child: Container(
-        width: expanded ? 270 : 188,
-        height: 62,
-        padding: const EdgeInsets.fromLTRB(10, 8, 12, 8),
-        decoration: _floatingDecoration(context, radius: 31, shadow: false),
+        key: const ValueKey('windows-timer-capsule'),
+        width: expanded ? 272 : 184,
+        height: 56,
+        padding: const EdgeInsets.fromLTRB(9, 7, 11, 7),
+        decoration: _floatingDecoration(context, radius: 28, shadow: false),
         child: Row(
           children: [
             SizedBox(
-              width: 46,
-              height: 46,
+              width: 42,
+              height: 42,
               child: Stack(
                 fit: StackFit.expand,
                 children: [
                   CircularProgressIndicator(
                     value: progress,
-                    strokeWidth: 3.5,
+                    strokeWidth: 3,
                     strokeCap: StrokeCap.round,
                     backgroundColor: palette.border.withValues(alpha: 0.72),
                     valueColor: AlwaysStoppedAnimation(palette.accent),
@@ -468,14 +624,14 @@ class _TimerCapsule extends StatelessWidget {
                     onPressed: controller.togglePomodoro,
                     icon: Icon(
                       running ? Icons.pause_rounded : Icons.play_arrow_rounded,
-                      size: 20,
+                      size: 18,
                       color: palette.accentStrong,
                     ),
                   ),
                 ],
               ),
             ),
-            const SizedBox(width: 10),
+            const SizedBox(width: 9),
             Expanded(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -503,20 +659,20 @@ class _TimerCapsule extends StatelessWidget {
                       mode,
                       style: TextStyle(
                         color: palette.muted,
-                        fontSize: 9.5,
+                        fontSize: 9,
                         height: 1,
                       ),
                     ),
                   ),
-                  const SizedBox(height: 2),
+                  const SizedBox(height: 3),
                   Text(
                     _formatSeconds(remaining),
                     style: TextStyle(
                       color: palette.ink,
-                      fontSize: 23,
+                      fontSize: 22,
                       height: 1,
-                      fontWeight: FontWeight.w500,
-                      letterSpacing: -0.5,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: -0.6,
                       fontFeatures: const [FontFeature.tabularFigures()],
                     ),
                   ),
@@ -642,46 +798,6 @@ class _FloatingSettings extends StatelessWidget {
   );
 }
 
-class _WidgetAddDialog extends StatefulWidget {
-  const _WidgetAddDialog();
-
-  @override
-  State<_WidgetAddDialog> createState() => _WidgetAddDialogState();
-}
-
-class _WidgetAddDialogState extends State<_WidgetAddDialog> {
-  final controller = TextEditingController();
-
-  @override
-  void dispose() {
-    controller.dispose();
-    super.dispose();
-  }
-
-  void _submit() {
-    final value = controller.text.trim();
-    if (value.isNotEmpty) Navigator.pop(context, value);
-  }
-
-  @override
-  Widget build(BuildContext context) => AlertDialog(
-    title: const Text('添加到今天'),
-    content: TextField(
-      controller: controller,
-      autofocus: true,
-      decoration: const InputDecoration(hintText: '要做什么？'),
-      onSubmitted: (_) => _submit(),
-    ),
-    actions: [
-      TextButton(
-        onPressed: () => Navigator.pop(context),
-        child: const Text('取消'),
-      ),
-      FilledButton(onPressed: _submit, child: const Text('添加')),
-    ],
-  );
-}
-
 BoxDecoration _floatingDecoration(
   BuildContext context, {
   double? radius,
@@ -702,9 +818,9 @@ BoxDecoration _floatingDecoration(
     boxShadow: shadow
         ? [
             BoxShadow(
-              color: Colors.black.withValues(alpha: dark ? 0.18 : 0.08),
-              blurRadius: 10,
-              offset: const Offset(0, 3),
+              color: Colors.black.withValues(alpha: dark ? 0.16 : 0.065),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
             ),
           ]
         : const [],

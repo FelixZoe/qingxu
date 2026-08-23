@@ -40,6 +40,8 @@ class _AppShellState extends State<AppShell> {
 
   @override
   Widget build(BuildContext context) {
+    final useWindowsWidget =
+        !kIsWeb && defaultTargetPlatform == TargetPlatform.windows;
     return CallbackShortcuts(
       bindings: {
         const SingleActivator(LogicalKeyboardKey.keyN, control: true):
@@ -53,45 +55,43 @@ class _AppShellState extends State<AppShell> {
       },
       child: Focus(
         autofocus: true,
-        child: AnimatedBuilder(
-          animation: widget.controller,
-          builder: (context, _) => LayoutBuilder(
-            builder: (context, constraints) {
-              final palette = QingxuPalette.of(context);
-              final useWindowsWidget =
-                  !kIsWeb && defaultTargetPlatform == TargetPlatform.windows;
-              if (useWindowsWidget) {
-                return WindowsWidgetShell(
-                  controller: widget.controller,
-                  themeMode: widget.themeMode,
-                  onThemeModeChanged: widget.onThemeModeChanged,
-                );
-              }
-              final compact = constraints.maxWidth < 760;
-              final useNativeIosTabs =
-                  !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS;
-              final useAndroidTabs =
-                  !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
-              if (compact || useNativeIosTabs || useAndroidTabs) {
-                return _CompactShell(
-                  controller: widget.controller,
-                  quickAddFocus: quickAddFocus,
-                  searchFocus: searchFocus,
-                  themeMode: widget.themeMode,
-                  onThemeModeChanged: widget.onThemeModeChanged,
-                );
-              }
-              return _DesktopShell(
+        child: useWindowsWidget
+            ? WindowsWidgetShell(
                 controller: widget.controller,
-                quickAddFocus: quickAddFocus,
-                searchFocus: searchFocus,
                 themeMode: widget.themeMode,
                 onThemeModeChanged: widget.onThemeModeChanged,
-                palette: palette,
-              );
-            },
-          ),
-        ),
+              )
+            : AnimatedBuilder(
+                animation: widget.controller,
+                builder: (context, _) => LayoutBuilder(
+                  builder: (context, constraints) {
+                    final palette = QingxuPalette.of(context);
+                    final compact = constraints.maxWidth < 760;
+                    final useNativeIosTabs =
+                        !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS;
+                    final useAndroidTabs =
+                        !kIsWeb &&
+                        defaultTargetPlatform == TargetPlatform.android;
+                    if (compact || useNativeIosTabs || useAndroidTabs) {
+                      return _CompactShell(
+                        controller: widget.controller,
+                        quickAddFocus: quickAddFocus,
+                        searchFocus: searchFocus,
+                        themeMode: widget.themeMode,
+                        onThemeModeChanged: widget.onThemeModeChanged,
+                      );
+                    }
+                    return _DesktopShell(
+                      controller: widget.controller,
+                      quickAddFocus: quickAddFocus,
+                      searchFocus: searchFocus,
+                      themeMode: widget.themeMode,
+                      onThemeModeChanged: widget.onThemeModeChanged,
+                      palette: palette,
+                    );
+                  },
+                ),
+              ),
       ),
     );
   }
