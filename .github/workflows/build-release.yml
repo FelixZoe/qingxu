@@ -486,13 +486,13 @@ jobs:
           fi
 
           sed -i -E "s/^version:.*/version: ${APP_VERSION}+${BUILD_NUMBER}/" apps/flutter/pubspec.yaml
-          sed -i -E "s/^    MARKETING_VERSION:.*/    MARKETING_VERSION: \"${APP_VERSION}\"/" apps/apple/project.yml
-          sed -i -E "s/^    CURRENT_PROJECT_VERSION:.*/    CURRENT_PROJECT_VERSION: \"${BUILD_NUMBER}\"/" apps/apple/project.yml
+          sed -i -E "s/^([[:space:]]*)MARKETING_VERSION:.*/\1MARKETING_VERSION: \"${APP_VERSION}\"/" apps/apple/project.yml
+          sed -i -E "s/^([[:space:]]*)CURRENT_PROJECT_VERSION:.*/\1CURRENT_PROJECT_VERSION: \"${BUILD_NUMBER}\"/" apps/apple/project.yml
           sed -i -E "s/^#define MyAppVersion .*/#define MyAppVersion \"${APP_VERSION}\"/" scripts/windows/Qingxu.iss
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add apps/flutter/pubspec.yaml scripts/windows/Qingxu.iss
+          git add apps/flutter/pubspec.yaml apps/apple/project.yml scripts/windows/Qingxu.iss
           if git diff --cached --quiet; then
             echo "Version metadata is already current."
           else

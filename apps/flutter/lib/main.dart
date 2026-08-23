@@ -267,27 +267,23 @@ class _StartupView extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            DecoratedBox(
-              decoration: BoxDecoration(
+            ClipRRect(
+              borderRadius: BorderRadius.circular(18),
+              child: Image.asset(
+                'assets/branding/qingxu-icon-master-black.png',
+                width: 68,
+                height: 68,
+              ),
+            ),
+            const SizedBox(height: 24),
+            SizedBox(
+              width: 42,
+              child: LinearProgressIndicator(
+                minHeight: 1.5,
                 color: palette.accent,
-                borderRadius: const BorderRadius.all(Radius.circular(16)),
+                backgroundColor: palette.border,
+                borderRadius: BorderRadius.circular(1),
               ),
-              child: const SizedBox(
-                width: 54,
-                height: 54,
-                child: Icon(Icons.check_rounded, color: Colors.white, size: 32),
-              ),
-            ),
-            const SizedBox(height: 18),
-            const Text(
-              '清序',
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
-            ),
-            const SizedBox(height: 18),
-            const SizedBox(
-              width: 22,
-              height: 22,
-              child: CircularProgressIndicator(strokeWidth: 2.2),
             ),
           ],
         ),

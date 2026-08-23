@@ -26,24 +26,28 @@ enum AppearanceMode: String, CaseIterable, Identifiable {
 
 enum QingxuPalette {
   static let background = Color.adaptive(
-    light: (0.969, 0.957, 0.925),
-    dark: (0.020, 0.047, 0.037)
+    light: (0.957, 0.945, 0.918),
+    dark: (0.078, 0.078, 0.071)
   )
   static let surface = Color.adaptive(
-    light: (0.996, 0.992, 0.973),
-    dark: (0.047, 0.094, 0.074)
+    light: (0.984, 0.976, 0.957),
+    dark: (0.110, 0.110, 0.098)
   )
   static let accent = Color.adaptive(
-    light: (0.275, 0.451, 0.588),
-    dark: (0.365, 0.714, 0.529)
+    light: (0.718, 0.400, 0.302),
+    dark: (0.784, 0.529, 0.380)
+  )
+  static let ink = Color.adaptive(
+    light: (0.133, 0.133, 0.122),
+    dark: (0.949, 0.933, 0.902)
   )
   static let quiet = Color.adaptive(
-    light: (0.412, 0.451, 0.471),
-    dark: (0.615, 0.694, 0.647)
+    light: (0.435, 0.424, 0.396),
+    dark: (0.655, 0.631, 0.596)
   )
   static let separator = Color.adaptive(
-    light: (0.827, 0.816, 0.780),
-    dark: (0.118, 0.204, 0.165)
+    light: (0.871, 0.847, 0.804),
+    dark: (0.204, 0.196, 0.176)
   )
 }
 

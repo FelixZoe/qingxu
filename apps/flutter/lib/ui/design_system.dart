@@ -19,42 +19,40 @@ class QingxuPalette extends ThemeExtension<QingxuPalette> {
     required this.info,
   });
 
-  // Porcelain ivory with a restrained mineral blue. Warmth is kept subtle so
-  // large areas stay clean instead of reading as yellow or aged paper.
+  // Editorial paper, charcoal ink, and a restrained terracotta accent.
   static const light = QingxuPalette(
-    accent: Color(0xFF5B7D92),
-    accentStrong: Color(0xFF365D74),
-    accentSoft: Color(0xFFE3ECF0),
-    canvas: Color(0xFFF5F5F1),
-    surface: Color(0xFFFCFCF9),
+    accent: Color(0xFFB7664D),
+    accentStrong: Color(0xFF8B4331),
+    accentSoft: Color(0xFFF0DED5),
+    canvas: Color(0xFFF4F1EA),
+    surface: Color(0xFFFBF9F4),
     surfaceRaised: Color(0xFFFFFFFF),
-    sidebar: Color(0xFFEDF1F2),
-    ink: Color(0xFF18262D),
-    muted: Color(0xFF68767C),
-    faint: Color(0xFF96A0A3),
-    border: Color(0xFFE0E5E4),
-    success: Color(0xFF547B67),
-    danger: Color(0xFFB55F59),
-    info: Color(0xFF5B7D92),
+    sidebar: Color(0xFFECE7DD),
+    ink: Color(0xFF22221F),
+    muted: Color(0xFF6F6C65),
+    faint: Color(0xFF9A958B),
+    border: Color(0xFFDED8CD),
+    success: Color(0xFF60796B),
+    danger: Color(0xFFB4544D),
+    info: Color(0xFF8A6B5A),
   );
 
-  // Neutral graphite surfaces with forest green reserved for interaction and
-  // progress. This avoids the previous all-over green cast in dark mode.
+  // Warm graphite keeps dark mode neutral; copper is reserved for action.
   static const dark = QingxuPalette(
-    accent: Color(0xFF73A385),
-    accentStrong: Color(0xFF9AC3A7),
-    accentSoft: Color(0xFF203029),
-    canvas: Color(0xFF0E100F),
-    surface: Color(0xFF151816),
-    surfaceRaised: Color(0xFF1B1F1C),
-    sidebar: Color(0xFF121614),
-    ink: Color(0xFFEEF1EF),
-    muted: Color(0xFFA4ACA7),
-    faint: Color(0xFF727A75),
-    border: Color(0xFF2B312D),
-    success: Color(0xFF73A385),
-    danger: Color(0xFFD27B72),
-    info: Color(0xFF7DA4B6),
+    accent: Color(0xFFC88761),
+    accentStrong: Color(0xFFE0A982),
+    accentSoft: Color(0xFF3A2A22),
+    canvas: Color(0xFF141412),
+    surface: Color(0xFF1C1C19),
+    surfaceRaised: Color(0xFF24231F),
+    sidebar: Color(0xFF181816),
+    ink: Color(0xFFF2EEE6),
+    muted: Color(0xFFA7A198),
+    faint: Color(0xFF77736C),
+    border: Color(0xFF34322D),
+    success: Color(0xFF7E9B88),
+    danger: Color(0xFFD07B70),
+    info: Color(0xFF9B8C7C),
   );
 
   static QingxuPalette of(BuildContext context) =>
