@@ -20,8 +20,8 @@ targets:
       - path: Shared
       - path: iOS
       - path: ../flutter/ios/Shared/QingxuPomodoroAttributes.swift
-    resources:
       - path: ../flutter/ios/Runner/Assets.xcassets
+        buildPhase: resources
     dependencies:
       - target: QingxuWidgets
         embed: true
@@ -71,8 +71,8 @@ targets:
     sources:
       - path: Shared
       - path: macOS
-    resources:
       - path: ../flutter/macos/Runner/Assets.xcassets
+        buildPhase: resources
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: one.darker.qingxu
