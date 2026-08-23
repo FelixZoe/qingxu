@@ -1,9 +1,14 @@
 import ActivityKit
 import Foundation
+import OSLog
 import WidgetKit
 
 enum SystemFeatures {
   private static let appGroup = "group.one.darker.qingxu"
+  private static let logger = Logger(
+    subsystem: "one.darker.qingxu",
+    category: "LiveActivity"
+  )
 
   static func refresh(pomodoro: PomodoroState, todayTaskCount: Int) {
     let defaults = UserDefaults(suiteName: appGroup)
@@ -31,21 +36,28 @@ enum SystemFeatures {
 
   private static func updateLiveActivity(_ pomodoro: PomodoroState) {
     guard #available(iOS 16.2, *) else { return }
-    Task {
+    Task(priority: .userInitiated) {
       let activities = Activity<QingxuPomodoroAttributes>.activities
       if pomodoro.status == .running {
         if let activity = activities.first {
           await activity.update(content(pomodoro))
+          for duplicate in activities.dropFirst() {
+            await duplicate.end(content(pomodoro), dismissalPolicy: .immediate)
+          }
         } else if ActivityAuthorizationInfo().areActivitiesEnabled {
-          _ = try? Activity.request(
-            attributes: QingxuPomodoroAttributes(title: "清序专注"),
-            content: content(pomodoro),
-            pushType: nil
-          )
+          do {
+            _ = try Activity.request(
+              attributes: QingxuPomodoroAttributes(title: "清序专注"),
+              content: content(pomodoro),
+              pushType: nil
+            )
+          } catch {
+            logger.error("Unable to start Live Activity: \(error.localizedDescription, privacy: .public)")
+          }
         }
       } else {
         for activity in activities {
-          await activity.end(content(pomodoro), dismissalPolicy: .default)
+          await activity.end(content(pomodoro), dismissalPolicy: .immediate)
         }
       }
     }

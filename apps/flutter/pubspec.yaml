@@ -40,6 +40,7 @@ dependencies:
   cupertino_icons: ^1.0.8
   web: ^1.1.1
   path_provider: ^2.1.6
+  tray_manager: ^0.5.3
   window_manager: ^0.5.1
 dev_dependencies:
   flutter_test:

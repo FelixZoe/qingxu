@@ -431,7 +431,7 @@ class TaskController extends ChangeNotifier {
     _pomodoro = value;
     _notifyListeners();
     unawaited(_persistPomodoro().catchError((Object _) {}));
-    _scheduleSync(delay: const Duration(milliseconds: 250));
+    _scheduleSync(delay: Duration.zero);
     _configureAutoPull();
     _publishSystemSnapshot();
   }

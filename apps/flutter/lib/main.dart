@@ -18,10 +18,10 @@ Future<void> main() async {
   if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows) {
     await windowManager.ensureInitialized();
     const options = WindowOptions(
-      size: Size(184, 184),
+      size: Size(196, 72),
       alwaysOnTop: true,
       backgroundColor: Colors.transparent,
-      skipTaskbar: false,
+      skipTaskbar: true,
       titleBarStyle: TitleBarStyle.hidden,
       windowButtonVisibility: false,
     );
@@ -30,6 +30,7 @@ Future<void> main() async {
       await windowManager.setResizable(false);
       await windowManager.setHasShadow(false);
       await windowManager.setAlwaysOnTop(true);
+      await windowManager.setPreventClose(true);
       await windowManager.setAlignment(Alignment.topRight);
       await windowManager.show();
     });

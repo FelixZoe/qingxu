@@ -254,7 +254,7 @@ final class AppStore: ObservableObject {
     displayedRemainingSeconds = pomodoro.remaining(at: estimatedNow)
     try? QingxuFiles.save(pomodoro, name: "pomodoro.json")
     refreshSystemSurfaces()
-    scheduleSync(delay: .milliseconds(250))
+    scheduleSync(delay: .zero)
   }
 
   private func persistAll() throws {

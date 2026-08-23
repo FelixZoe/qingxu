@@ -48,6 +48,7 @@ targets:
           - CFBundleURLName: one.darker.qingxu
             CFBundleURLSchemes: [qingxu]
         NSSupportsLiveActivities: true
+        NSSupportsLiveActivitiesFrequentUpdates: true
   QingxuWidgets:
     type: app-extension
     platform: iOS

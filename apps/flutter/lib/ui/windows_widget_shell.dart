@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:tray_manager/tray_manager.dart' as tray;
 import 'package:window_manager/window_manager.dart';
 
 import '../models/pomodoro_state.dart';
@@ -25,9 +27,10 @@ class WindowsWidgetShell extends StatefulWidget {
   State<WindowsWidgetShell> createState() => _WindowsWidgetShellState();
 }
 
-class _WindowsWidgetShellState extends State<WindowsWidgetShell> {
-  static const _collapsedSize = Size(184, 184);
-  static const _expandedSize = Size(308, 438);
+class _WindowsWidgetShellState extends State<WindowsWidgetShell>
+    with tray.TrayListener, WindowListener {
+  static const _collapsedSize = Size(196, 72);
+  static const _expandedSize = Size(286, 296);
   static const _settingsSize = Size(360, 560);
 
   Timer? _ticker;
@@ -39,6 +42,9 @@ class _WindowsWidgetShellState extends State<WindowsWidgetShell> {
   void initState() {
     super.initState();
     widget.controller.addListener(_refresh);
+    windowManager.addListener(this);
+    tray.trayManager.addListener(this);
+    unawaited(_initializeTray());
     _ticker = Timer.periodic(const Duration(milliseconds: 500), (_) {
       widget.controller.advancePomodoroIfNeeded();
       if (mounted) setState(() {});
@@ -59,11 +65,92 @@ class _WindowsWidgetShellState extends State<WindowsWidgetShell> {
     _ticker?.cancel();
     _collapseTimer?.cancel();
     widget.controller.removeListener(_refresh);
+    windowManager.removeListener(this);
+    tray.trayManager.removeListener(this);
     super.dispose();
   }
 
   void _refresh() {
     if (mounted) setState(() {});
+  }
+
+  Future<void> _initializeTray() async {
+    final separator = Platform.pathSeparator;
+    final executableDirectory = File(Platform.resolvedExecutable).parent.path;
+    final iconPath = [
+      executableDirectory,
+      'data',
+      'flutter_assets',
+      'assets',
+      'branding',
+      'qingxu-tray.ico',
+    ].join(separator);
+    try {
+      await tray.trayManager.setIcon(iconPath);
+      await tray.trayManager.setToolTip('清序 · 今日待办与番茄钟');
+      await tray.trayManager.setContextMenu(
+        tray.Menu(
+          items: [
+            tray.MenuItem(key: 'toggle_window', label: '显示 / 隐藏悬浮窗'),
+            tray.MenuItem(key: 'settings', label: '设置'),
+            tray.MenuItem.separator(),
+            tray.MenuItem(key: 'exit', label: '退出清序'),
+          ],
+        ),
+      );
+    } on Object {
+      // The floating widget remains usable if Explorer is restarting.
+    }
+  }
+
+  @override
+  void onTrayIconMouseDown() {
+    unawaited(_toggleWindow());
+  }
+
+  @override
+  void onTrayIconRightMouseDown() {
+    unawaited(tray.trayManager.popUpContextMenu());
+  }
+
+  @override
+  void onTrayMenuItemClick(tray.MenuItem menuItem) {
+    switch (menuItem.key) {
+      case 'toggle_window':
+        unawaited(_toggleWindow());
+      case 'settings':
+        unawaited(_openSettings());
+      case 'exit':
+        unawaited(_exitApplication());
+    }
+  }
+
+  @override
+  void onWindowClose() {
+    unawaited(windowManager.hide());
+  }
+
+  Future<void> _toggleWindow() async {
+    if (await windowManager.isVisible()) {
+      await windowManager.hide();
+      return;
+    }
+    if (mounted) {
+      setState(() {
+        _showSettings = false;
+        _expanded = false;
+      });
+    }
+    await _resize(_collapsedSize);
+    await windowManager.show();
+    await windowManager.focus();
+  }
+
+  Future<void> _exitApplication() async {
+    windowManager.removeListener(this);
+    await tray.trayManager.destroy();
+    await windowManager.setPreventClose(false);
+    await windowManager.close();
   }
 
   Future<void> _resize(Size size) async {
@@ -91,18 +178,25 @@ class _WindowsWidgetShellState extends State<WindowsWidgetShell> {
 
   Future<void> _openSettings() async {
     _collapseTimer?.cancel();
+    await windowManager.show();
     await _resize(_settingsSize);
-    if (mounted) setState(() => _showSettings = true);
+    if (mounted) {
+      setState(() {
+        _showSettings = true;
+        _expanded = false;
+      });
+    }
+    await windowManager.focus();
   }
 
   Future<void> _closeSettings() async {
     if (mounted) {
       setState(() {
         _showSettings = false;
-        _expanded = true;
+        _expanded = false;
       });
     }
-    await _resize(_expandedSize);
+    await _resize(_collapsedSize);
   }
 
   List<TaskItem> get _todayTasks {
@@ -159,96 +253,33 @@ class _WindowsWidgetShellState extends State<WindowsWidgetShell> {
               )
             else if (!_expanded)
               Center(
-                child: _TimerOrb(
+                child: _TimerCapsule(
                   controller: widget.controller,
-                  size: 164,
                   expanded: false,
                 ),
               )
             else
               Padding(
-                padding: const EdgeInsets.fromLTRB(10, 6, 10, 12),
+                padding: const EdgeInsets.fromLTRB(8, 6, 8, 10),
                 child: Column(
                   children: [
-                    _FloatingHandle(
+                    _TimerCapsule(
                       controller: widget.controller,
-                      onSettings: () => unawaited(_openSettings()),
+                      expanded: true,
                     ),
-                    const SizedBox(height: 6),
+                    const SizedBox(height: 8),
                     _TodayPanel(
                       controller: widget.controller,
                       tasks: _todayTasks,
                       onAdd: _addTask,
-                      height: 158,
+                      height: 202,
                       maxTasks: 3,
-                    ),
-                    const Spacer(),
-                    _TimerOrb(
-                      controller: widget.controller,
-                      size: 194,
-                      expanded: true,
                     ),
                   ],
                 ),
               ),
           ],
         ),
-      ),
-    );
-  }
-}
-
-class _FloatingHandle extends StatelessWidget {
-  const _FloatingHandle({required this.controller, required this.onSettings});
-
-  final TaskController controller;
-  final VoidCallback onSettings;
-
-  @override
-  Widget build(BuildContext context) {
-    final palette = QingxuPalette.of(context);
-    return SizedBox(
-      height: 34,
-      child: Row(
-        children: [
-          Expanded(
-            child: DragToMoveArea(
-              child: Row(
-                children: [
-                  Container(
-                    width: 7,
-                    height: 7,
-                    decoration: BoxDecoration(
-                      color: controller.syncSettings.isConfigured
-                          ? palette.success
-                          : palette.faint,
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                  const SizedBox(width: 7),
-                  Text(
-                    '清序',
-                    style: TextStyle(
-                      color: palette.muted,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          _HoverButton(
-            tooltip: '设置',
-            icon: Icons.tune_rounded,
-            onPressed: onSettings,
-          ),
-          _HoverButton(
-            tooltip: '关闭',
-            icon: Icons.close_rounded,
-            onPressed: windowManager.close,
-          ),
-        ],
       ),
     );
   }
@@ -390,15 +421,10 @@ class _TodayTaskRow extends StatelessWidget {
   }
 }
 
-class _TimerOrb extends StatelessWidget {
-  const _TimerOrb({
-    required this.controller,
-    required this.size,
-    required this.expanded,
-  });
+class _TimerCapsule extends StatelessWidget {
+  const _TimerCapsule({required this.controller, required this.expanded});
 
   final TaskController controller;
-  final double size;
   final bool expanded;
 
   @override
@@ -415,95 +441,96 @@ class _TimerOrb extends StatelessWidget {
       PomodoroMode.longBreak => '长休',
     };
 
-    return Container(
-      width: size,
-      height: size,
-      padding: EdgeInsets.all(expanded ? 10 : 8),
-      decoration: _floatingDecoration(context, shape: BoxShape.circle),
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          CircularProgressIndicator(
-            value: progress,
-            strokeWidth: 6,
-            strokeCap: StrokeCap.round,
-            backgroundColor: palette.border.withValues(alpha: 0.72),
-            valueColor: AlwaysStoppedAnimation(palette.accent),
-          ),
-          Padding(
-            padding: EdgeInsets.all(expanded ? 16 : 13),
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: palette.surface.withValues(alpha: 0.72),
-                border: Border.all(
-                  color: palette.border.withValues(alpha: 0.7),
-                ),
+    return DragToMoveArea(
+      child: Container(
+        width: expanded ? 270 : 188,
+        height: 62,
+        padding: const EdgeInsets.fromLTRB(10, 8, 12, 8),
+        decoration: _floatingDecoration(context, radius: 31),
+        child: Row(
+          children: [
+            SizedBox(
+              width: 46,
+              height: 46,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  CircularProgressIndicator(
+                    value: progress,
+                    strokeWidth: 3.5,
+                    strokeCap: StrokeCap.round,
+                    backgroundColor: palette.border.withValues(alpha: 0.72),
+                    valueColor: AlwaysStoppedAnimation(palette.accent),
+                  ),
+                  IconButton(
+                    tooltip: running ? '暂停' : '开始',
+                    visualDensity: VisualDensity.compact,
+                    onPressed: controller.togglePomodoro,
+                    icon: Icon(
+                      running ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                      size: 20,
+                      color: palette.accentStrong,
+                    ),
+                  ),
+                ],
               ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  if (expanded)
-                    PopupMenuButton<PomodoroMode>(
-                      tooltip: '切换计时模式',
-                      initialValue: state.mode,
-                      onSelected: controller.selectPomodoroMode,
-                      itemBuilder: (context) => const [
-                        PopupMenuItem(
-                          value: PomodoroMode.focus,
-                          child: Text('专注'),
-                        ),
-                        PopupMenuItem(
-                          value: PomodoroMode.shortBreak,
-                          child: Text('短休'),
-                        ),
-                        PopupMenuItem(
-                          value: PomodoroMode.longBreak,
-                          child: Text('长休'),
-                        ),
-                      ],
-                      child: Text(
-                        mode,
-                        style: TextStyle(color: palette.muted, fontSize: 10.5),
+                  PopupMenuButton<PomodoroMode>(
+                    tooltip: '切换计时模式',
+                    initialValue: state.mode,
+                    onSelected: controller.selectPomodoroMode,
+                    itemBuilder: (context) => const [
+                      PopupMenuItem(
+                        value: PomodoroMode.focus,
+                        child: Text('专注'),
+                      ),
+                      PopupMenuItem(
+                        value: PomodoroMode.shortBreak,
+                        child: Text('短休'),
+                      ),
+                      PopupMenuItem(
+                        value: PomodoroMode.longBreak,
+                        child: Text('长休'),
+                      ),
+                    ],
+                    child: Text(
+                      mode,
+                      style: TextStyle(
+                        color: palette.muted,
+                        fontSize: 9.5,
+                        height: 1,
                       ),
                     ),
-                  if (expanded) const SizedBox(height: 2),
+                  ),
+                  const SizedBox(height: 2),
                   Text(
                     _formatSeconds(remaining),
                     style: TextStyle(
                       color: palette.ink,
-                      fontSize: expanded ? 31 : 29,
-                      height: 1.1,
-                      fontWeight: FontWeight.w400,
+                      fontSize: 23,
+                      height: 1,
+                      fontWeight: FontWeight.w500,
+                      letterSpacing: -0.5,
                       fontFeatures: const [FontFeature.tabularFigures()],
                     ),
                   ),
-                  if (expanded) const SizedBox(height: 7),
-                  if (expanded)
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        _OrbButton(
-                          tooltip: running ? '暂停' : '开始',
-                          icon: running
-                              ? Icons.pause_rounded
-                              : Icons.play_arrow_rounded,
-                          primary: true,
-                          onPressed: controller.togglePomodoro,
-                        ),
-                        const SizedBox(width: 8),
-                        _OrbButton(
-                          tooltip: '重置',
-                          icon: Icons.replay_rounded,
-                          onPressed: controller.resetPomodoro,
-                        ),
-                      ],
-                    ),
                 ],
               ),
             ),
-          ),
-        ],
+            if (expanded)
+              _OrbButton(
+                tooltip: '重置',
+                icon: Icons.replay_rounded,
+                onPressed: controller.resetPomodoro,
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -520,13 +547,11 @@ class _OrbButton extends StatelessWidget {
     required this.tooltip,
     required this.icon,
     required this.onPressed,
-    this.primary = false,
   });
 
   final String tooltip;
   final IconData icon;
   final VoidCallback onPressed;
-  final bool primary;
 
   @override
   Widget build(BuildContext context) {
@@ -534,7 +559,7 @@ class _OrbButton extends StatelessWidget {
     return Tooltip(
       message: tooltip,
       child: Material(
-        color: primary ? palette.accentStrong : palette.accentSoft,
+        color: palette.accentSoft,
         shape: const CircleBorder(),
         child: InkWell(
           customBorder: const CircleBorder(),
@@ -542,11 +567,7 @@ class _OrbButton extends StatelessWidget {
           child: SizedBox(
             width: 34,
             height: 34,
-            child: Icon(
-              icon,
-              size: 18,
-              color: primary ? Colors.white : palette.accentStrong,
-            ),
+            child: Icon(icon, size: 18, color: palette.accentStrong),
           ),
         ),
       ),
