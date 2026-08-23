@@ -27,23 +27,40 @@ struct QingxuiOSApp: App {
 
 private struct iOSRootView: View {
   @State private var selection = AppTab.inbox
+  @State private var showingLaunchExperience = true
 
   var body: some View {
-    TabView(selection: $selection) {
-      TaskListScreen(scope: .inbox)
-        .tabItem { Label(AppTab.inbox.title, systemImage: AppTab.inbox.symbol) }
-        .tag(AppTab.inbox)
-      TaskListScreen(scope: .today)
-        .tabItem { Label(AppTab.today.title, systemImage: AppTab.today.symbol) }
-        .tag(AppTab.today)
-      PomodoroScreen()
-        .tabItem { Label(AppTab.pomodoro.title, systemImage: AppTab.pomodoro.symbol) }
-        .tag(AppTab.pomodoro)
-      SettingsScreen()
-        .tabItem { Label(AppTab.settings.title, systemImage: AppTab.settings.symbol) }
-        .tag(AppTab.settings)
+    ZStack {
+      QingxuPalette.background.ignoresSafeArea()
+
+      TabView(selection: $selection) {
+        TaskListScreen(scope: .inbox)
+          .tabItem { Label(AppTab.inbox.title, systemImage: AppTab.inbox.symbol) }
+          .tag(AppTab.inbox)
+        TaskListScreen(scope: .today)
+          .tabItem { Label(AppTab.today.title, systemImage: AppTab.today.symbol) }
+          .tag(AppTab.today)
+        PomodoroScreen()
+          .tabItem { Label(AppTab.pomodoro.title, systemImage: AppTab.pomodoro.symbol) }
+          .tag(AppTab.pomodoro)
+        SettingsScreen()
+          .tabItem { Label(AppTab.settings.title, systemImage: AppTab.settings.symbol) }
+          .tag(AppTab.settings)
+      }
+      .tint(QingxuPalette.accent)
+      .disabled(showingLaunchExperience)
+
+      if showingLaunchExperience {
+        QingxuLaunchExperience {
+          showingLaunchExperience = false
+        }
+        .zIndex(10)
+      }
     }
-    .tint(QingxuPalette.accent)
+    .onChange(of: selection) { _ in
+      guard !showingLaunchExperience else { return }
+      UISelectionFeedbackGenerator().selectionChanged()
+    }
     .onOpenURL { url in
       switch url.host {
       case "today": selection = .today
