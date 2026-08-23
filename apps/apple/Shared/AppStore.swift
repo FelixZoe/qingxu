@@ -28,9 +28,13 @@ final class AppStore: ObservableObject {
   private let client = SyncClient()
   private var clockTask: Task<Void, Never>?
   private var pendingSync: Task<Void, Never>?
+  private var changeFeedTask: Task<Void, Never>?
   private var serverOffset: TimeInterval = 0
   private var lastAutomaticSync = Date.distantPast
+  private var lastRevision: UInt64 = 0
+  private var changeFeedGeneration = 0
   private var isSyncing = false
+  private var syncQueued = false
 
   init() {
     tasks = QingxuFiles.load([TaskItem].self, name: "tasks.json") ?? []
@@ -46,11 +50,13 @@ final class AppStore: ObservableObject {
     if syncSettings.autoSync && syncSettings.isConfigured {
       scheduleSync(delay: .milliseconds(350))
     }
+    configureChangeFeed()
   }
 
   deinit {
     clockTask?.cancel()
     pendingSync?.cancel()
+    changeFeedTask?.cancel()
   }
 
   var inboxTasks: [TaskItem] {
@@ -181,20 +187,31 @@ final class AppStore: ObservableObject {
     try QingxuFiles.save(settings, name: "sync.json")
     syncPhase = settings.autoSync ? .syncing : .localOnly
     if settings.autoSync { scheduleSync(delay: .milliseconds(100)) }
+    configureChangeFeed()
   }
 
   func testConnection(_ settings: SyncSettings) async throws {
     try await client.testConnection(settings: settings)
   }
 
-  func syncNow() async {
+  @discardableResult
+  func syncNow() async -> Bool {
     guard syncSettings.isConfigured else {
       syncPhase = .localOnly
-      return
+      return false
     }
-    guard !isSyncing else { return }
+    guard !isSyncing else {
+      syncQueued = true
+      return false
+    }
     isSyncing = true
-    defer { isSyncing = false }
+    defer {
+      isSyncing = false
+      if syncQueued {
+        syncQueued = false
+        Task { await syncNow() }
+      }
+    }
     syncPhase = .syncing
     do {
       let response = try await client.sync(
@@ -202,6 +219,7 @@ final class AppStore: ObservableObject {
         tasks: tasks,
         pomodoro: pomodoro
       )
+      lastRevision = max(lastRevision, response.revision ?? 0)
       serverOffset = response.serverTime.timeIntervalSinceNow
       tasks = response.tasks
       if let remote = response.pomodoro, remote.updatedAt >= pomodoro.updatedAt {
@@ -212,8 +230,10 @@ final class AppStore: ObservableObject {
       syncPhase = .synced(.now)
       lastAutomaticSync = .now
       refreshSystemSurfaces()
+      return true
     } catch {
       syncPhase = .failed(error.localizedDescription)
+      return false
     }
   }
 
@@ -252,6 +272,40 @@ final class AppStore: ObservableObject {
     }
   }
 
+  private func configureChangeFeed() {
+    changeFeedGeneration += 1
+    let generation = changeFeedGeneration
+    changeFeedTask?.cancel()
+    guard syncSettings.autoSync && syncSettings.isConfigured else { return }
+    changeFeedTask = Task { [weak self] in
+      await self?.watchChanges(generation: generation)
+    }
+  }
+
+  private func watchChanges(generation: Int) async {
+    while !Task.isCancelled && generation == changeFeedGeneration {
+      do {
+        let change = try await client.waitForChanges(
+          settings: syncSettings,
+          since: lastRevision
+        )
+        guard !Task.isCancelled, generation == changeFeedGeneration else { return }
+        let isNewRevision = change.revision > lastRevision
+        if change.changed && isNewRevision {
+          let succeeded = await syncNow()
+          if !succeeded { try? await Task.sleep(for: .seconds(3)) }
+        } else if isNewRevision {
+          lastRevision = change.revision
+        }
+      } catch is CancellationError {
+        return
+      } catch {
+        guard !Task.isCancelled, generation == changeFeedGeneration else { return }
+        try? await Task.sleep(for: .seconds(3))
+      }
+    }
+  }
+
   private func startClock() {
     clockTask = Task { [weak self] in
       while !Task.isCancelled {
@@ -267,7 +321,7 @@ final class AppStore: ObservableObject {
     if pomodoro.status == .running && displayedRemainingSeconds == 0 {
       advancePomodoro()
     }
-    let interval: TimeInterval = pomodoro.status == .running ? 3 : 30
+    let interval: TimeInterval = 5 * 60
     if syncSettings.autoSync,
        syncSettings.isConfigured,
        !isSyncing,

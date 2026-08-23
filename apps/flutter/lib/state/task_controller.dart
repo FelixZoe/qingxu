@@ -60,6 +60,8 @@ class TaskController extends ChangeNotifier {
   String? _lastServerTime;
   Timer? _syncDebounceTimer;
   Timer? _autoPullTimer;
+  int _lastRevision = 0;
+  int _changeFeedGeneration = 0;
   Future<bool>? _activeSync;
   Future<void> _saveTail = Future<void>.value();
   bool _syncQueued = false;
@@ -147,6 +149,7 @@ class TaskController extends ChangeNotifier {
       unawaited(syncNow());
     }
     _configureAutoPull();
+    _configureChangeFeed();
     _publishSystemSnapshot();
   }
 
@@ -428,7 +431,7 @@ class TaskController extends ChangeNotifier {
     _pomodoro = value;
     _notifyListeners();
     unawaited(_persistPomodoro().catchError((Object _) {}));
-    _scheduleSync();
+    _scheduleSync(delay: const Duration(milliseconds: 250));
     _configureAutoPull();
     _publishSystemSnapshot();
   }
@@ -466,6 +469,7 @@ class TaskController extends ChangeNotifier {
       _scheduleSync();
     }
     _configureAutoPull();
+    _configureChangeFeed();
     _notifyListeners();
     return true;
   }
@@ -542,6 +546,9 @@ class TaskController extends ChangeNotifier {
       );
       if (configurationGeneration != _syncConfigurationGeneration) {
         return true;
+      }
+      if (response.revision > _lastRevision) {
+        _lastRevision = response.revision;
       }
       _mergeRemote(response.tasks);
       final serverTime = DateTime.tryParse(response.serverTime)?.toUtc();
@@ -630,7 +637,7 @@ class TaskController extends ChangeNotifier {
   Future<void> _persistPomodoro() =>
       _pomodoroStorage.save(jsonEncode(_pomodoro.toJson()));
 
-  void _scheduleSync() {
+  void _scheduleSync({Duration? delay}) {
     _syncDebounceTimer?.cancel();
     if (!syncSupported ||
         !_syncSettings.autoSync ||
@@ -638,7 +645,10 @@ class TaskController extends ChangeNotifier {
         _disposed) {
       return;
     }
-    _syncDebounceTimer = Timer(syncDebounce, () => unawaited(syncNow()));
+    _syncDebounceTimer = Timer(
+      delay ?? syncDebounce,
+      () => unawaited(syncNow()),
+    );
   }
 
   void _configureAutoPull() {
@@ -649,10 +659,47 @@ class TaskController extends ChangeNotifier {
         !_syncSettings.isConfigured) {
       return;
     }
-    final interval = _pomodoro.status == PomodoroStatus.running
-        ? const Duration(seconds: 3)
-        : const Duration(seconds: 30);
-    _autoPullTimer = Timer.periodic(interval, (_) => unawaited(syncNow()));
+    _autoPullTimer = Timer.periodic(
+      const Duration(minutes: 5),
+      (_) => unawaited(syncNow()),
+    );
+  }
+
+  void _configureChangeFeed() {
+    final generation = ++_changeFeedGeneration;
+    final client = _syncClient;
+    if (client is! SyncChangeClient) return;
+    if (_disposed ||
+        !syncSupported ||
+        !_syncSettings.autoSync ||
+        !_syncSettings.isConfigured) {
+      return;
+    }
+    unawaited(_watchChanges(client as SyncChangeClient, generation));
+  }
+
+  Future<void> _watchChanges(SyncChangeClient client, int generation) async {
+    while (!_disposed && generation == _changeFeedGeneration) {
+      try {
+        final change = await client.waitForChanges(
+          _syncSettings,
+          since: _lastRevision,
+        );
+        if (_disposed || generation != _changeFeedGeneration) return;
+        final isNewRevision = change.revision > _lastRevision;
+        if (change.changed && isNewRevision) {
+          final succeeded = await syncNow();
+          if (!succeeded) {
+            await Future<void>.delayed(const Duration(seconds: 3));
+          }
+        } else if (isNewRevision) {
+          _lastRevision = change.revision;
+        }
+      } on Object {
+        if (_disposed || generation != _changeFeedGeneration) return;
+        await Future<void>.delayed(const Duration(seconds: 3));
+      }
+    }
   }
 
   void _setSyncError(String message) {
@@ -721,6 +768,7 @@ class TaskController extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    _changeFeedGeneration += 1;
     _syncDebounceTimer?.cancel();
     _autoPullTimer?.cancel();
     super.dispose();

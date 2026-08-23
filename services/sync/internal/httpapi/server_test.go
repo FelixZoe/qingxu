@@ -92,6 +92,7 @@ func TestSyncMergesAndReturnsCompleteTaskDocuments(t *testing.T) {
 	var output struct {
 		Tasks      []map[string]any `json:"tasks"`
 		ServerTime string           `json:"serverTime"`
+		Revision   uint64           `json:"revision"`
 	}
 	if err := json.Unmarshal(response.Body.Bytes(), &output); err != nil {
 		t.Fatal(err)
@@ -104,6 +105,34 @@ func TestSyncMergesAndReturnsCompleteTaskDocuments(t *testing.T) {
 	}
 	if output.ServerTime == "" {
 		t.Fatal("serverTime is empty")
+	}
+	if output.Revision == 0 {
+		t.Fatal("revision is empty")
+	}
+}
+
+func TestChangesRequiresAuthenticationAndReturnsCurrentRevision(t *testing.T) {
+	handler := newTestHandler(t, Config{Token: testToken, MaxBodyBytes: 2048})
+	request := httptest.NewRequest(http.MethodGet, "/v1/changes?since=0", nil)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusUnauthorized {
+		t.Fatalf("unauthorized status = %d", response.Code)
+	}
+
+	request = httptest.NewRequest(http.MethodGet, "/v1/changes?since=0", nil)
+	request.Header.Set("Authorization", "Bearer "+testToken)
+	response = httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body)
+	}
+	var output changesResponse
+	if err := json.Unmarshal(response.Body.Bytes(), &output); err != nil {
+		t.Fatal(err)
+	}
+	if !output.Changed || output.Revision == 0 {
+		t.Fatalf("unexpected changes response: %#v", output)
 	}
 }
 

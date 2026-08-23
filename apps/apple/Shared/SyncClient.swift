@@ -10,6 +10,12 @@ struct SyncResponse: Decodable {
   let tasks: [TaskItem]
   let pomodoro: PomodoroState?
   let serverTime: Date
+  let revision: UInt64?
+}
+
+struct SyncChange: Decodable {
+  let revision: UInt64
+  let changed: Bool
 }
 
 enum SyncClientError: LocalizedError {
@@ -31,8 +37,8 @@ struct SyncClient {
 
   init() {
     let configuration = URLSessionConfiguration.ephemeral
-    configuration.timeoutIntervalForRequest = 10
-    configuration.timeoutIntervalForResource = 20
+    configuration.timeoutIntervalForRequest = 35
+    configuration.timeoutIntervalForResource = 40
     session = URLSession(configuration: configuration)
   }
 
@@ -62,6 +68,25 @@ struct SyncClient {
     }
   }
 
+  func waitForChanges(
+    settings: SyncSettings,
+    since: UInt64
+  ) async throws -> SyncChange {
+    try requireConfigured(settings)
+    let request = try makeRequest(
+      path: "/v1/changes",
+      settings: settings,
+      authenticated: true,
+      queryItems: [URLQueryItem(name: "since", value: String(since))]
+    )
+    let data = try await perform(request)
+    do {
+      return try QingxuCoding.decoder.decode(SyncChange.self, from: data)
+    } catch {
+      throw SyncClientError.invalidResponse
+    }
+  }
+
   private func request(
     path: String,
     settings: SyncSettings,
@@ -73,7 +98,8 @@ struct SyncClient {
   private func makeRequest(
     path: String,
     settings: SyncSettings,
-    authenticated: Bool
+    authenticated: Bool,
+    queryItems: [URLQueryItem] = []
   ) throws -> URLRequest {
     guard var components = URLComponents(string: settings.normalizedServerURL) else {
       throw SyncClientError.invalidConfiguration("服务器地址格式不正确")
@@ -82,6 +108,7 @@ struct SyncClient {
     components.path = "/" + [components.path, path].map {
       $0.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
     }.filter { !$0.isEmpty }.joined(separator: "/")
+    components.queryItems = queryItems.isEmpty ? nil : queryItems
     guard let url = components.url else {
       throw SyncClientError.invalidConfiguration("服务器地址格式不正确")
     }

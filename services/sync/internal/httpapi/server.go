@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/json"
@@ -10,6 +11,7 @@ import (
 	"log"
 	"net/http"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -74,6 +76,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/health", s.health)
 	mux.HandleFunc("/v1/ping", s.ping)
 	mux.HandleFunc("/v1/sync", s.sync)
+	mux.HandleFunc("/v1/changes", s.changes)
 	return s.withCORS(mux)
 }
 
@@ -113,6 +116,12 @@ type syncResponse struct {
 	Tasks      []json.RawMessage `json:"tasks"`
 	Pomodoro   json.RawMessage   `json:"pomodoro,omitempty"`
 	ServerTime string            `json:"serverTime"`
+	Revision   uint64            `json:"revision"`
+}
+
+type changesResponse struct {
+	Revision uint64 `json:"revision"`
+	Changed  bool   `json:"changed"`
 }
 
 func (s *Server) sync(response http.ResponseWriter, request *http.Request) {
@@ -177,7 +186,8 @@ func (s *Server) sync(response http.ResponseWriter, request *http.Request) {
 		pomodoro = &parsed
 	}
 
-	merged, mergedPomodoro, err := s.store.MergeAll(tasks, pomodoro)
+	previousRevision := s.store.Revision()
+	merged, mergedPomodoro, revision, err := s.store.MergeAll(tasks, pomodoro)
 	if err != nil {
 		log.Printf("persist sync data: %v", err)
 		if errors.Is(err, store.ErrCapacityExceeded) {
@@ -187,10 +197,49 @@ func (s *Server) sync(response http.ResponseWriter, request *http.Request) {
 		writeError(response, http.StatusInternalServerError, "storage_error", "could not persist sync data")
 		return
 	}
+	if revision > previousRevision {
+		log.Printf(
+			"sync change device=%q revision=%d tasks=%d pomodoro=%t",
+			input.DeviceID,
+			revision,
+			len(tasks),
+			pomodoro != nil,
+		)
+	}
 	writeJSON(response, http.StatusOK, syncResponse{
 		Tasks:      merged,
 		Pomodoro:   mergedPomodoro,
 		ServerTime: time.Now().UTC().Format(time.RFC3339Nano),
+		Revision:   revision,
+	})
+}
+
+func (s *Server) changes(response http.ResponseWriter, request *http.Request) {
+	if request.Method != http.MethodGet {
+		response.Header().Set("Allow", http.MethodGet)
+		writeError(response, http.StatusMethodNotAllowed, "method_not_allowed", "only GET is allowed")
+		return
+	}
+	if !s.requireAuthorization(response, request) {
+		return
+	}
+
+	after := uint64(0)
+	if raw := strings.TrimSpace(request.URL.Query().Get("since")); raw != "" {
+		parsed, err := strconv.ParseUint(raw, 10, 64)
+		if err != nil {
+			writeError(response, http.StatusBadRequest, "invalid_revision", "since must be an unsigned integer")
+			return
+		}
+		after = parsed
+	}
+
+	ctx, cancel := context.WithTimeout(request.Context(), 25*time.Second)
+	defer cancel()
+	revision := s.store.WaitForChange(ctx, after)
+	writeJSON(response, http.StatusOK, changesResponse{
+		Revision: revision,
+		Changed:  revision > after,
 	})
 }
 
@@ -247,7 +296,7 @@ func (s *Server) withCORS(next http.Handler) http.Handler {
 			switch request.URL.Path {
 			case "/v1/sync":
 				expectedMethod = http.MethodPost
-			case "/v1/ping":
+			case "/v1/ping", "/v1/changes":
 				expectedMethod = http.MethodGet
 			default:
 				writeError(response, http.StatusNotFound, "not_found", "preflight path is not available")

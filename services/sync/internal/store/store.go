@@ -2,6 +2,7 @@ package store
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -133,13 +134,20 @@ type Store struct {
 	readinessMu        sync.Mutex
 	readinessCheckedAt time.Time
 	readinessErr       error
+	revision           uint64
+	changed            chan struct{}
 }
 
 func Open(path string) (*Store, error) {
 	if strings.TrimSpace(path) == "" {
 		return nil, errors.New("data file path is required")
 	}
-	s := &Store{path: filepath.Clean(path), tasks: make(map[string]Task)}
+	s := &Store{
+		path:     filepath.Clean(path),
+		tasks:    make(map[string]Task),
+		revision: uint64(time.Now().UnixMilli()),
+		changed:  make(chan struct{}),
+	}
 	if err := ensureWritableDirectory(filepath.Dir(s.path)); err != nil {
 		return nil, err
 	}
@@ -272,18 +280,18 @@ func (s *Store) load() error {
 // server copy except that a tombstone wins over a live task. Deleted tasks are
 // deliberately kept in the returned and persisted collection.
 func (s *Store) Merge(incoming []Task) ([]json.RawMessage, error) {
-	tasks, _, err := s.MergeAll(incoming, nil)
+	tasks, _, _, err := s.MergeAll(incoming, nil)
 	return tasks, err
 }
 
 // MergeAll atomically merges all user data represented by the sync protocol.
-func (s *Store) MergeAll(incoming []Task, incomingPomodoro *Pomodoro) ([]json.RawMessage, json.RawMessage, error) {
+func (s *Store) MergeAll(incoming []Task, incomingPomodoro *Pomodoro) ([]json.RawMessage, json.RawMessage, uint64, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.needsDirectorySync {
 		if err := syncDirectory(filepath.Dir(s.path)); err != nil {
 			s.markReadiness(err)
-			return nil, nil, fmt.Errorf("sync data directory: %w", err)
+			return nil, nil, s.revision, fmt.Errorf("sync data directory: %w", err)
 		}
 		s.needsDirectorySync = false
 		s.markReadiness(nil)
@@ -308,17 +316,18 @@ func (s *Store) MergeAll(incoming []Task, incomingPomodoro *Pomodoro) ([]json.Ra
 
 	if changed {
 		if err := validateCapacity(next); err != nil {
-			return nil, nil, err
+			return nil, nil, s.revision, err
 		}
 		replaced, err := writeStateAtomic(s.path, next, nextPomodoro)
 		if replaced {
 			s.tasks = next
 			s.pomodoro = nextPomodoro
+			s.bumpRevisionLocked()
 		}
 		if err != nil {
 			s.needsDirectorySync = replaced
 			s.markReadiness(err)
-			return nil, nil, err
+			return nil, nil, s.revision, err
 		}
 		s.markReadiness(nil)
 	}
@@ -326,7 +335,38 @@ func (s *Store) MergeAll(incoming []Task, incomingPomodoro *Pomodoro) ([]json.Ra
 	if nextPomodoro != nil {
 		pomodoroJSON = append(json.RawMessage(nil), nextPomodoro.JSON...)
 	}
-	return snapshot(next), pomodoroJSON, nil
+	return snapshot(next), pomodoroJSON, s.revision, nil
+}
+
+// WaitForChange blocks without polling until the store revision advances or
+// the request context is cancelled. Each waiter shares one small signal channel.
+func (s *Store) WaitForChange(ctx context.Context, after uint64) uint64 {
+	s.mu.Lock()
+	if s.revision > after {
+		revision := s.revision
+		s.mu.Unlock()
+		return revision
+	}
+	changed := s.changed
+	s.mu.Unlock()
+
+	select {
+	case <-changed:
+	case <-ctx.Done():
+	}
+	return s.Revision()
+}
+
+func (s *Store) Revision() uint64 {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.revision
+}
+
+func (s *Store) bumpRevisionLocked() {
+	s.revision++
+	close(s.changed)
+	s.changed = make(chan struct{})
 }
 
 func shouldReplace(current, incoming Task) bool {

@@ -2,6 +2,13 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:qingxu/models/pomodoro_state.dart';
 
 void main() {
+  test('fresh state uses an old timestamp so remote state wins first sync', () {
+    expect(
+      PomodoroState.initial().updatedAt,
+      DateTime.fromMillisecondsSinceEpoch(0, isUtc: true),
+    );
+  });
+
   test('running pomodoro derives the same remaining time from endsAt', () {
     final state = PomodoroState(
       mode: PomodoroMode.focus,

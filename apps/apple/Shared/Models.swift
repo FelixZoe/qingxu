@@ -54,7 +54,7 @@ struct PomodoroState: Codable, Equatable {
   var endsAt: Date?
   var updatedAt: Date
 
-  static func initial(now: Date = .now) -> PomodoroState {
+  static func initial(now: Date = .distantPast) -> PomodoroState {
     PomodoroState(
       mode: .focus,
       status: .idle,

@@ -7,8 +7,9 @@ import '../models/pomodoro_state.dart';
 import '../models/task_item.dart';
 import 'sync_client_base.dart';
 
-class SyncClient implements SyncClientBase {
+class SyncClient implements SyncClientBase, SyncChangeClient {
   static const _timeout = Duration(seconds: 10);
+  static const _changeTimeout = Duration(seconds: 35);
 
   @override
   bool get isSupported =>
@@ -120,6 +121,7 @@ class SyncClient implements SyncClientBase {
         tasks: remoteTasks,
         pomodoro: remotePomodoro,
         serverTime: serverTime,
+        revision: (decoded['revision'] as num?)?.toInt() ?? 0,
       );
     } on SyncException {
       rethrow;
@@ -138,9 +140,65 @@ class SyncClient implements SyncClientBase {
     }
   }
 
+  @override
+  Future<SyncChange> waitForChanges(
+    SyncSettings settings, {
+    required int since,
+  }) async {
+    _requireConfiguration(settings);
+    final client = _newClient();
+    try {
+      final request = await client
+          .getUrl(
+            _endpoint(
+              settings.serverUrl,
+              '/v1/changes',
+              queryParameters: {'since': '$since'},
+            ),
+          )
+          .timeout(_timeout);
+      request.headers.set(
+        HttpHeaders.authorizationHeader,
+        'Bearer ${settings.token}',
+      );
+      final response = await request.close().timeout(_changeTimeout);
+      final body = await utf8.decoder
+          .bind(response)
+          .join()
+          .timeout(_changeTimeout);
+      _requireSuccess(response.statusCode, '变更通知请求失败', body: body);
+      final decoded = jsonDecode(body);
+      if (decoded is! Map) {
+        throw const SyncException('服务器返回了无效的变更通知');
+      }
+      return SyncChange(
+        revision: (decoded['revision'] as num?)?.toInt() ?? since,
+        changed: decoded['changed'] == true,
+      );
+    } on SyncException {
+      rethrow;
+    } on TimeoutException {
+      throw const SyncException('等待变更通知超时');
+    } on SocketException {
+      throw const SyncException('变更通知连接中断');
+    } on HandshakeException {
+      throw const SyncException('HTTPS 证书校验失败');
+    } on FormatException {
+      throw const SyncException('服务器返回的变更通知格式不正确');
+    } catch (error) {
+      throw SyncException('变更通知失败：${_safeError(error)}');
+    } finally {
+      client.close(force: true);
+    }
+  }
+
   HttpClient _newClient() => HttpClient()..connectionTimeout = _timeout;
 
-  Uri _endpoint(String rawBaseUrl, String endpointPath) {
+  Uri _endpoint(
+    String rawBaseUrl,
+    String endpointPath, {
+    Map<String, String>? queryParameters,
+  }) {
     var value = rawBaseUrl.trim();
     if (!value.contains('://')) value = 'https://$value';
     final base = Uri.parse(value);
@@ -150,7 +208,7 @@ class SyncClient implements SyncClientBase {
     final basePath = base.path.replaceFirst(RegExp(r'/+$'), '');
     return base.replace(
       path: '$basePath$endpointPath',
-      query: null,
+      queryParameters: queryParameters,
       fragment: null,
     );
   }

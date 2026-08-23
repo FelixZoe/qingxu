@@ -81,6 +81,47 @@ void main() {
     },
   );
 
+  test(
+    'server change notification immediately pulls running pomodoro',
+    () async {
+      const automatic = SyncSettings(
+        serverUrl: 'https://sync.example.test',
+        token:
+            'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+        deviceName: '实时测试设备',
+        autoSync: true,
+      );
+      final client = LiveSyncClient();
+      final controller = TaskController(
+        storage: TaskStorage(),
+        syncSettingsStorage: MemorySettingsStorage(
+          jsonEncode(automatic.toJson()),
+        ),
+        secureTokenStorage: MemorySecureTokenStorage(automatic.token),
+        syncClient: client,
+      );
+      addTearDown(controller.dispose);
+      await controller.initialize();
+      await waitUntil(() => client.syncCalls >= 1 && client.hasWaiter);
+
+      final now = DateTime.utc(2026, 8, 23, 8);
+      client.emitPomodoro(
+        PomodoroState.initial(now).copyWith(
+          status: PomodoroStatus.running,
+          remainingSeconds: 25 * 60,
+          endsAt: now.add(const Duration(minutes: 25)),
+          updatedAt: now,
+        ),
+      );
+
+      await waitUntil(
+        () => controller.pomodoro.status == PomodoroStatus.running,
+      );
+      expect(client.syncCalls, greaterThanOrEqualTo(2));
+      expect(controller.pomodoro.endsAt, now.add(const Duration(minutes: 25)));
+    },
+  );
+
   test('settings persist and automatic sync runs after local changes', () async {
     final taskStorage = TaskStorage();
     final settingsStorage = MemorySettingsStorage();
@@ -443,5 +484,62 @@ class FakeSyncClient implements SyncClientBase {
   @override
   Future<void> testConnection(SyncSettings settings) async {
     if (failure case final error?) throw error;
+  }
+}
+
+class LiveSyncClient implements SyncClientBase, SyncChangeClient {
+  int revision = 1;
+  int syncCalls = 0;
+  PomodoroState remotePomodoro = PomodoroState.initial();
+  Completer<SyncChange>? _waiter;
+
+  bool get hasWaiter => _waiter != null;
+
+  @override
+  String get defaultDeviceName => '实时测试设备';
+
+  @override
+  bool get isSupported => true;
+
+  @override
+  Future<SyncResponse> sync(
+    SyncSettings settings,
+    List<TaskItem> tasks,
+    PomodoroState pomodoro,
+  ) async {
+    syncCalls += 1;
+    return SyncResponse(
+      tasks: List.unmodifiable(tasks),
+      pomodoro: remotePomodoro,
+      serverTime: '2026-08-23T08:00:00.000Z',
+      revision: revision,
+    );
+  }
+
+  @override
+  Future<void> testConnection(SyncSettings settings) async {}
+
+  @override
+  Future<SyncChange> waitForChanges(
+    SyncSettings settings, {
+    required int since,
+  }) {
+    if (revision > since) {
+      return Future.value(SyncChange(revision: revision, changed: true));
+    }
+    final waiter = Completer<SyncChange>();
+    _waiter = waiter;
+    return waiter.future.whenComplete(() {
+      if (identical(_waiter, waiter)) _waiter = null;
+    });
+  }
+
+  void emitPomodoro(PomodoroState value) {
+    remotePomodoro = value;
+    revision += 1;
+    final waiter = _waiter;
+    if (waiter != null && !waiter.isCompleted) {
+      waiter.complete(SyncChange(revision: revision, changed: true));
+    }
   }
 }

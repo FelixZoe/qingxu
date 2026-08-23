@@ -26,6 +26,8 @@ struct QingxuiOSApp: App {
 }
 
 private struct iOSRootView: View {
+  @EnvironmentObject private var store: AppStore
+  @Environment(\.scenePhase) private var scenePhase
   @State private var selection = AppTab.inbox
   @State private var showingLaunchExperience = true
 
@@ -60,6 +62,10 @@ private struct iOSRootView: View {
     .onChange(of: selection) { _ in
       guard !showingLaunchExperience else { return }
       UISelectionFeedbackGenerator().selectionChanged()
+    }
+    .onChange(of: scenePhase) { phase in
+      guard phase == .active else { return }
+      Task { await store.syncNow() }
     }
     .onOpenURL { url in
       switch url.host {

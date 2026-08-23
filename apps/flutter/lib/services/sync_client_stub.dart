@@ -3,7 +3,7 @@ import '../models/pomodoro_state.dart';
 import '../models/task_item.dart';
 import 'sync_client_base.dart';
 
-class SyncClient implements SyncClientBase {
+class SyncClient implements SyncClientBase, SyncChangeClient {
   @override
   bool get isSupported => false;
 
@@ -22,5 +22,13 @@ class SyncClient implements SyncClientBase {
     PomodoroState pomodoro,
   ) {
     throw const SyncException('当前平台暂不支持同步');
+  }
+
+  @override
+  Future<SyncChange> waitForChanges(
+    SyncSettings settings, {
+    required int since,
+  }) {
+    throw const SyncException('褰撳墠骞冲彴鏆備笉鏀寔瀹炴椂鍚屾');
   }
 }

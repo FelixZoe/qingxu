@@ -24,7 +24,8 @@ class PomodoroState {
     status: PomodoroStatus.idle,
     remainingSeconds: durationFor(PomodoroMode.focus).inSeconds,
     completedFocusSessions: 0,
-    updatedAt: (now ?? DateTime.now()).toUtc(),
+    updatedAt: (now ?? DateTime.fromMillisecondsSinceEpoch(0, isUtc: true))
+        .toUtc(),
   );
 
   factory PomodoroState.fromJson(Map<String, Object?> json) {

@@ -73,6 +73,7 @@ void main() {
           jsonEncode({
             'tasks': [task.toJson()],
             'serverTime': '2026-08-22T12:00:00.000Z',
+            'revision': 42,
           }),
         );
       await request.response.close();
@@ -91,6 +92,39 @@ void main() {
 
     expect(response.tasks.single.id, task.id);
     expect(response.serverTime, '2026-08-22T12:00:00.000Z');
+    expect(response.revision, 42);
+  });
+
+  test('change feed waits with revision and bearer token', () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    addTearDown(() => server.close(force: true));
+    final handled = () async {
+      final request = await server.first;
+      expect(request.method, 'GET');
+      expect(request.uri.path, '/v1/changes');
+      expect(request.uri.queryParameters['since'], '41');
+      expect(
+        request.headers.value(HttpHeaders.authorizationHeader),
+        'Bearer $token',
+      );
+      request.response
+        ..statusCode = HttpStatus.ok
+        ..headers.contentType = ContentType.json
+        ..write('{"revision":42,"changed":true}');
+      await request.response.close();
+    }();
+
+    final change = await SyncClient().waitForChanges(
+      SyncSettings(
+        serverUrl: 'http://127.0.0.1:${server.port}',
+        token: token,
+        deviceName: 'Windows 测试机',
+      ),
+      since: 41,
+    );
+    await handled;
+    expect(change.revision, 42);
+    expect(change.changed, isTrue);
   });
 }
 

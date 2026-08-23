@@ -26,7 +26,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
 
   FlutterWindow window(project);
   Win32Window::Point origin(10, 10);
-  Win32Window::Size size(360, 560);
+  Win32Window::Size size(184, 184);
   if (!window.Create(L"\u6E05\u5E8F", origin, size)) {
     return EXIT_FAILURE;
   }

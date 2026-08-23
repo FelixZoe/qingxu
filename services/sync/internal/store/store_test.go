@@ -1,6 +1,7 @@
 package store
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"os"
@@ -8,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestMergeUsesUpdatedAtAndPersistsTombstone(t *testing.T) {
@@ -130,7 +132,7 @@ func TestPomodoroMergePersistsNewestState(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, merged, err := taskStore.MergeAll(nil, &first)
+	_, merged, _, err := taskStore.MergeAll(nil, &first)
 	if err != nil || !strings.Contains(string(merged), `"status":"running"`) {
 		t.Fatalf("MergeAll(first) = %s, %v", merged, err)
 	}
@@ -139,7 +141,7 @@ func TestPomodoroMergePersistsNewestState(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, merged, err = taskStore.MergeAll(nil, &stale)
+	_, merged, _, err = taskStore.MergeAll(nil, &stale)
 	if err != nil || !strings.Contains(string(merged), `"status":"running"`) {
 		t.Fatalf("stale pomodoro won: %s, %v", merged, err)
 	}
@@ -148,9 +150,34 @@ func TestPomodoroMergePersistsNewestState(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, merged, err = reopened.MergeAll(nil, nil)
+	_, merged, _, err = reopened.MergeAll(nil, nil)
 	if err != nil || !strings.Contains(string(merged), `"status":"running"`) {
 		t.Fatalf("persisted pomodoro lost: %s, %v", merged, err)
+	}
+}
+
+func TestWaitForChangeWakesAfterMerge(t *testing.T) {
+	taskStore, err := Open(filepath.Join(t.TempDir(), "store.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := taskStore.Revision()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	woke := make(chan uint64, 1)
+	go func() { woke <- taskStore.WaitForChange(ctx, before) }()
+
+	task := mustTask(t, `{"id":"wake","title":"wake","updatedAt":"2026-08-23T08:00:00Z","deletedAt":null}`)
+	if _, err := taskStore.Merge([]Task{task}); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case revision := <-woke:
+		if revision <= before {
+			t.Fatalf("revision did not advance: before=%d after=%d", before, revision)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("WaitForChange did not wake after merge")
 	}
 }
 

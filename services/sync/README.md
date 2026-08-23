@@ -28,6 +28,7 @@ docker compose up -d --build
 - `GET /health`：无鉴权健康检查。
 - `GET /v1/ping`：验证 `Authorization: Bearer <SYNC_TOKEN>`。
 - `POST /v1/sync`：双向合并任务与番茄钟状态，返回服务端时间。
+- `GET /v1/changes?since=<revision>`：最长等待 25 秒的变更通知；仅修订号变化时客户端再拉完整数据。
 
 完整的 HTTPS 反向代理、客户端填写、更新、备份和恢复步骤见 [`docs/DEPLOYMENT.md`](../../docs/DEPLOYMENT.md)，协议细节见 [`docs/SYNC_PROTOCOL.md`](../../docs/SYNC_PROTOCOL.md)。
 
