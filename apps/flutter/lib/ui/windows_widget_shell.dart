@@ -446,7 +446,7 @@ class _TimerCapsule extends StatelessWidget {
         width: expanded ? 270 : 188,
         height: 62,
         padding: const EdgeInsets.fromLTRB(10, 8, 12, 8),
-        decoration: _floatingDecoration(context, radius: 31),
+        decoration: _floatingDecoration(context, radius: 31, shadow: false),
         child: Row(
           children: [
             SizedBox(
@@ -686,6 +686,7 @@ BoxDecoration _floatingDecoration(
   BuildContext context, {
   double? radius,
   BoxShape shape = BoxShape.rectangle,
+  bool shadow = true,
 }) {
   final palette = QingxuPalette.of(context);
   final dark = Theme.of(context).brightness == Brightness.dark;
@@ -698,12 +699,14 @@ BoxDecoration _floatingDecoration(
     border: Border.all(
       color: palette.border.withValues(alpha: dark ? 0.9 : 0.72),
     ),
-    boxShadow: [
-      BoxShadow(
-        color: Colors.black.withValues(alpha: dark ? 0.28 : 0.12),
-        blurRadius: 26,
-        offset: const Offset(0, 10),
-      ),
-    ],
+    boxShadow: shadow
+        ? [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: dark ? 0.18 : 0.08),
+              blurRadius: 10,
+              offset: const Offset(0, 3),
+            ),
+          ]
+        : const [],
   );
 }
