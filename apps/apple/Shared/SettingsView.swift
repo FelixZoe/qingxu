@@ -8,13 +8,34 @@ struct SettingsScreen: View {
     NavigationStack {
       Form {
         Section {
+          HStack(spacing: 14) {
+            Image(systemName: "checkmark")
+              .font(.title2.weight(.bold))
+              .foregroundStyle(.white)
+              .frame(width: 48, height: 48)
+              .background(QingxuPalette.accent, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            VStack(alignment: .leading, spacing: 3) {
+              Text("清序").font(.headline)
+              Text("版本 \(appVersion)")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            }
+            Spacer()
+            Image(systemName: store.syncSettings.isConfigured ? "cloud.fill" : "iphone")
+              .foregroundStyle(store.syncSettings.isConfigured ? QingxuPalette.success : QingxuPalette.quiet)
+          }
+          .padding(.vertical, 5)
+        }
+
+        Section("偏好") {
           NavigationLink {
             AppearanceSettingsView()
           } label: {
             SettingsRow(
               symbol: "circle.lefthalf.filled",
               title: "外观",
-              detail: AppearanceMode(rawValue: appearance)?.title ?? "跟随系统"
+              detail: AppearanceMode(rawValue: appearance)?.title ?? "跟随系统",
+              tint: QingxuPalette.accent
             )
           }
           NavigationLink {
@@ -24,7 +45,8 @@ struct SettingsScreen: View {
             SettingsRow(
               symbol: "arrow.triangle.2.circlepath",
               title: "自托管同步",
-              detail: store.syncSettings.isConfigured ? store.syncPhase.title : "未配置"
+              detail: store.syncSettings.isConfigured ? store.syncPhase.title : "未配置",
+              tint: QingxuPalette.success
             )
           }
         }
@@ -53,6 +75,7 @@ private struct SettingsRow: View {
   let symbol: String
   let title: String
   let detail: String
+  let tint: Color
 
   var body: some View {
     Label {
@@ -62,7 +85,11 @@ private struct SettingsRow: View {
         Text(detail).font(.subheadline).foregroundStyle(.secondary)
       }
     } icon: {
-      Image(systemName: symbol).foregroundStyle(QingxuPalette.accent)
+      Image(systemName: symbol)
+        .font(.system(size: 14, weight: .semibold))
+        .foregroundStyle(.white)
+        .frame(width: 30, height: 30)
+        .background(tint, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
   }
 }

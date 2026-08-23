@@ -64,12 +64,16 @@ final class AppStore: ObservableObject {
   }
 
   var todayTasks: [TaskItem] {
+    tasks(on: estimatedNow)
+  }
+
+  func tasks(on date: Date) -> [TaskItem] {
     let calendar = Calendar.autoupdatingCurrent
     return visibleTasks.filter { task in
       guard task.status == .open else { return false }
       return [task.startAt, task.deadlineAt]
         .compactMap { $0 }
-        .contains { calendar.isDateInToday($0) }
+        .contains { calendar.isDate($0, inSameDayAs: date) }
     }.sorted(by: taskOrder)
   }
 
