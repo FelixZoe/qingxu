@@ -49,7 +49,7 @@ struct TaskListScreen: View {
                 Label("删除", systemImage: "trash")
               }
             }
-            .listRowBackground(QingxuPalette.background)
+            .listRowBackground(QingxuPalette.surface)
             .listRowSeparatorTint(QingxuPalette.separator)
           }
         }

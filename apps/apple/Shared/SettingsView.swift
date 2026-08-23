@@ -90,7 +90,7 @@ struct AppearanceSettingsView: View {
       } header: {
         Text("配色")
       } footer: {
-        Text("日间使用低饱和米白与雾蓝；暗色使用近黑背景与柔和绿色，所有页面共用同一套语义色。")
+        Text("日间使用冷瓷白与雾蓝；暗色使用深蓝石墨与柔和蓝光，所有页面共用同一套语义色。")
       }
     }
     .qingxuScreen()
@@ -131,7 +131,7 @@ struct SyncSettingsView: View {
       if let message {
         Section("状态") { Text(message) }
       } else if case .failed(let error) = store.syncPhase {
-        Section("状态") { Text(error).foregroundStyle(.red) }
+        Section("状态") { Text(error).foregroundStyle(QingxuPalette.danger) }
       }
 
       Section {
