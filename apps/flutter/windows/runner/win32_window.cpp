@@ -134,8 +134,9 @@ bool Win32Window::Create(const std::wstring& title,
   UINT dpi = FlutterDesktopGetDpiForMonitor(monitor);
   double scale_factor = dpi / 96.0;
 
+  const DWORD window_style = WS_OVERLAPPEDWINDOW & ~WS_MAXIMIZEBOX;
   HWND window = CreateWindow(
-      window_class, title.c_str(), WS_OVERLAPPEDWINDOW,
+      window_class, title.c_str(), window_style,
       Scale(origin.x, scale_factor), Scale(origin.y, scale_factor),
       Scale(size.width, scale_factor), Scale(size.height, scale_factor),
       nullptr, nullptr, GetModuleHandle(nullptr), this);
@@ -145,6 +146,8 @@ bool Win32Window::Create(const std::wstring& title,
   }
 
   UpdateTheme(window);
+  SetWindowPos(window, HWND_TOPMOST, 0, 0, 0, 0,
+               SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
 
   return OnCreate();
 }
@@ -183,8 +186,8 @@ Win32Window::MessageHandler(HWND hwnd,
       auto min_max_info = reinterpret_cast<MINMAXINFO*>(lparam);
       const UINT dpi = GetDpiForWindow(hwnd);
       const double scale_factor = dpi / 96.0;
-      min_max_info->ptMinTrackSize.x = Scale(980, scale_factor);
-      min_max_info->ptMinTrackSize.y = Scale(640, scale_factor);
+      min_max_info->ptMinTrackSize.x = Scale(340, scale_factor);
+      min_max_info->ptMinTrackSize.y = Scale(520, scale_factor);
       return 0;
     }
     case WM_DESTROY:

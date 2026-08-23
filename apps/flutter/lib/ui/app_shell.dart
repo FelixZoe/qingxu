@@ -9,6 +9,7 @@ import 'sidebar.dart';
 import 'sync_settings_page.dart';
 import 'task_editor.dart';
 import 'task_list.dart';
+import 'windows_widget_shell.dart';
 
 class AppShell extends StatefulWidget {
   const AppShell({
@@ -57,6 +58,15 @@ class _AppShellState extends State<AppShell> {
           builder: (context, _) => LayoutBuilder(
             builder: (context, constraints) {
               final palette = QingxuPalette.of(context);
+              final useWindowsWidget =
+                  !kIsWeb && defaultTargetPlatform == TargetPlatform.windows;
+              if (useWindowsWidget) {
+                return WindowsWidgetShell(
+                  controller: widget.controller,
+                  themeMode: widget.themeMode,
+                  onThemeModeChanged: widget.onThemeModeChanged,
+                );
+              }
               final compact = constraints.maxWidth < 760;
               final useNativeIosTabs =
                   !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS;
