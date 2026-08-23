@@ -38,6 +38,8 @@ targets:
       path: Generated/QingxuiOS-Info.plist
       properties:
         CFBundleDisplayName: 清序
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         UILaunchScreen:
           UIColorName: QingxuLaunchBackground
         UIApplicationSceneManifest:
@@ -63,6 +65,8 @@ targets:
       path: Configuration/QingxuWidgets-Info.plist
       properties:
         CFBundleDisplayName: 清序小组件
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
         NSSupportsLiveActivities: true
@@ -85,4 +89,6 @@ targets:
       path: Generated/QingxumacOS-Info.plist
       properties:
         CFBundleDisplayName: 清序
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         LSApplicationCategoryType: public.app-category.productivity
