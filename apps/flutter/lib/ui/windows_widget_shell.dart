@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:window_manager/window_manager.dart';
 
 import '../models/pomodoro_state.dart';
 import '../models/task_item.dart';
@@ -83,6 +84,7 @@ class _WindowsWidgetShellState extends State<WindowsWidgetShell> {
   Future<void> _addTask() async {
     final title = await showDialog<String>(
       context: context,
+      barrierColor: Colors.black.withValues(alpha: 0.14),
       builder: (context) => const _WidgetAddDialog(),
     );
     if (title == null || title.trim().isEmpty) return;
@@ -92,47 +94,127 @@ class _WindowsWidgetShellState extends State<WindowsWidgetShell> {
 
   @override
   Widget build(BuildContext context) {
-    final palette = QingxuPalette.of(context);
-    if (_showSettings) {
-      return ColoredBox(
-        color: palette.canvas,
-        child: Stack(
-          children: [
-            SyncSettingsPage(
+    return Material(
+      type: MaterialType.transparency,
+      child: Stack(
+        children: [
+          const Positioned.fill(
+            child: DragToMoveArea(child: SizedBox.expand()),
+          ),
+          if (_showSettings)
+            _FloatingSettings(
               controller: widget.controller,
-              embedded: true,
               themeMode: widget.themeMode,
               onThemeModeChanged: widget.onThemeModeChanged,
-            ),
-            Positioned(
-              top: 14,
-              right: 12,
-              child: IconButton(
-                tooltip: '返回小组件',
-                onPressed: () => setState(() => _showSettings = false),
-                icon: const Icon(Icons.close_rounded),
+              onClose: () => setState(() => _showSettings = false),
+            )
+          else
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 8, 14, 18),
+              child: Column(
+                children: [
+                  _FloatingHandle(
+                    controller: widget.controller,
+                    onSettings: () => setState(() => _showSettings = true),
+                  ),
+                  const SizedBox(height: 8),
+                  _TodayPanel(
+                    controller: widget.controller,
+                    tasks: _todayTasks,
+                    onAdd: _addTask,
+                  ),
+                  const Spacer(),
+                  _TimerOrb(controller: widget.controller),
+                ],
               ),
             ),
-          ],
-        ),
-      );
-    }
+        ],
+      ),
+    );
+  }
+}
 
-    final tasks = _todayTasks;
-    return ColoredBox(
-      color: palette.canvas,
-      child: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(18, 17, 18, 16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              _WidgetHeader(
-                controller: widget.controller,
-                onSettings: () => setState(() => _showSettings = true),
+class _FloatingHandle extends StatelessWidget {
+  const _FloatingHandle({required this.controller, required this.onSettings});
+
+  final TaskController controller;
+  final VoidCallback onSettings;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = QingxuPalette.of(context);
+    return SizedBox(
+      height: 34,
+      child: Row(
+        children: [
+          Expanded(
+            child: DragToMoveArea(
+              child: Row(
+                children: [
+                  Container(
+                    width: 7,
+                    height: 7,
+                    decoration: BoxDecoration(
+                      color: controller.syncSettings.isConfigured
+                          ? palette.success
+                          : palette.faint,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  const SizedBox(width: 7),
+                  Text(
+                    '清序',
+                    style: TextStyle(
+                      color: palette.muted,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(height: 18),
-              Row(
+            ),
+          ),
+          _HoverButton(
+            tooltip: '设置',
+            icon: Icons.tune_rounded,
+            onPressed: onSettings,
+          ),
+          _HoverButton(
+            tooltip: '关闭',
+            icon: Icons.close_rounded,
+            onPressed: windowManager.close,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TodayPanel extends StatelessWidget {
+  const _TodayPanel({
+    required this.controller,
+    required this.tasks,
+    required this.onAdd,
+  });
+
+  final TaskController controller;
+  final List<TaskItem> tasks;
+  final VoidCallback onAdd;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = QingxuPalette.of(context);
+    final visible = tasks.take(4).toList();
+    return Container(
+      height: 224,
+      padding: const EdgeInsets.fromLTRB(18, 15, 14, 12),
+      decoration: _floatingDecoration(context, radius: 22),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
                     '今日待办',
@@ -142,101 +224,61 @@ class _WindowsWidgetShellState extends State<WindowsWidgetShell> {
                       fontWeight: FontWeight.w600,
                     ),
                   ),
-                  const Spacer(),
+                  const SizedBox(height: 2),
                   Text(
-                    '${tasks.length} 项',
-                    style: TextStyle(color: palette.faint, fontSize: 11),
-                  ),
-                  const SizedBox(width: 5),
-                  IconButton(
-                    tooltip: '新增今日任务',
-                    visualDensity: VisualDensity.compact,
-                    onPressed: _addTask,
-                    icon: Icon(
-                      Icons.add_rounded,
-                      size: 20,
-                      color: palette.accentStrong,
-                    ),
+                    _todayLabel(),
+                    style: TextStyle(color: palette.faint, fontSize: 10.5),
                   ),
                 ],
               ),
-              const SizedBox(height: 5),
-              Expanded(
-                child: tasks.isEmpty
-                    ? _WidgetEmptyState(onAdd: _addTask)
-                    : ListView.builder(
-                        padding: EdgeInsets.zero,
-                        itemCount: tasks.length,
-                        itemBuilder: (context, index) => _TodayTaskRow(
-                          controller: widget.controller,
-                          task: tasks[index],
-                        ),
-                      ),
+              const Spacer(),
+              Text(
+                '${tasks.length}',
+                style: TextStyle(color: palette.faint, fontSize: 11),
               ),
-              const SizedBox(height: 14),
-              _MiniPomodoro(controller: widget.controller),
+              const SizedBox(width: 3),
+              _HoverButton(
+                tooltip: '新增今日任务',
+                icon: Icons.add_rounded,
+                onPressed: onAdd,
+              ),
             ],
           ),
-        ),
+          const SizedBox(height: 7),
+          Expanded(
+            child: visible.isEmpty
+                ? Center(
+                    child: Text(
+                      '今天没有待办',
+                      style: TextStyle(color: palette.muted, fontSize: 12),
+                    ),
+                  )
+                : Column(
+                    children: [
+                      for (final task in visible)
+                        _TodayTaskRow(controller: controller, task: task),
+                      if (tasks.length > visible.length)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 6),
+                          child: Text(
+                            '还有 ${tasks.length - visible.length} 项',
+                            style: TextStyle(
+                              color: palette.faint,
+                              fontSize: 10,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+          ),
+        ],
       ),
     );
   }
-}
 
-class _WidgetHeader extends StatelessWidget {
-  const _WidgetHeader({required this.controller, required this.onSettings});
-
-  final TaskController controller;
-  final VoidCallback onSettings;
-
-  @override
-  Widget build(BuildContext context) {
-    final palette = QingxuPalette.of(context);
-    final dark = Theme.of(context).brightness == Brightness.dark;
+  static String _todayLabel() {
     final now = DateTime.now();
-    const weekdays = ['星期一', '星期二', '星期三', '星期四', '星期五', '星期六', '星期日'];
-    return Row(
-      children: [
-        ClipRRect(
-          borderRadius: BorderRadius.circular(7),
-          child: Image.asset(
-            dark
-                ? 'assets/branding/qingxu-icon-master-white.png'
-                : 'assets/branding/qingxu-icon-master-black.png',
-            width: 28,
-            height: 28,
-            filterQuality: FilterQuality.high,
-          ),
-        ),
-        const SizedBox(width: 11),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                '${now.month} 月 ${now.day} 日  ${weekdays[now.weekday - 1]}',
-                style: TextStyle(
-                  color: palette.ink,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                controller.syncSettings.isConfigured ? '已连接并自动同步' : '当前仅保存在本地',
-                style: TextStyle(color: palette.faint, fontSize: 10.5),
-              ),
-            ],
-          ),
-        ),
-        IconButton(
-          tooltip: '设置',
-          visualDensity: VisualDensity.compact,
-          onPressed: onSettings,
-          icon: Icon(Icons.tune_rounded, size: 18, color: palette.muted),
-        ),
-      ],
-    );
+    return '${now.month} 月 ${now.day} 日';
   }
 }
 
@@ -249,75 +291,39 @@ class _TodayTaskRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = QingxuPalette.of(context);
-    final local = task.startAt?.toLocal();
-    final time = local == null
-        ? null
-        : '${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
-    return Container(
-      constraints: const BoxConstraints(minHeight: 46),
-      decoration: BoxDecoration(
-        border: Border(bottom: BorderSide(color: palette.border)),
-      ),
+    return SizedBox(
+      height: 35,
       child: Row(
         children: [
           InkResponse(
-            radius: 20,
+            radius: 18,
             onTap: () => controller.toggleTask(task),
             child: Container(
-              width: 19,
-              height: 19,
+              width: 17,
+              height: 17,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                border: Border.all(color: palette.faint, width: 1.3),
+                border: Border.all(color: palette.faint, width: 1.2),
               ),
             ),
           ),
-          const SizedBox(width: 11),
+          const SizedBox(width: 10),
           Expanded(
             child: Text(
               task.title,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(color: palette.ink, fontSize: 12.5),
+              style: TextStyle(color: palette.ink, fontSize: 12),
             ),
           ),
-          if (time != null)
-            Text(time, style: TextStyle(color: palette.faint, fontSize: 10.5)),
         ],
       ),
     );
   }
 }
 
-class _WidgetEmptyState extends StatelessWidget {
-  const _WidgetEmptyState({required this.onAdd});
-
-  final VoidCallback onAdd;
-
-  @override
-  Widget build(BuildContext context) {
-    final palette = QingxuPalette.of(context);
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            Icons.check_circle_outline_rounded,
-            color: palette.faint,
-            size: 27,
-          ),
-          const SizedBox(height: 9),
-          Text('今天已经清空', style: TextStyle(color: palette.muted, fontSize: 12)),
-          const SizedBox(height: 5),
-          TextButton(onPressed: onAdd, child: const Text('添加一项')),
-        ],
-      ),
-    );
-  }
-}
-
-class _MiniPomodoro extends StatelessWidget {
-  const _MiniPomodoro({required this.controller});
+class _TimerOrb extends StatelessWidget {
+  const _TimerOrb({required this.controller});
 
   final TaskController controller;
 
@@ -328,70 +334,97 @@ class _MiniPomodoro extends StatelessWidget {
     final remaining = controller.pomodoroRemainingSeconds;
     final total = state.configuredDurationFor(state.mode).inSeconds;
     final running = state.status == PomodoroStatus.running;
+    final progress = total == 0 ? 0.0 : (remaining / total).clamp(0.0, 1.0);
     final mode = switch (state.mode) {
       PomodoroMode.focus => '专注',
       PomodoroMode.shortBreak => '短休',
       PomodoroMode.longBreak => '长休',
     };
+
     return Container(
-      padding: const EdgeInsets.fromLTRB(16, 14, 12, 13),
-      decoration: BoxDecoration(
-        color: palette.surfaceRaised,
-        borderRadius: BorderRadius.circular(13),
-        border: Border.all(color: palette.border),
-      ),
-      child: Column(
+      width: 232,
+      height: 232,
+      padding: const EdgeInsets.all(12),
+      decoration: _floatingDecoration(context, shape: BoxShape.circle),
+      child: Stack(
+        fit: StackFit.expand,
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
+          CircularProgressIndicator(
+            value: progress,
+            strokeWidth: 6,
+            strokeCap: StrokeCap.round,
+            backgroundColor: palette.border.withValues(alpha: 0.72),
+            valueColor: AlwaysStoppedAnimation(palette.accent),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(19),
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: palette.surface.withValues(alpha: 0.72),
+                border: Border.all(
+                  color: palette.border.withValues(alpha: 0.7),
+                ),
+              ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  PopupMenuButton<PomodoroMode>(
+                    tooltip: '切换计时模式',
+                    initialValue: state.mode,
+                    onSelected: controller.selectPomodoroMode,
+                    itemBuilder: (context) => const [
+                      PopupMenuItem(
+                        value: PomodoroMode.focus,
+                        child: Text('专注'),
+                      ),
+                      PopupMenuItem(
+                        value: PomodoroMode.shortBreak,
+                        child: Text('短休'),
+                      ),
+                      PopupMenuItem(
+                        value: PomodoroMode.longBreak,
+                        child: Text('长休'),
+                      ),
+                    ],
+                    child: Text(
                       mode,
                       style: TextStyle(color: palette.muted, fontSize: 10.5),
                     ),
-                    const SizedBox(height: 2),
-                    Text(
-                      _formatSeconds(remaining),
-                      style: TextStyle(
-                        color: palette.ink,
-                        fontSize: 28,
-                        height: 1.1,
-                        fontWeight: FontWeight.w600,
-                        fontFeatures: const [FontFeature.tabularFigures()],
-                      ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    _formatSeconds(remaining),
+                    style: TextStyle(
+                      color: palette.ink,
+                      fontSize: 36,
+                      height: 1.1,
+                      fontWeight: FontWeight.w400,
+                      fontFeatures: const [FontFeature.tabularFigures()],
                     ),
-                  ],
-                ),
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _OrbButton(
+                        tooltip: running ? '暂停' : '开始',
+                        icon: running
+                            ? Icons.pause_rounded
+                            : Icons.play_arrow_rounded,
+                        primary: true,
+                        onPressed: controller.togglePomodoro,
+                      ),
+                      const SizedBox(width: 8),
+                      _OrbButton(
+                        tooltip: '重置',
+                        icon: Icons.replay_rounded,
+                        onPressed: controller.resetPomodoro,
+                      ),
+                    ],
+                  ),
+                ],
               ),
-              IconButton(
-                tooltip: running ? '暂停' : '开始',
-                style: IconButton.styleFrom(
-                  backgroundColor: palette.accentStrong,
-                  foregroundColor: Colors.white,
-                ),
-                onPressed: controller.togglePomodoro,
-                icon: Icon(
-                  running ? Icons.pause_rounded : Icons.play_arrow_rounded,
-                ),
-              ),
-              IconButton(
-                tooltip: '重置',
-                onPressed: controller.resetPomodoro,
-                icon: const Icon(Icons.replay_rounded, size: 19),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(99),
-            child: LinearProgressIndicator(
-              value: total == 0 ? 0 : (remaining / total).clamp(0, 1),
-              minHeight: 3,
-              backgroundColor: palette.border,
-              valueColor: AlwaysStoppedAnimation(palette.accent),
             ),
           ),
         ],
@@ -404,6 +437,112 @@ class _MiniPomodoro extends StatelessWidget {
     final seconds = (value % 60).toString().padLeft(2, '0');
     return '$minutes:$seconds';
   }
+}
+
+class _OrbButton extends StatelessWidget {
+  const _OrbButton({
+    required this.tooltip,
+    required this.icon,
+    required this.onPressed,
+    this.primary = false,
+  });
+
+  final String tooltip;
+  final IconData icon;
+  final VoidCallback onPressed;
+  final bool primary;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = QingxuPalette.of(context);
+    return Tooltip(
+      message: tooltip,
+      child: Material(
+        color: primary ? palette.accentStrong : palette.accentSoft,
+        shape: const CircleBorder(),
+        child: InkWell(
+          customBorder: const CircleBorder(),
+          onTap: onPressed,
+          child: SizedBox(
+            width: 34,
+            height: 34,
+            child: Icon(
+              icon,
+              size: 18,
+              color: primary ? Colors.white : palette.accentStrong,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _HoverButton extends StatelessWidget {
+  const _HoverButton({
+    required this.tooltip,
+    required this.icon,
+    required this.onPressed,
+  });
+
+  final String tooltip;
+  final IconData icon;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = QingxuPalette.of(context);
+    return IconButton(
+      tooltip: tooltip,
+      visualDensity: VisualDensity.compact,
+      style: IconButton.styleFrom(
+        backgroundColor: palette.surface.withValues(alpha: 0.74),
+      ),
+      onPressed: onPressed,
+      icon: Icon(icon, size: 17, color: palette.muted),
+    );
+  }
+}
+
+class _FloatingSettings extends StatelessWidget {
+  const _FloatingSettings({
+    required this.controller,
+    required this.themeMode,
+    required this.onThemeModeChanged,
+    required this.onClose,
+  });
+
+  final TaskController controller;
+  final ThemeMode themeMode;
+  final ValueChanged<ThemeMode> onThemeModeChanged;
+  final VoidCallback onClose;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.all(9),
+    child: ClipRRect(
+      borderRadius: BorderRadius.circular(24),
+      child: Stack(
+        children: [
+          SyncSettingsPage(
+            controller: controller,
+            embedded: true,
+            themeMode: themeMode,
+            onThemeModeChanged: onThemeModeChanged,
+          ),
+          Positioned(
+            top: 12,
+            right: 10,
+            child: _HoverButton(
+              tooltip: '返回悬浮窗',
+              icon: Icons.close_rounded,
+              onPressed: onClose,
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
 }
 
 class _WidgetAddDialog extends StatefulWidget {
@@ -442,6 +581,32 @@ class _WidgetAddDialogState extends State<_WidgetAddDialog> {
         child: const Text('取消'),
       ),
       FilledButton(onPressed: _submit, child: const Text('添加')),
+    ],
+  );
+}
+
+BoxDecoration _floatingDecoration(
+  BuildContext context, {
+  double? radius,
+  BoxShape shape = BoxShape.rectangle,
+}) {
+  final palette = QingxuPalette.of(context);
+  final dark = Theme.of(context).brightness == Brightness.dark;
+  return BoxDecoration(
+    shape: shape,
+    color: palette.surfaceRaised.withValues(alpha: dark ? 0.92 : 0.94),
+    borderRadius: shape == BoxShape.rectangle
+        ? BorderRadius.circular(radius ?? 20)
+        : null,
+    border: Border.all(
+      color: palette.border.withValues(alpha: dark ? 0.9 : 0.72),
+    ),
+    boxShadow: [
+      BoxShadow(
+        color: Colors.black.withValues(alpha: dark ? 0.28 : 0.12),
+        blurRadius: 26,
+        offset: const Offset(0, 10),
+      ),
     ],
   );
 }

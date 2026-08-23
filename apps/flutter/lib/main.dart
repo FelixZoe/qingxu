@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:forui/forui.dart';
+import 'package:window_manager/window_manager.dart';
 
 import 'services/native_navigation.dart';
 import 'services/theme_mode_storage.dart';
@@ -12,8 +13,29 @@ import 'state/task_controller.dart';
 import 'ui/app_shell.dart';
 import 'ui/design_system.dart';
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows) {
+    await windowManager.ensureInitialized();
+    const options = WindowOptions(
+      size: Size(360, 560),
+      minimumSize: Size(360, 560),
+      maximumSize: Size(360, 560),
+      alwaysOnTop: true,
+      backgroundColor: Colors.transparent,
+      skipTaskbar: false,
+      titleBarStyle: TitleBarStyle.hidden,
+      windowButtonVisibility: false,
+    );
+    windowManager.waitUntilReadyToShow(options, () async {
+      await windowManager.setAsFrameless();
+      await windowManager.setResizable(false);
+      await windowManager.setHasShadow(false);
+      await windowManager.setAlwaysOnTop(true);
+      await windowManager.setAlignment(Alignment.topRight);
+      await windowManager.show();
+    });
+  }
   final controller = TaskController();
   NativeNavigationBridge.attach(controller);
   runApp(
@@ -150,8 +172,13 @@ ThemeData _buildTheme(Brightness brightness, bool touch) {
   return base.copyWith(
     brightness: brightness,
     colorScheme: scheme,
-    scaffoldBackgroundColor: palette.canvas,
-    canvasColor: palette.canvas,
+    scaffoldBackgroundColor:
+        !kIsWeb && defaultTargetPlatform == TargetPlatform.windows
+        ? Colors.transparent
+        : palette.canvas,
+    canvasColor: !kIsWeb && defaultTargetPlatform == TargetPlatform.windows
+        ? Colors.transparent
+        : palette.canvas,
     cardColor: palette.surface,
     textTheme: textTheme,
     primaryTextTheme: textTheme,
@@ -262,7 +289,9 @@ class _StartupView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = QingxuPalette.of(context);
+    final windows = !kIsWeb && defaultTargetPlatform == TargetPlatform.windows;
     return Scaffold(
+      backgroundColor: windows ? Colors.transparent : null,
       body: Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
