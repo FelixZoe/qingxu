@@ -7,6 +7,7 @@ class TaskItem {
     required this.notes,
     required this.status,
     required this.projectId,
+    this.priority,
     required this.startAt,
     required this.deadlineAt,
     required this.completedAt,
@@ -21,6 +22,7 @@ class TaskItem {
   final String notes;
   final TaskStatus status;
   final String? projectId;
+  final String? priority;
   final DateTime? startAt;
   final DateTime? deadlineAt;
   final DateTime? completedAt;
@@ -37,6 +39,8 @@ class TaskItem {
     TaskStatus? status,
     String? projectId,
     bool clearProject = false,
+    String? priority,
+    bool clearPriority = false,
     DateTime? startAt,
     bool clearStartAt = false,
     DateTime? deadlineAt,
@@ -53,6 +57,7 @@ class TaskItem {
       notes: notes ?? this.notes,
       status: status ?? this.status,
       projectId: clearProject ? null : (projectId ?? this.projectId),
+      priority: clearPriority ? null : (priority ?? this.priority),
       startAt: clearStartAt ? null : (startAt ?? this.startAt),
       deadlineAt: clearDeadline ? null : (deadlineAt ?? this.deadlineAt),
       completedAt: clearCompletedAt ? null : (completedAt ?? this.completedAt),
@@ -69,6 +74,7 @@ class TaskItem {
     'notes': notes,
     'status': status.name,
     'projectId': projectId,
+    'priority': priority,
     'startAt': startAt?.toIso8601String(),
     'deadlineAt': deadlineAt?.toIso8601String(),
     'completedAt': completedAt?.toIso8601String(),
@@ -90,6 +96,7 @@ class TaskItem {
       notes: (json['notes'] as String?) ?? '',
       status: TaskStatus.values.byName((json['status'] as String?) ?? 'open'),
       projectId: json['projectId'] as String?,
+      priority: json['priority'] as String?,
       startAt: optionalDate('startAt'),
       deadlineAt: optionalDate('deadlineAt'),
       completedAt: optionalDate('completedAt'),

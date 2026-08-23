@@ -6,12 +6,31 @@ enum TaskStatus: String, Codable, CaseIterable {
   case cancelled
 }
 
+enum TaskPriority: String, Codable, CaseIterable, Hashable, Identifiable {
+  case high
+  case medium
+  case low
+
+  var id: String { rawValue }
+
+  var title: String {
+    switch self {
+    case .high: "高优先级"
+    case .medium: "中优先级"
+    case .low: "低优先级"
+    }
+  }
+
+  var symbol: String { "flag.fill" }
+}
+
 struct TaskItem: Codable, Identifiable, Hashable {
   var id: String
   var title: String
   var notes: String
   var status: TaskStatus
   var projectId: String?
+  var priority: TaskPriority? = nil
   var startAt: Date?
   var deadlineAt: Date?
   var completedAt: Date?

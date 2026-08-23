@@ -92,6 +92,7 @@ final class AppStore: ObservableObject {
       notes: notes.trimmingCharacters(in: .whitespacesAndNewlines),
       status: .open,
       projectId: nil,
+      priority: nil,
       startAt: forToday ? Calendar.autoupdatingCurrent.startOfDay(for: now) : nil,
       deadlineAt: nil,
       completedAt: nil,
