@@ -22,12 +22,6 @@ private struct TaskCaptureRoute: Identifiable {
   let scheduledAt: Date?
 }
 
-#if os(iOS)
-private struct CalendarPickerRoute: Identifiable {
-  let id = UUID()
-}
-#endif
-
 struct TaskListScreen: View {
   @EnvironmentObject private var store: AppStore
   let scope: TaskScope
@@ -39,12 +33,12 @@ struct TaskListScreen: View {
   @State private var recentlyDeleted: TaskItem?
   @State private var selectedDate = Date.now
   #if os(iOS)
-  @State private var calendarPicker: CalendarPickerRoute?
+  @State private var calendarExpansion: CGFloat = 0
   #endif
 
   private var tasks: [TaskItem] {
     let values = scope == .inbox ? store.inboxTasks : store.tasks(on: selectedDate)
-    guard !searchText.isEmpty else { return values }
+    guard scope == .inbox, !searchText.isEmpty else { return values }
     return values.filter {
       $0.title.localizedStandardContains(searchText) ||
       $0.notes.localizedStandardContains(searchText)
@@ -57,8 +51,11 @@ struct TaskListScreen: View {
         List {
           #if os(iOS)
           if scope == .today {
-            TodayWeekStrip(selection: $selectedDate)
-              .listRowInsets(.init(top: 4, leading: 16, bottom: 10, trailing: 16))
+            TodayExpandableCalendar(
+              selection: $selectedDate,
+              expansion: $calendarExpansion
+            )
+              .listRowInsets(.init(top: 4, leading: 20, bottom: 8, trailing: 20))
               .listRowBackground(Color.clear)
               .listRowSeparator(.hidden)
           }
@@ -80,18 +77,19 @@ struct TaskListScreen: View {
           }
 
           if tasks.isEmpty {
-            VStack(spacing: 12) {
-              Image(systemName: scope.symbol)
-                .font(.system(size: 42, weight: .light))
-              Text(scope.emptyTitle)
-                .font(.title3.weight(.semibold))
-                .foregroundStyle(.primary)
-              Text(scope.emptyDetail)
-                .font(.subheadline)
+            Group {
+              #if os(iOS)
+              if scope == .today {
+                TodayEmptyState()
+              } else {
+                defaultEmptyState
+              }
+              #else
+              defaultEmptyState
+              #endif
             }
             .frame(maxWidth: .infinity)
-            .padding(.top, scope == .today ? 42 : 120)
-            .foregroundStyle(QingxuPalette.quiet)
+            .padding(.top, scope == .today ? 18 : 120)
             .listRowBackground(Color.clear)
             .listRowSeparator(.hidden)
           }
@@ -100,15 +98,12 @@ struct TaskListScreen: View {
         .environment(\.defaultMinListRowHeight, 1)
       }
       .qingxuScreen()
-      .navigationTitle(navigationTitle)
       #if os(iOS)
-      .navigationBarTitleDisplayMode(.large)
-      .searchable(
-        text: $searchText,
-        placement: .navigationBarDrawer(displayMode: .automatic),
-        prompt: "搜索任务"
-      )
+      .navigationTitle(scope == .today ? "" : navigationTitle)
+      .navigationBarTitleDisplayMode(scope == .today ? .inline : .large)
+      .qingxuInboxSearch(enabled: scope == .inbox, text: $searchText)
       #else
+      .navigationTitle(navigationTitle)
       .searchable(text: $searchText, prompt: "搜索任务")
       #endif
       .toolbar {
@@ -116,14 +111,32 @@ struct TaskListScreen: View {
         ToolbarItem(placement: .primaryAction) { addButton }
         #else
         if scope == .today {
-          ToolbarItem(placement: .primaryAction) {
+          ToolbarItem(placement: .navigationBarLeading) {
             Button {
-              calendarPicker = CalendarPickerRoute()
+              withAnimation(.spring(response: 0.34, dampingFraction: 0.86)) {
+                selectedDate = .now
+              }
             } label: {
-              Image(systemName: "calendar")
+              Image(systemName: "calendar.badge.clock")
                 .frame(width: 36, height: 36)
+                .background(QingxuPalette.surface, in: Circle())
             }
-            .accessibilityLabel("打开月历")
+            .accessibilityLabel("回到今天")
+          }
+          ToolbarItem(placement: .principal) {
+            TodayNavigationTitle(date: selectedDate)
+          }
+          ToolbarItem(placement: .navigationBarTrailing) {
+            Button {
+              withAnimation(.spring(response: 0.38, dampingFraction: 0.86)) {
+                calendarExpansion = calendarExpansion < 0.5 ? 1 : 0
+              }
+            } label: {
+              Image(systemName: calendarExpansion < 0.5 ? "calendar" : "calendar.day.timeline.left")
+                .frame(width: 36, height: 36)
+                .background(QingxuPalette.surface, in: Circle())
+            }
+            .accessibilityLabel(calendarExpansion < 0.5 ? "展开月历" : "收起月历")
           }
         }
         #endif
@@ -150,13 +163,6 @@ struct TaskListScreen: View {
         TaskEditorSheet(task: route.task, scope: route.scope)
           .environmentObject(store)
       }
-      #if os(iOS)
-      .sheet(item: $calendarPicker) { _ in
-        CalendarPickerSheet(selection: $selectedDate)
-          .presentationDetents([.fraction(0.68)])
-          .presentationDragIndicator(.visible)
-      }
-      #endif
       .confirmationDialog(
         "删除“\(pendingDelete?.title ?? "任务")”？",
         isPresented: Binding(
@@ -207,6 +213,19 @@ struct TaskListScreen: View {
     guard scope == .today else { return scope.title }
     if Calendar.autoupdatingCurrent.isDateInToday(selectedDate) { return "今天" }
     return selectedDate.formatted(.dateTime.month().day().weekday(.wide))
+  }
+
+  private var defaultEmptyState: some View {
+    VStack(spacing: 12) {
+      Image(systemName: scope.symbol)
+        .font(.system(size: 42, weight: .light))
+      Text(scope.emptyTitle)
+        .font(.title3.weight(.semibold))
+        .foregroundStyle(.primary)
+      Text(scope.emptyDetail)
+        .font(.subheadline)
+    }
+    .foregroundStyle(QingxuPalette.quiet)
   }
 
   private var addButton: some View {
@@ -297,6 +316,21 @@ private struct TaskRow: View {
 }
 
 #if os(iOS)
+private extension View {
+  @ViewBuilder
+  func qingxuInboxSearch(enabled: Bool, text: Binding<String>) -> some View {
+    if enabled {
+      searchable(
+        text: text,
+        placement: .navigationBarDrawer(displayMode: .automatic),
+        prompt: "搜索任务"
+      )
+    } else {
+      self
+    }
+  }
+}
+
 private enum CaptureModal: String, Identifiable {
   case schedule
 
@@ -554,86 +588,219 @@ private struct TaskQuickCaptureBar: View {
   }
 }
 
-private struct TodayWeekStrip: View {
-  @Binding var selection: Date
+private struct TodayNavigationTitle: View {
+  let date: Date
 
   private let calendar = Calendar.autoupdatingCurrent
-
-  private var days: [Date] {
-    let interval = calendar.dateInterval(of: .weekOfYear, for: selection)
-    let start = interval?.start ?? calendar.startOfDay(for: selection)
-    return (0..<7).compactMap { calendar.date(byAdding: .day, value: $0, to: start) }
-  }
+  private let months = [
+    "一月", "二月", "三月", "四月", "五月", "六月",
+    "七月", "八月", "九月", "十月", "十一月", "十二月"
+  ]
+  private let weekdays = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"]
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 13) {
-      HStack {
-        Text(selection.formatted(.dateTime.year().month(.wide)))
-          .font(.subheadline.weight(.semibold))
-        Spacer()
-        Button("回到今天") {
-          withAnimation(.easeInOut(duration: 0.2)) { selection = .now }
-        }
-        .font(.caption.weight(.medium))
-        .buttonStyle(.plain)
-        .foregroundStyle(QingxuPalette.accent)
-      }
-
-      HStack(spacing: 4) {
-        ForEach(days, id: \.self) { day in
-          let selected = calendar.isDate(day, inSameDayAs: selection)
-          Button {
-            withAnimation(.easeInOut(duration: 0.18)) { selection = day }
-          } label: {
-            VStack(spacing: 6) {
-              Text(day.formatted(.dateTime.weekday(.narrow)))
-                .font(.caption2)
-              Text(day.formatted(.dateTime.day()))
-                .font(.subheadline.weight(.semibold))
-            }
-            .foregroundStyle(selected ? Color.white : QingxuPalette.ink)
-            .frame(maxWidth: .infinity)
-            .frame(height: 54)
-            .background(
-              selected ? QingxuPalette.accent : Color.clear,
-              in: RoundedRectangle(cornerRadius: 15, style: .continuous)
-            )
-          }
-          .buttonStyle(.plain)
-          .accessibilityLabel(day.formatted(date: .complete, time: .omitted))
-        }
-      }
+    VStack(spacing: -1) {
+      Text(monthTitle)
+        .font(.caption2)
+        .foregroundStyle(QingxuPalette.quiet)
+      Text(dayTitle)
+        .font(.headline)
+        .foregroundStyle(QingxuPalette.ink)
     }
-    .padding(14)
-    .background(QingxuPalette.surface, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+    .accessibilityElement(children: .combine)
+  }
+
+  private var monthTitle: String {
+    months[calendar.component(.month, from: date) - 1]
+  }
+
+  private var dayTitle: String {
+    if calendar.isDateInToday(date) { return "今天" }
+    let day = calendar.component(.day, from: date)
+    let weekday = weekdays[calendar.component(.weekday, from: date) - 1]
+    return "\(day)日 \(weekday)"
   }
 }
 
-private struct CalendarPickerSheet: View {
-  @Environment(\.dismiss) private var dismiss
+private struct TodayExpandableCalendar: View {
+  @EnvironmentObject private var store: AppStore
   @Binding var selection: Date
+  @Binding var expansion: CGFloat
+  @GestureState private var dragOffset: CGFloat = 0
+
+  private let rowHeight: CGFloat = 52
+  private let weekdays = ["一", "二", "三", "四", "五", "六", "日"]
+
+  private var calendar: Calendar {
+    var value = Calendar(identifier: .gregorian)
+    value.locale = Locale(identifier: "zh_CN")
+    value.firstWeekday = 2
+    return value
+  }
+
+  private var progress: CGFloat {
+    min(1, max(0, expansion + dragOffset / 230))
+  }
+
+  private var monthStart: Date {
+    calendar.dateInterval(of: .month, for: selection)?.start
+      ?? calendar.startOfDay(for: selection)
+  }
+
+  private var gridDays: [Date] {
+    let weekday = calendar.component(.weekday, from: monthStart)
+    let leadingDays = (weekday - calendar.firstWeekday + 7) % 7
+    let gridStart = calendar.date(byAdding: .day, value: -leadingDays, to: monthStart) ?? monthStart
+    return (0..<42).compactMap { calendar.date(byAdding: .day, value: $0, to: gridStart) }
+  }
+
+  private var selectedRow: Int {
+    (gridDays.firstIndex { calendar.isDate($0, inSameDayAs: selection) } ?? 0) / 7
+  }
+
+  private var gridOffset: CGFloat {
+    -CGFloat(selectedRow) * rowHeight * (1 - progress)
+  }
 
   var body: some View {
-    NavigationStack {
-      DatePicker(
-        "选择日期",
-        selection: $selection,
-        displayedComponents: .date
-      )
-      .datePickerStyle(.graphical)
-      .tint(QingxuPalette.accent)
-      .padding(.horizontal, 18)
-      .frame(maxHeight: .infinity, alignment: .top)
-      .qingxuScreen()
-      .navigationTitle("日历")
-      .navigationBarTitleDisplayMode(.inline)
-      .toolbar {
-        ToolbarItem(placement: .confirmationAction) {
-          Button("完成") { dismiss() }
-            .fontWeight(.semibold)
+    VStack(spacing: 5) {
+      HStack(spacing: 0) {
+        ForEach(weekdays, id: \.self) { value in
+          Text(value)
+            .font(.caption)
+            .foregroundStyle(QingxuPalette.quiet.opacity(0.8))
+            .frame(maxWidth: .infinity)
         }
       }
+      .frame(height: 24)
+
+      ZStack(alignment: .top) {
+        LazyVGrid(
+          columns: Array(repeating: GridItem(.flexible(), spacing: 0), count: 7),
+          spacing: 0
+        ) {
+          ForEach(gridDays, id: \.self) { day in
+            dayCell(day)
+          }
+        }
+        .offset(y: gridOffset)
+      }
+      .frame(height: rowHeight * (1 + 5 * progress), alignment: .top)
+      .clipped()
+
+      Button {
+        settleCalendar(expanded: expansion < 0.5)
+      } label: {
+        Capsule()
+          .fill(QingxuPalette.separator.opacity(0.9))
+          .frame(width: 34, height: 4)
+          .frame(maxWidth: .infinity, minHeight: 18)
+      }
+      .buttonStyle(.plain)
+      .accessibilityLabel(expansion < 0.5 ? "展开月历" : "收起月历")
     }
+    .contentShape(Rectangle())
+    .simultaneousGesture(calendarDrag)
+    .animation(.easeOut(duration: 0.16), value: selection)
+  }
+
+  private func dayCell(_ day: Date) -> some View {
+    let isSelected = calendar.isDate(day, inSameDayAs: selection)
+    let isToday = calendar.isDateInToday(day)
+    let isCurrentMonth = calendar.isDate(day, equalTo: selection, toGranularity: .month)
+    let hasTasks = !store.tasks(on: day).isEmpty
+
+    return Button {
+      withAnimation(.easeInOut(duration: 0.18)) { selection = day }
+    } label: {
+      VStack(spacing: 2) {
+        Text("\(calendar.component(.day, from: day))")
+          .font(.system(size: 16, weight: isSelected ? .semibold : .medium, design: .rounded))
+          .frame(width: 38, height: 38)
+          .foregroundStyle(dayForeground(
+            selected: isSelected,
+            today: isToday,
+            currentMonth: isCurrentMonth
+          ))
+          .background(isSelected ? QingxuPalette.accent : Color.clear, in: Circle())
+
+        Circle()
+          .fill(isSelected ? Color.white.opacity(0.9) : QingxuPalette.accent)
+          .frame(width: 3.5, height: 3.5)
+          .opacity(hasTasks ? 1 : 0)
+      }
+      .frame(maxWidth: .infinity)
+      .frame(height: rowHeight)
+    }
+    .buttonStyle(.plain)
+    .accessibilityLabel(day.formatted(date: .complete, time: .omitted))
+  }
+
+  private func dayForeground(selected: Bool, today: Bool, currentMonth: Bool) -> Color {
+    if selected { return .white }
+    if today { return QingxuPalette.accent }
+    return currentMonth ? QingxuPalette.ink : QingxuPalette.quiet.opacity(0.38)
+  }
+
+  private var calendarDrag: some Gesture {
+    DragGesture(minimumDistance: 8)
+      .updating($dragOffset) { value, state, _ in
+        if expansion < 0.5 {
+          state = max(0, value.translation.height)
+        } else {
+          state = min(0, value.translation.height)
+        }
+      }
+      .onEnded { value in
+        let projected = expansion + value.predictedEndTranslation.height / 230
+        settleCalendar(expanded: projected > 0.45)
+      }
+  }
+
+  private func settleCalendar(expanded: Bool) {
+    withAnimation(.spring(response: 0.4, dampingFraction: 0.86)) {
+      expansion = expanded ? 1 : 0
+    }
+    UISelectionFeedbackGenerator().selectionChanged()
+  }
+}
+
+private struct TodayEmptyState: View {
+  var body: some View {
+    VStack(spacing: 16) {
+      ZStack {
+        RoundedRectangle(cornerRadius: 34, style: .continuous)
+          .fill(QingxuPalette.selected.opacity(0.52))
+          .frame(width: 156, height: 106)
+          .rotationEffect(.degrees(-8))
+
+        Image(systemName: "sparkle")
+          .font(.system(size: 17, weight: .medium))
+          .foregroundStyle(QingxuPalette.accent.opacity(0.62))
+          .offset(x: -69, y: -42)
+        Image(systemName: "sparkle")
+          .font(.system(size: 13, weight: .medium))
+          .foregroundStyle(QingxuPalette.quiet.opacity(0.7))
+          .offset(x: 72, y: 35)
+
+        Image(systemName: "calendar")
+          .font(.system(size: 68, weight: .light))
+          .symbolRenderingMode(.hierarchical)
+          .foregroundStyle(QingxuPalette.accent)
+          .rotationEffect(.degrees(4))
+      }
+      .frame(height: 126)
+
+      VStack(spacing: 7) {
+        Text("你这一天没有任务")
+          .font(.title3.weight(.medium))
+          .foregroundStyle(QingxuPalette.ink)
+        Text("放松一下吧")
+          .font(.subheadline)
+          .foregroundStyle(QingxuPalette.quiet)
+      }
+    }
+    .accessibilityElement(children: .combine)
   }
 }
 
