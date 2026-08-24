@@ -828,7 +828,7 @@ private struct RSSAddSubscriptionSheet: View {
         Section {
           Text("可以填写 RSS、Atom 地址，也可以填写包含订阅链接的网站首页。")
             .font(.footnote)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(QingxuPalette.quiet)
         }
         if let errorMessage {
           Section { Text(errorMessage).foregroundStyle(QingxuPalette.danger) }

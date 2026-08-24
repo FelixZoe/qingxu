@@ -3,7 +3,7 @@ import Foundation
 struct SyncEnvelope: Encodable {
   let deviceId: String
   let tasks: [TaskItem]
-  let pomodoro: PomodoroState
+  let pomodoro: PomodoroState?
 }
 
 struct SyncResponse: Decodable {
@@ -36,9 +36,12 @@ struct SyncClient {
   private let session: URLSession
 
   init() {
-    let configuration = URLSessionConfiguration.ephemeral
+    let configuration = URLSessionConfiguration.default
     configuration.timeoutIntervalForRequest = 35
     configuration.timeoutIntervalForResource = 40
+    configuration.waitsForConnectivity = true
+    configuration.httpMaximumConnectionsPerHost = 2
+    configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
     session = URLSession(configuration: configuration)
   }
 
@@ -51,7 +54,7 @@ struct SyncClient {
   func sync(
     settings: SyncSettings,
     tasks: [TaskItem],
-    pomodoro: PomodoroState
+    pomodoro: PomodoroState?
   ) async throws -> SyncResponse {
     try requireConfigured(settings)
     var request = try makeRequest(path: "/v1/sync", settings: settings, authenticated: true)

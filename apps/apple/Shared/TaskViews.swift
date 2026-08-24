@@ -135,7 +135,7 @@ struct TaskListScreen: View {
       #if os(iOS)
       .overlay {
         if capture != nil {
-          Color.black.opacity(0.2)
+          QingxuPalette.scrim.opacity(0.18)
             .ignoresSafeArea()
             .contentShape(Rectangle())
             .onTapGesture { dismissCapture() }
@@ -172,7 +172,7 @@ struct TaskListScreen: View {
         .font(.system(size: 42, weight: .light))
       Text(scope.emptyTitle)
         .font(.title3.weight(.semibold))
-        .foregroundStyle(.primary)
+        .foregroundStyle(QingxuPalette.ink)
       Text(scope.emptyDetail)
         .font(.subheadline)
     }
@@ -588,7 +588,7 @@ private struct TaskRow: View {
         if !task.notes.isEmpty {
           Text(task.notes)
             .font(.subheadline)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(QingxuPalette.quiet)
             .lineLimit(2)
         }
       }
@@ -691,7 +691,7 @@ private struct TaskQuickCaptureBar: View {
 
         TextField("描述", text: $notes, axis: .vertical)
           .font(.subheadline)
-          .foregroundStyle(.secondary)
+          .foregroundStyle(QingxuPalette.quiet)
           .lineLimit(1...2)
           .accessibilityIdentifier("quickCaptureNotes")
       }
@@ -1254,7 +1254,7 @@ private extension TaskPriority {
   var color: Color {
     switch self {
     case .high: QingxuPalette.danger
-    case .medium: Color.orange
+    case .medium: QingxuPalette.warning
     case .low: QingxuPalette.accent
     }
   }

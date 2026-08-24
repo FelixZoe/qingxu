@@ -21,7 +21,7 @@ struct SettingsScreen: View {
               Text("清序").font(.headline)
               Text("版本 \(appVersion)")
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(QingxuPalette.quiet)
             }
             Spacer()
             #if os(iOS)
@@ -143,7 +143,7 @@ private struct AppUpdateSettingsView: View {
           if !release.body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             Text(release.body)
               .font(.subheadline)
-              .foregroundStyle(.secondary)
+              .foregroundStyle(QingxuPalette.quiet)
               .textSelection(.enabled)
           }
 
@@ -166,7 +166,7 @@ private struct AppUpdateSettingsView: View {
       Section {
         Text("覆盖安装必须保持 Bundle ID 为 one.darker.qingxu，并使用与当前安装版本相同的签名身份。满足这两个条件时，重新签名并安装新版 IPA 会保留任务、设置与同步配置。")
           .font(.footnote)
-          .foregroundStyle(.secondary)
+          .foregroundStyle(QingxuPalette.quiet)
       } header: {
         Text("覆盖安装")
       }
@@ -214,7 +214,7 @@ private struct SettingsRow: View {
       HStack {
         Text(title)
         Spacer()
-        Text(detail).font(.subheadline).foregroundStyle(.secondary)
+        Text(detail).font(.subheadline).foregroundStyle(QingxuPalette.quiet)
       }
     } icon: {
       Image(systemName: symbol)
@@ -237,7 +237,7 @@ struct AppearanceSettingsView: View {
             appearance = mode.rawValue
           } label: {
             HStack {
-              Text(mode.title).foregroundStyle(.primary)
+              Text(mode.title).foregroundStyle(QingxuPalette.ink)
               Spacer()
               if appearance == mode.rawValue {
                 Image(systemName: "checkmark").foregroundStyle(QingxuPalette.accent)
@@ -296,7 +296,7 @@ struct SyncSettingsView: View {
       Section {
         Text("只填写服务器根地址，不需要添加 /v1/sync。同步密钥保存在系统钥匙串中；任务、番茄钟状态与自定义时长会自动同步。")
           .font(.footnote)
-          .foregroundStyle(.secondary)
+          .foregroundStyle(QingxuPalette.quiet)
       }
     }
     .qingxuScreen()

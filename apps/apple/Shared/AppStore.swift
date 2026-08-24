@@ -17,6 +17,12 @@ enum SyncPhase: Equatable {
   }
 }
 
+private struct SyncMetadata: Codable {
+  var revision: UInt64
+  var dirtyTaskIDs: Set<String>
+  var pomodoroDirty: Bool
+}
+
 @MainActor
 final class AppStore: ObservableObject {
   @Published private(set) var tasks: [TaskItem] = []
@@ -30,17 +36,26 @@ final class AppStore: ObservableObject {
   private var pendingSync: Task<Void, Never>?
   private var changeFeedTask: Task<Void, Never>?
   private var serverOffset: TimeInterval = 0
-  private var lastAutomaticSync = Date.distantPast
+  private var lastAutomaticSync = Date()
   private var lastRevision: UInt64 = 0
   private var changeFeedGeneration = 0
-  private var isSyncing = false
-  private var syncQueued = false
+  private var dirtyTaskIDs: Set<String> = []
+  private var pomodoroDirty = false
+  private var activeSync: Task<Bool, Never>?
 
   init() {
     tasks = QingxuFiles.load([TaskItem].self, name: "tasks.json") ?? []
     pomodoro = QingxuFiles.load(PomodoroState.self, name: "pomodoro.json") ?? .initial()
     syncSettings = QingxuFiles.load(SyncSettings.self, name: "sync.json") ?? SyncSettings()
     syncSettings.token = SecureSyncToken.read()
+    if let metadata = QingxuFiles.load(SyncMetadata.self, name: "sync-state.json") {
+      lastRevision = metadata.revision
+      dirtyTaskIDs = metadata.dirtyTaskIDs
+      pomodoroDirty = metadata.pomodoroDirty
+    } else {
+      dirtyTaskIDs = Set(tasks.map(\.id))
+      pomodoroDirty = true
+    }
     if syncSettings.deviceName.isEmpty {
       syncSettings.deviceName = ProcessInfo.processInfo.hostName
     }
@@ -57,6 +72,7 @@ final class AppStore: ObservableObject {
     clockTask?.cancel()
     pendingSync?.cancel()
     changeFeedTask?.cancel()
+    activeSync?.cancel()
   }
 
   var inboxTasks: [TaskItem] {
@@ -106,7 +122,7 @@ final class AppStore: ObservableObject {
       deletedAt: nil
     )
     tasks.append(task)
-    changed()
+    changed(taskID: task.id)
     return task
   }
 
@@ -116,7 +132,7 @@ final class AppStore: ObservableObject {
     updated.title = updated.title.trimmingCharacters(in: .whitespacesAndNewlines)
     updated.updatedAt = estimatedNow
     tasks[index] = updated
-    changed()
+    changed(taskID: updated.id)
   }
 
   func toggleTask(_ task: TaskItem) {
@@ -125,7 +141,7 @@ final class AppStore: ObservableObject {
     tasks[index].status = tasks[index].status == .completed ? .open : .completed
     tasks[index].completedAt = tasks[index].status == .completed ? now : nil
     tasks[index].updatedAt = now
-    changed()
+    changed(taskID: tasks[index].id)
   }
 
   func deleteTask(_ task: TaskItem) {
@@ -133,14 +149,14 @@ final class AppStore: ObservableObject {
     let now = estimatedNow
     tasks[index].deletedAt = now
     tasks[index].updatedAt = now
-    changed()
+    changed(taskID: tasks[index].id)
   }
 
   func restoreTask(_ task: TaskItem) {
     guard let index = tasks.firstIndex(where: { $0.id == task.id }) else { return }
     tasks[index].deletedAt = nil
     tasks[index].updatedAt = estimatedNow
-    changed()
+    changed(taskID: tasks[index].id)
   }
 
   func setPomodoroMode(_ mode: PomodoroMode) {
@@ -187,9 +203,17 @@ final class AppStore: ObservableObject {
   }
 
   func saveSyncSettings(_ settings: SyncSettings) throws {
+    let serverChanged = settings.normalizedServerURL != syncSettings.normalizedServerURL
+      || settings.token != syncSettings.token
     syncSettings = settings
     try SecureSyncToken.write(settings.token)
     try QingxuFiles.save(settings, name: "sync.json")
+    if serverChanged {
+      lastRevision = 0
+      dirtyTaskIDs = Set(tasks.map(\.id))
+      pomodoroDirty = true
+      try persistSyncMetadata()
+    }
     syncPhase = settings.autoSync ? .syncing : .localOnly
     if settings.autoSync { scheduleSync(delay: .milliseconds(100)) }
     configureChangeFeed()
@@ -205,36 +229,61 @@ final class AppStore: ObservableObject {
       syncPhase = .localOnly
       return false
     }
-    guard !isSyncing else {
-      syncQueued = true
-      return false
+    if let activeSync {
+      return await activeSync.value
     }
-    isSyncing = true
-    defer {
-      isSyncing = false
-      if syncQueued {
-        syncQueued = false
-        Task { await syncNow() }
-      }
+    let operation = Task { [weak self] in
+      guard let self else { return false }
+      return await self.performSync()
     }
+    activeSync = operation
+    let succeeded = await operation.value
+    activeSync = nil
+    return succeeded
+  }
+
+  private func performSync() async -> Bool {
+    let sentTaskVersions = Dictionary(uniqueKeysWithValues: tasks.compactMap { task in
+      dirtyTaskIDs.contains(task.id) ? (task.id, task.updatedAt) : nil
+    })
+    let outgoingTasks = tasks.filter { sentTaskVersions[$0.id] != nil }
+    let sentPomodoroVersion = pomodoroDirty ? pomodoro.updatedAt : nil
+    let outgoingPomodoro = pomodoroDirty ? pomodoro : nil
+
     syncPhase = .syncing
     do {
       let response = try await client.sync(
         settings: syncSettings,
-        tasks: tasks,
-        pomodoro: pomodoro
+        tasks: outgoingTasks,
+        pomodoro: outgoingPomodoro
       )
-      lastRevision = max(lastRevision, response.revision ?? 0)
+      let localTasksBeforeMerge = Dictionary(uniqueKeysWithValues: tasks.map { ($0.id, $0) })
+      let localPomodoroBeforeMerge = pomodoro
       serverOffset = response.serverTime.timeIntervalSinceNow
-      tasks = response.tasks
+
+      tasks = merge(remoteTasks: response.tasks, into: tasks)
       if let remote = response.pomodoro, remote.updatedAt >= pomodoro.updatedAt {
         pomodoro = remote
       }
+
+      for (id, sentVersion) in sentTaskVersions
+      where localTasksBeforeMerge[id]?.updatedAt == sentVersion {
+        dirtyTaskIDs.remove(id)
+      }
+      if let sentPomodoroVersion,
+         localPomodoroBeforeMerge.updatedAt == sentPomodoroVersion {
+        pomodoroDirty = false
+      }
+      lastRevision = max(lastRevision, response.revision ?? 0)
       try persistAll()
+      try persistSyncMetadata()
       displayedRemainingSeconds = pomodoro.remaining(at: estimatedNow)
       syncPhase = .synced(.now)
       lastAutomaticSync = .now
       refreshSystemSurfaces()
+      if !dirtyTaskIDs.isEmpty || pomodoroDirty {
+        scheduleSync(delay: .milliseconds(40))
+      }
       return true
     } catch {
       syncPhase = .failed(error.localizedDescription)
@@ -249,15 +298,19 @@ final class AppStore: ObservableObject {
     return left.order < right.order
   }
 
-  private func changed() {
+  private func changed(taskID: String) {
+    dirtyTaskIDs.insert(taskID)
     try? QingxuFiles.save(tasks, name: "tasks.json")
+    try? persistSyncMetadata()
     refreshSystemSurfaces()
     scheduleSync()
   }
 
   private func pomodoroChanged() {
+    pomodoroDirty = true
     displayedRemainingSeconds = pomodoro.remaining(at: estimatedNow)
     try? QingxuFiles.save(pomodoro, name: "pomodoro.json")
+    try? persistSyncMetadata()
     refreshSystemSurfaces()
     scheduleSync(delay: .zero)
   }
@@ -267,7 +320,32 @@ final class AppStore: ObservableObject {
     try QingxuFiles.save(pomodoro, name: "pomodoro.json")
   }
 
-  private func scheduleSync(delay: Duration = .milliseconds(700)) {
+  private func persistSyncMetadata() throws {
+    try QingxuFiles.save(
+      SyncMetadata(
+        revision: lastRevision,
+        dirtyTaskIDs: dirtyTaskIDs,
+        pomodoroDirty: pomodoroDirty
+      ),
+      name: "sync-state.json"
+    )
+  }
+
+  private func merge(remoteTasks: [TaskItem], into localTasks: [TaskItem]) -> [TaskItem] {
+    var merged = Dictionary(uniqueKeysWithValues: localTasks.map { ($0.id, $0) })
+    for remote in remoteTasks {
+      guard let local = merged[remote.id] else {
+        merged[remote.id] = remote
+        continue
+      }
+      if remote.updatedAt >= local.updatedAt {
+        merged[remote.id] = remote
+      }
+    }
+    return Array(merged.values)
+  }
+
+  private func scheduleSync(delay: Duration = .milliseconds(120)) {
     guard syncSettings.autoSync && syncSettings.isConfigured else { return }
     pendingSync?.cancel()
     pendingSync = Task { [weak self] in
@@ -288,6 +366,7 @@ final class AppStore: ObservableObject {
   }
 
   private func watchChanges(generation: Int) async {
+    var failureCount = 0
     while !Task.isCancelled && generation == changeFeedGeneration {
       do {
         let change = try await client.waitForChanges(
@@ -295,18 +374,24 @@ final class AppStore: ObservableObject {
           since: lastRevision
         )
         guard !Task.isCancelled, generation == changeFeedGeneration else { return }
+        failureCount = 0
         let isNewRevision = change.revision > lastRevision
         if change.changed && isNewRevision {
           let succeeded = await syncNow()
-          if !succeeded { try? await Task.sleep(for: .seconds(3)) }
+          if !succeeded {
+            failureCount = 1
+            try? await Task.sleep(for: .seconds(1))
+          }
         } else if isNewRevision {
           lastRevision = change.revision
+          try? persistSyncMetadata()
         }
       } catch is CancellationError {
         return
       } catch {
         guard !Task.isCancelled, generation == changeFeedGeneration else { return }
-        try? await Task.sleep(for: .seconds(3))
+        failureCount = min(failureCount + 1, 5)
+        try? await Task.sleep(for: .seconds(1 << failureCount))
       }
     }
   }
@@ -329,7 +414,7 @@ final class AppStore: ObservableObject {
     let interval: TimeInterval = 5 * 60
     if syncSettings.autoSync,
        syncSettings.isConfigured,
-       !isSyncing,
+       activeSync == nil,
        Date().timeIntervalSince(lastAutomaticSync) >= interval {
       lastAutomaticSync = .now
       Task { await syncNow() }

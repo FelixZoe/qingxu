@@ -60,7 +60,7 @@ struct PomodoroScreen: View {
               .font(.system(size: 54, weight: .light, design: .rounded).monospacedDigit())
             Text("已完成 \(store.pomodoro.completedFocusSessions) 次专注")
               .font(.caption)
-              .foregroundStyle(.secondary)
+              .foregroundStyle(QingxuPalette.quiet)
           }
         }
         .frame(width: 268, height: 268)
@@ -165,7 +165,7 @@ private struct PomodoroTaskPicker: View {
             if selection == nil { Image(systemName: "checkmark") }
           }
         }
-        .foregroundStyle(.primary)
+        .foregroundStyle(QingxuPalette.ink)
 
         ForEach(store.todayTasks) { task in
           Button {
@@ -180,7 +180,7 @@ private struct PomodoroTaskPicker: View {
               }
             }
           }
-          .foregroundStyle(.primary)
+          .foregroundStyle(QingxuPalette.ink)
         }
       }
       .qingxuScreen()

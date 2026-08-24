@@ -25,46 +25,62 @@ enum AppearanceMode: String, CaseIterable, Identifiable {
 }
 
 enum QingxuPalette {
-  /// 雾蓝石墨：冷瓷白与深蓝石墨组成的低刺激工作界面。
+  /// 暖瓷白与深海墨：大面积保持安静，只让矿物蓝承担交互强调。
   static let background = Color.adaptive(
-    lightHex: 0xF5F7FA,
-    darkHex: 0x10141A
+    lightHex: 0xF7F6F2,
+    darkHex: 0x0D1117
   )
   static let secondaryBackground = Color.adaptive(
-    lightHex: 0xEDF1F5,
-    darkHex: 0x161C24
+    lightHex: 0xEFEFEA,
+    darkHex: 0x131A20
   )
   static let surface = Color.adaptive(
+    lightHex: 0xFCFCF9,
+    darkHex: 0x182129
+  )
+  static let elevatedSurface = Color.adaptive(
     lightHex: 0xFFFFFF,
-    darkHex: 0x1C2430
+    darkHex: 0x1E2932
   )
   static let accent = Color.adaptive(
-    lightHex: 0x5278A5,
-    darkHex: 0x86A9D1
+    lightHex: 0x456F8E,
+    darkHex: 0x7FA9C4
   )
   static let selected = Color.adaptive(
-    lightHex: 0xE1EAF4,
-    darkHex: 0x21334A
+    lightHex: 0xDDE9F0,
+    darkHex: 0x203846
   )
   static let ink = Color.adaptive(
-    lightHex: 0x17212B,
-    darkHex: 0xEDF2F7
+    lightHex: 0x172026,
+    darkHex: 0xEDF3F4
   )
   static let quiet = Color.adaptive(
-    lightHex: 0x667381,
-    darkHex: 0x9DAAB8
+    lightHex: 0x667078,
+    darkHex: 0x9CAAAF
+  )
+  static let faint = Color.adaptive(
+    lightHex: 0x8C9499,
+    darkHex: 0x748289
   )
   static let separator = Color.adaptive(
-    lightHex: 0xDDE3E9,
-    darkHex: 0x293440
+    lightHex: 0xDEE1DE,
+    darkHex: 0x29363E
   )
   static let success = Color.adaptive(
-    lightHex: 0x557967,
-    darkHex: 0x83AA95
+    lightHex: 0x47715D,
+    darkHex: 0x7CB394
+  )
+  static let warning = Color.adaptive(
+    lightHex: 0xA56B32,
+    darkHex: 0xD2A067
   )
   static let danger = Color.adaptive(
-    lightHex: 0xB65359,
-    darkHex: 0xD57D83
+    lightHex: 0xAF5458,
+    darkHex: 0xD67C80
+  )
+  static let scrim = Color.adaptive(
+    lightHex: 0x172026,
+    darkHex: 0x000000
   )
 }
 
