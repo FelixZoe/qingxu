@@ -238,6 +238,7 @@ struct TaskListScreen: View {
     }
   }
 
+  #if os(iOS)
   @ViewBuilder
   private var todayTaskRows: some View {
     ForEach(tasks) { task in
@@ -271,6 +272,7 @@ struct TaskListScreen: View {
       }
     }
   }
+  #endif
 
   #if os(iOS)
   private var todayFixedLayout: some View {
