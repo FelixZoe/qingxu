@@ -41,6 +41,7 @@ struct TaskListScreen: View {
   @State private var todayContentTopBaseline: CGFloat?
   @State private var todayContentIsAtTop = true
   @State private var todayContentPullOrigin: CGFloat?
+  @State private var todayContentDragDirection: TodayCalendarDragDirection?
   #endif
 
   private var tasks: [TaskItem] {
@@ -276,7 +277,7 @@ struct TaskListScreen: View {
       }
       // The calendar owns the vertical gesture while it is expanded. This
       // keeps the task list still until the month has collapsed back to a week.
-      .scrollDisabled(calendarExpansion > 0.001)
+      .scrollDisabled(calendarExpansion > 0.001 || todayContentDragDirection != nil)
       .simultaneousGesture(todayContentPullGesture)
       .background(QingxuPalette.surface)
       .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
@@ -417,7 +418,7 @@ struct TaskListScreen: View {
   }
 
   private func setCalendarExpanded(_ expanded: Bool) {
-    withAnimation(.interactiveSpring(response: 0.36, dampingFraction: 0.9, blendDuration: 0.08)) {
+    withAnimation(.easeOut(duration: 0.18)) {
       calendarExpansion = expanded ? 1 : 0
     }
     UISelectionFeedbackGenerator().selectionChanged()
@@ -448,13 +449,11 @@ struct TaskListScreen: View {
           max(0, start + value.translation.height / TodayCalendarMetrics.expansionDistance)
         )
       }
-      .onEnded { value in
+      .onEnded { _ in
         guard scope == .today, let start = calendarDragStart else { return }
-        let projected = start
-          + value.predictedEndTranslation.height / TodayCalendarMetrics.expansionDistance
-        let target: CGFloat = projected > 0.45 ? 1 : 0
+        let target: CGFloat = calendarExpansion >= 0.5 ? 1 : 0
         calendarDragStart = nil
-        withAnimation(.interactiveSpring(response: 0.34, dampingFraction: 0.9, blendDuration: 0.08)) {
+        withAnimation(.easeOut(duration: 0.16)) {
           calendarExpansion = target
         }
         if (start < 0.5 && target == 1) || (start >= 0.5 && target == 0) {
@@ -470,40 +469,43 @@ struct TaskListScreen: View {
               abs(value.translation.height) > abs(value.translation.width)
         else { return }
 
-        let isExpanding = value.translation.height > 0
-        let isCollapsing = value.translation.height < 0 && calendarExpansion > 0
-        guard isCollapsing || (isExpanding && todayContentIsAtTop) else { return }
-
-        if todayContentPullOrigin == nil {
+        if todayContentDragDirection == nil {
+          if value.translation.height > 0, todayContentIsAtTop {
+            todayContentDragDirection = .expand
+          } else if value.translation.height < 0, calendarExpansion > 0.001 {
+            todayContentDragDirection = .collapse
+          } else {
+            return
+          }
           todayContentPullOrigin = value.translation.height
           calendarDragStart = calendarExpansion
         }
 
+        guard let direction = todayContentDragDirection else { return }
         let origin = todayContentPullOrigin ?? value.translation.height
         let start = calendarDragStart ?? calendarExpansion
-        let distance = isExpanding
-          ? max(0, value.translation.height - origin)
-          : min(0, value.translation.height - origin)
+        let translation = value.translation.height - origin
+        let distance = direction == .expand
+          ? max(0, translation)
+          : min(0, translation)
         calendarExpansion = min(
           1,
           max(0, start + distance / TodayCalendarMetrics.expansionDistance)
         )
       }
-      .onEnded { value in
+      .onEnded { _ in
         defer {
           todayContentPullOrigin = nil
           calendarDragStart = nil
+          todayContentDragDirection = nil
         }
-        guard let origin = todayContentPullOrigin,
-              let start = calendarDragStart
+        guard let start = calendarDragStart,
+              let direction = todayContentDragDirection
         else { return }
 
-        let projectedDistance = value.translation.height >= 0
-          ? max(0, value.predictedEndTranslation.height - origin)
-          : min(0, value.predictedEndTranslation.height - origin)
-        let projected = start + projectedDistance / TodayCalendarMetrics.expansionDistance
-        let target: CGFloat = projected > 0.45 ? 1 : 0
-        withAnimation(.interactiveSpring(response: 0.34, dampingFraction: 0.9, blendDuration: 0.08)) {
+        let threshold: CGFloat = direction == .expand ? 0.42 : 0.58
+        let target: CGFloat = calendarExpansion >= threshold ? 1 : 0
+        withAnimation(.easeOut(duration: 0.16)) {
           calendarExpansion = target
         }
         if (start < 0.5 && target == 1) || (start >= 0.5 && target == 0) {
@@ -884,6 +886,11 @@ private enum TodayCalendarMetrics {
   static let expansionDistance = rowHeight * 5
 }
 
+private enum TodayCalendarDragDirection: Equatable {
+  case expand
+  case collapse
+}
+
 private enum TodayTaskScrollSpace {
   static let name = "qingxu.today.task-scroll"
 }
@@ -1146,7 +1153,6 @@ private struct TodayCalendarGrid: View, Equatable {
     }
     .buttonStyle(.plain)
     .opacity(Double(0.14 + 0.86 * visibility))
-    .scaleEffect(0.975 + 0.025 * visibility)
     .accessibilityLabel(day.formatted(date: .complete, time: .omitted))
   }
 
