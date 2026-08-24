@@ -1,6 +1,9 @@
 import Combine
 import Foundation
 import SwiftUI
+#if os(iOS)
+import SafariServices
+#endif
 
 struct RSSSubscription: Codable, Identifiable, Hashable {
   var id: String
@@ -441,10 +444,15 @@ private enum RSSRoute: String, Identifiable {
   var id: String { rawValue }
 }
 
+private struct RSSBrowserRoute: Identifiable {
+  let id = UUID()
+  let url: URL
+}
+
 struct RSSScreen: View {
   @StateObject private var store = RSSStore()
   @State private var route: RSSRoute?
-  @Environment(\.openURL) private var openURL
+  @State private var browserRoute: RSSBrowserRoute?
 
   var body: some View {
     NavigationStack {
@@ -465,7 +473,9 @@ struct RSSScreen: View {
           ForEach(store.articles) { article in
             Button {
               store.markRead(article)
-              if let url = URL(string: article.link), !article.link.isEmpty { openURL(url) }
+              if let url = URL(string: article.link), !article.link.isEmpty {
+                browserRoute = RSSBrowserRoute(url: url)
+              }
             } label: {
               RSSArticleRow(article: article)
             }
@@ -524,8 +534,28 @@ struct RSSScreen: View {
           .presentationDetents([.medium])
           .presentationDragIndicator(.visible)
       }
+      .sheet(item: $browserRoute) { route in
+        RSSInAppBrowser(url: route.url)
+          .ignoresSafeArea()
+      }
     }
   }
+}
+
+private struct RSSInAppBrowser: UIViewControllerRepresentable {
+  let url: URL
+
+  func makeUIViewController(context: Context) -> SFSafariViewController {
+    let configuration = SFSafariViewController.Configuration()
+    configuration.entersReaderIfAvailable = false
+    configuration.barCollapsingEnabled = true
+    let controller = SFSafariViewController(url: url, configuration: configuration)
+    controller.dismissButtonStyle = .close
+    controller.preferredControlTintColor = UIColor(QingxuPalette.accent)
+    return controller
+  }
+
+  func updateUIViewController(_ controller: SFSafariViewController, context: Context) {}
 }
 
 private struct RSSArticleRow: View {

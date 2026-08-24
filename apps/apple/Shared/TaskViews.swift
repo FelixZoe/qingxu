@@ -24,6 +24,7 @@ private struct TaskCaptureRoute: Identifiable {
 
 struct TaskListScreen: View {
   @EnvironmentObject private var store: AppStore
+  @Environment(\.openURL) private var openURL
   let scope: TaskScope
 
   @State private var searchText = ""
@@ -32,6 +33,8 @@ struct TaskListScreen: View {
   @State private var pendingDelete: TaskItem?
   @State private var recentlyDeleted: TaskItem?
   @State private var selectedDate = Date.now
+  @AppStorage("qingxu.calendar.showFestivals") private var showFestivalLabels = true
+  @AppStorage("qingxu.calendar.showTaskIndicators") private var showTaskIndicators = true
   #if os(iOS)
   @State private var calendarExpansion: CGFloat = 0
   @State private var calendarDragStart: CGFloat?
@@ -54,7 +57,9 @@ struct TaskListScreen: View {
           if scope == .today {
             TodayExpandableCalendar(
               selection: $selectedDate,
-              expansion: $calendarExpansion
+              expansion: $calendarExpansion,
+              showsFestivals: showFestivalLabels,
+              showsTaskIndicators: showTaskIndicators
             )
               .listRowInsets(.init(top: 4, leading: 20, bottom: 8, trailing: 20))
               .listRowBackground(Color.clear)
@@ -97,6 +102,9 @@ struct TaskListScreen: View {
         }
         .listStyle(.plain)
         .environment(\.defaultMinListRowHeight, 1)
+        #if os(iOS)
+        .scrollDisabled(scope == .today && (tasks.isEmpty || calendarDragStart != nil))
+        #endif
       }
       .qingxuScreen()
       #if os(iOS)
@@ -114,31 +122,13 @@ struct TaskListScreen: View {
         #else
         if scope == .today {
           ToolbarItem(placement: .navigationBarLeading) {
-            Button {
-              withAnimation(.spring(response: 0.34, dampingFraction: 0.86)) {
-                selectedDate = .now
-              }
-            } label: {
-              Image(systemName: "calendar.badge.clock")
-                .frame(width: 36, height: 36)
-                .background(QingxuPalette.surface, in: Circle())
-            }
-            .accessibilityLabel("回到今天")
+            todayNavigationMenu
           }
           ToolbarItem(placement: .principal) {
             TodayNavigationTitle(date: selectedDate, expansion: calendarExpansion)
           }
           ToolbarItem(placement: .navigationBarTrailing) {
-            Button {
-              withAnimation(.spring(response: 0.38, dampingFraction: 0.86)) {
-                calendarExpansion = calendarExpansion < 0.5 ? 1 : 0
-              }
-            } label: {
-              Image(systemName: calendarExpansion < 0.5 ? "calendar" : "calendar.day.timeline.left")
-                .frame(width: 36, height: 36)
-                .background(QingxuPalette.surface, in: Circle())
-            }
-            .accessibilityLabel(calendarExpansion < 0.5 ? "展开月历" : "收起月历")
+            todayDisplayControls
           }
         }
         #endif
@@ -252,13 +242,128 @@ struct TaskListScreen: View {
     .qingxuFloatingSurface()
   }
 
+  #if os(iOS)
+  private var todayNavigationMenu: some View {
+    Menu {
+      Button { openAppTab("inbox") } label: {
+        Label("收集箱", systemImage: "tray")
+      }
+      Button { openAppTab("today") } label: {
+        Label("今天", systemImage: "calendar")
+      }
+      Button { openAppTab("pomodoro") } label: {
+        Label("番茄钟", systemImage: "timer")
+      }
+      Button { openAppTab("rss") } label: {
+        Label("RSS", systemImage: "dot.radiowaves.left.and.right")
+      }
+      Divider()
+      Button { openAppTab("settings") } label: {
+        Label("设置", systemImage: "gearshape")
+      }
+    } label: {
+      Image(systemName: "sidebar.left")
+        .font(.system(size: 17, weight: .medium))
+        .frame(width: 40, height: 40)
+        .background(QingxuPalette.surface, in: Circle())
+        .overlay(Circle().stroke(QingxuPalette.separator.opacity(0.7), lineWidth: 0.5))
+    }
+    .accessibilityLabel("打开导航")
+  }
+
+  private var todayDisplayControls: some View {
+    HStack(spacing: 0) {
+      Button {
+        setCalendarExpanded(calendarExpansion < 0.5)
+      } label: {
+        Image(systemName: calendarExpansion < 0.5
+          ? "calendar.day.timeline.left"
+          : "calendar")
+          .font(.system(size: 16, weight: .medium))
+          .frame(width: 42, height: 40)
+      }
+      .accessibilityLabel(calendarExpansion < 0.5 ? "显示整月" : "显示当前周")
+
+      Rectangle()
+        .fill(QingxuPalette.separator.opacity(0.72))
+        .frame(width: 0.5, height: 18)
+
+      Menu {
+        Menu {
+          Button {
+            setCalendarExpanded(false)
+          } label: {
+            Label("当前周", systemImage: calendarExpansion < 0.5 ? "checkmark" : "calendar")
+          }
+          Button {
+            setCalendarExpanded(true)
+          } label: {
+            Label("整月", systemImage: calendarExpansion >= 0.5 ? "checkmark" : "calendar")
+          }
+        } label: {
+          Label("显示范围", systemImage: "line.3.horizontal.decrease")
+        }
+
+        Menu {
+          Toggle(isOn: $showFestivalLabels) {
+            Label("节日", systemImage: "leaf")
+          }
+          Toggle(isOn: $showTaskIndicators) {
+            Label("任务标记", systemImage: "circlebadge")
+          }
+        } label: {
+          Label("显示设置", systemImage: "slider.horizontal.3")
+        }
+
+        Button {
+          capture = TaskCaptureRoute(scope: .today, scheduledAt: selectedDate)
+        } label: {
+          Label("安排任务", systemImage: "calendar.badge.plus")
+        }
+
+        Button { openAppTab("rss") } label: {
+          Label("RSS 订阅", systemImage: "dot.radiowaves.left.and.right")
+        }
+
+        Divider()
+
+        Button {
+          withAnimation(.easeInOut(duration: 0.28)) { selectedDate = .now }
+        } label: {
+          Label("回到今天", systemImage: "calendar.badge.clock")
+        }
+      } label: {
+        Image(systemName: "ellipsis")
+          .font(.system(size: 16, weight: .semibold))
+          .frame(width: 42, height: 40)
+      }
+      .accessibilityLabel("更多日历操作")
+    }
+    .foregroundStyle(QingxuPalette.ink)
+    .background(QingxuPalette.surface, in: Capsule())
+    .overlay(Capsule().stroke(QingxuPalette.separator.opacity(0.7), lineWidth: 0.5))
+  }
+
+  private func setCalendarExpanded(_ expanded: Bool) {
+    withAnimation(.interactiveSpring(response: 0.36, dampingFraction: 0.9, blendDuration: 0.08)) {
+      calendarExpansion = expanded ? 1 : 0
+    }
+    UISelectionFeedbackGenerator().selectionChanged()
+  }
+
+  private func openAppTab(_ host: String) {
+    guard let url = URL(string: "qingxu://\(host)") else { return }
+    openURL(url)
+  }
+  #endif
+
   private func dismissCapture() {
     withAnimation(.easeOut(duration: 0.2)) { capture = nil }
   }
 
   #if os(iOS)
   private var todayCalendarDrag: some Gesture {
-    DragGesture(minimumDistance: 8)
+    DragGesture(minimumDistance: 3)
       .onChanged { value in
         guard scope == .today,
               capture == nil,
@@ -277,7 +382,7 @@ struct TaskListScreen: View {
           + value.predictedEndTranslation.height / TodayCalendarMetrics.expansionDistance
         let target: CGFloat = projected > 0.45 ? 1 : 0
         calendarDragStart = nil
-        withAnimation(.spring(response: 0.4, dampingFraction: 0.86)) {
+        withAnimation(.interactiveSpring(response: 0.34, dampingFraction: 0.9, blendDuration: 0.08)) {
           calendarExpansion = target
         }
         if (start < 0.5 && target == 1) || (start >= 0.5 && target == 0) {
@@ -665,9 +770,10 @@ private struct TodayNavigationTitle: View {
 }
 
 private struct TodayExpandableCalendar: View {
-  @EnvironmentObject private var store: AppStore
   @Binding var selection: Date
   @Binding var expansion: CGFloat
+  let showsFestivals: Bool
+  let showsTaskIndicators: Bool
 
   private let rowHeight = TodayCalendarMetrics.rowHeight
   private let weekdays = ["一", "二", "三", "四", "五", "六", "日"]
@@ -699,35 +805,14 @@ private struct TodayExpandableCalendar: View {
     (gridDays.firstIndex { calendar.isDate($0, inSameDayAs: selection) } ?? 0) / 7
   }
 
-  /// Reveal the month from the selected week outwards. Each pull step exposes
-  /// the nearest hidden row above, then the nearest hidden row below, before
-  /// moving farther away from the selected week.
-  private var revealedRows: (leading: CGFloat, trailing: CGFloat) {
-    var order: [Bool] = [] // true = row above, false = row below
-
-    for distance in 1..<6 {
-      if selectedRow - distance >= 0 { order.append(true) }
-      if selectedRow + distance < 6 { order.append(false) }
-    }
-
-    let revealedUnits = 5 * progress
-    var leading: CGFloat = 0
-    var trailing: CGFloat = 0
-
-    for (index, isLeading) in order.enumerated() {
-      let fraction = min(1, max(0, revealedUnits - CGFloat(index)))
-      if isLeading {
-        leading += fraction
-      } else {
-        trailing += fraction
-      }
-    }
-
-    return (leading, trailing)
+  /// Keep the selected week pinned to the lower reveal edge while the weeks
+  /// above it appear continuously. The final row below is revealed last.
+  private var revealedLeadingRows: CGFloat {
+    min(CGFloat(selectedRow), 5 * progress)
   }
 
   private var gridOffset: CGFloat {
-    -(CGFloat(selectedRow) - revealedRows.leading) * rowHeight
+    -(CGFloat(selectedRow) - revealedLeadingRows) * rowHeight
   }
 
   var body: some View {
@@ -743,14 +828,13 @@ private struct TodayExpandableCalendar: View {
       .frame(height: 24)
 
       ZStack(alignment: .top) {
-        LazyVGrid(
-          columns: Array(repeating: GridItem(.flexible(), spacing: 0), count: 7),
-          spacing: 0
-        ) {
-          ForEach(gridDays, id: \.self) { day in
-            dayCell(day)
-          }
-        }
+        TodayCalendarGrid(
+          days: gridDays,
+          selection: $selection,
+          showsFestivals: showsFestivals,
+          showsTaskIndicators: showsTaskIndicators
+        )
+        .equatable()
         .offset(y: gridOffset)
       }
       .frame(height: rowHeight * (1 + 5 * progress), alignment: .top)
@@ -768,15 +852,66 @@ private struct TodayExpandableCalendar: View {
       .accessibilityLabel(expansion < 0.5 ? "展开月历" : "收起月历")
     }
     .contentShape(Rectangle())
+  }
+
+  private func settleCalendar(expanded: Bool) {
+    withAnimation(.spring(response: 0.4, dampingFraction: 0.86)) {
+      expansion = expanded ? 1 : 0
+    }
+    UISelectionFeedbackGenerator().selectionChanged()
+  }
+}
+
+private struct TodayCalendarGrid: View, Equatable {
+  @EnvironmentObject private var store: AppStore
+  let days: [Date]
+  @Binding var selection: Date
+  let showsFestivals: Bool
+  let showsTaskIndicators: Bool
+
+  private let rowHeight = TodayCalendarMetrics.rowHeight
+
+  private var calendar: Calendar {
+    var value = Calendar(identifier: .gregorian)
+    value.locale = Locale(identifier: "zh_CN")
+    value.firstWeekday = 2
+    return value
+  }
+
+  static func == (lhs: Self, rhs: Self) -> Bool {
+    lhs.days == rhs.days
+      && lhs.selection.wrappedValue == rhs.selection.wrappedValue
+      && lhs.showsFestivals == rhs.showsFestivals
+      && lhs.showsTaskIndicators == rhs.showsTaskIndicators
+  }
+
+  var body: some View {
+    let markedDays = taskDays
+
+    LazyVGrid(
+      columns: Array(repeating: GridItem(.flexible(), spacing: 0), count: 7),
+      spacing: 0
+    ) {
+      ForEach(days, id: \.self) { day in
+        dayCell(day, hasTasks: markedDays.contains(calendar.startOfDay(for: day)))
+      }
+    }
     .animation(.easeOut(duration: 0.16), value: selection)
   }
 
-  private func dayCell(_ day: Date) -> some View {
+  private var taskDays: Set<Date> {
+    guard showsTaskIndicators else { return [] }
+    return Set(store.tasks.lazy
+      .filter(\.isOpen)
+      .flatMap { [$0.startAt, $0.deadlineAt].compactMap { $0 } }
+      .map { calendar.startOfDay(for: $0) })
+  }
+
+  private func dayCell(_ day: Date, hasTasks: Bool) -> some View {
     let isSelected = calendar.isDate(day, inSameDayAs: selection)
     let isToday = calendar.isDateInToday(day)
     let isCurrentMonth = calendar.isDate(day, equalTo: selection, toGranularity: .month)
-    let hasTasks = !store.tasks(on: day).isEmpty
-    let festival = QingxuFestivalCalendar.title(for: day)
+    let festival = showsFestivals ? QingxuFestivalCalendar.title(for: day) : nil
 
     return Button {
       withAnimation(.easeInOut(duration: 0.18)) { selection = day }
@@ -818,13 +953,6 @@ private struct TodayExpandableCalendar: View {
     if selected { return .white }
     if today { return QingxuPalette.accent }
     return currentMonth ? QingxuPalette.ink : QingxuPalette.quiet.opacity(0.38)
-  }
-
-  private func settleCalendar(expanded: Bool) {
-    withAnimation(.spring(response: 0.4, dampingFraction: 0.86)) {
-      expansion = expanded ? 1 : 0
-    }
-    UISelectionFeedbackGenerator().selectionChanged()
   }
 }
 

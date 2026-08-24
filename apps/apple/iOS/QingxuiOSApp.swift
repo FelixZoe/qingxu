@@ -75,6 +75,7 @@ private struct iOSRootView: View {
       case "today": selection = .today
       case "pomodoro": selection = .pomodoro
       case "rss": selection = .rss
+      case "settings": selection = .settings
       default: selection = .inbox
       }
     }
