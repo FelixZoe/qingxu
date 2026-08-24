@@ -32,7 +32,7 @@ enum SystemFeatures {
     let countUpDisplayStart = pomodoro.startedAt?.addingTimeInterval(
       TimeInterval(-pomodoro.remainingSeconds)
     )
-    ActivityContent(
+    return ActivityContent(
       state: QingxuPomodoroAttributes.ContentState(
         mode: pomodoro.mode.rawValue,
         status: pomodoro.status.rawValue,
