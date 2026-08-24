@@ -26,9 +26,13 @@ struct QingxumacOSApp: App {
 private struct MacRootView: View {
   @State private var selection: AppTab? = .inbox
 
+  private var sidebarTabs: [AppTab] {
+    AppTab.allCases.filter { $0 != .rss }
+  }
+
   var body: some View {
     NavigationSplitView {
-      List(AppTab.allCases, selection: $selection) { tab in
+      List(sidebarTabs, selection: $selection) { tab in
         Label(tab.title, systemImage: tab.symbol).tag(tab)
       }
       .navigationTitle("清序")
@@ -39,6 +43,7 @@ private struct MacRootView: View {
       case .inbox: TaskListScreen(scope: .inbox)
       case .today: TaskListScreen(scope: .today)
       case .pomodoro: PomodoroScreen()
+      case .rss: EmptyView()
       case .settings: SettingsScreen()
       }
     }

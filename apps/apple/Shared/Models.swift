@@ -195,6 +195,7 @@ enum AppTab: String, CaseIterable, Identifiable, Hashable {
   case inbox
   case today
   case pomodoro
+  case rss
   case settings
 
   var id: String { rawValue }
@@ -204,6 +205,7 @@ enum AppTab: String, CaseIterable, Identifiable, Hashable {
     case .inbox: "收集箱"
     case .today: "今天"
     case .pomodoro: "番茄钟"
+    case .rss: "RSS"
     case .settings: "设置"
     }
   }
@@ -213,6 +215,7 @@ enum AppTab: String, CaseIterable, Identifiable, Hashable {
     case .inbox: "tray"
     case .today: "sun.max"
     case .pomodoro: "timer"
+    case .rss: "dot.radiowaves.left.and.right"
     case .settings: "gearshape"
     }
   }

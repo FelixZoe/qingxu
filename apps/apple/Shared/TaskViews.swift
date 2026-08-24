@@ -34,6 +34,7 @@ struct TaskListScreen: View {
   @State private var selectedDate = Date.now
   #if os(iOS)
   @State private var calendarExpansion: CGFloat = 0
+  @State private var calendarDragStart: CGFloat?
   #endif
 
   private var tasks: [TaskItem] {
@@ -99,6 +100,7 @@ struct TaskListScreen: View {
       }
       .qingxuScreen()
       #if os(iOS)
+      .simultaneousGesture(todayCalendarDrag)
       .navigationTitle(scope == .today ? "" : navigationTitle)
       .navigationBarTitleDisplayMode(scope == .today ? .inline : .large)
       .qingxuInboxSearch(enabled: scope == .inbox, text: $searchText)
@@ -124,7 +126,7 @@ struct TaskListScreen: View {
             .accessibilityLabel("回到今天")
           }
           ToolbarItem(placement: .principal) {
-            TodayNavigationTitle(date: selectedDate)
+            TodayNavigationTitle(date: selectedDate, expansion: calendarExpansion)
           }
           ToolbarItem(placement: .navigationBarTrailing) {
             Button {
@@ -253,6 +255,37 @@ struct TaskListScreen: View {
   private func dismissCapture() {
     withAnimation(.easeOut(duration: 0.2)) { capture = nil }
   }
+
+  #if os(iOS)
+  private var todayCalendarDrag: some Gesture {
+    DragGesture(minimumDistance: 8)
+      .onChanged { value in
+        guard scope == .today,
+              capture == nil,
+              abs(value.translation.height) > abs(value.translation.width)
+        else { return }
+        if calendarDragStart == nil { calendarDragStart = calendarExpansion }
+        let start = calendarDragStart ?? calendarExpansion
+        calendarExpansion = min(
+          1,
+          max(0, start + value.translation.height / TodayCalendarMetrics.expansionDistance)
+        )
+      }
+      .onEnded { value in
+        guard scope == .today, let start = calendarDragStart else { return }
+        let projected = start
+          + value.predictedEndTranslation.height / TodayCalendarMetrics.expansionDistance
+        let target: CGFloat = projected > 0.45 ? 1 : 0
+        calendarDragStart = nil
+        withAnimation(.spring(response: 0.4, dampingFraction: 0.86)) {
+          calendarExpansion = target
+        }
+        if (start < 0.5 && target == 1) || (start >= 0.5 && target == 0) {
+          UISelectionFeedbackGenerator().selectionChanged()
+        }
+      }
+  }
+  #endif
 
   private func undoBanner(for task: TaskItem) -> some View {
     HStack {
@@ -588,8 +621,14 @@ private struct TaskQuickCaptureBar: View {
   }
 }
 
+private enum TodayCalendarMetrics {
+  static let rowHeight: CGFloat = 52
+  static let expansionDistance = rowHeight * 5
+}
+
 private struct TodayNavigationTitle: View {
   let date: Date
+  let expansion: CGFloat
 
   private let calendar = Calendar.autoupdatingCurrent
   private let months = [
@@ -599,13 +638,16 @@ private struct TodayNavigationTitle: View {
   private let weekdays = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"]
 
   var body: some View {
-    VStack(spacing: -1) {
+    VStack(spacing: 0) {
       Text(monthTitle)
-        .font(.caption2)
-        .foregroundStyle(QingxuPalette.quiet)
+        .font(.subheadline.weight(expansion > 0.7 ? .semibold : .regular))
+        .foregroundStyle(expansion > 0.7 ? QingxuPalette.ink : QingxuPalette.quiet)
       Text(dayTitle)
         .font(.headline)
         .foregroundStyle(QingxuPalette.ink)
+        .opacity(1 - expansion)
+        .frame(height: max(0, 20 * (1 - expansion)))
+        .clipped()
     }
     .accessibilityElement(children: .combine)
   }
@@ -626,9 +668,8 @@ private struct TodayExpandableCalendar: View {
   @EnvironmentObject private var store: AppStore
   @Binding var selection: Date
   @Binding var expansion: CGFloat
-  @GestureState private var dragOffset: CGFloat = 0
 
-  private let rowHeight: CGFloat = 52
+  private let rowHeight = TodayCalendarMetrics.rowHeight
   private let weekdays = ["一", "二", "三", "四", "五", "六", "日"]
 
   private var calendar: Calendar {
@@ -639,7 +680,7 @@ private struct TodayExpandableCalendar: View {
   }
 
   private var progress: CGFloat {
-    min(1, max(0, expansion + dragOffset / 230))
+    min(1, max(0, expansion))
   }
 
   private var monthStart: Date {
@@ -700,7 +741,6 @@ private struct TodayExpandableCalendar: View {
       .accessibilityLabel(expansion < 0.5 ? "展开月历" : "收起月历")
     }
     .contentShape(Rectangle())
-    .simultaneousGesture(calendarDrag)
     .animation(.easeOut(duration: 0.16), value: selection)
   }
 
@@ -740,21 +780,6 @@ private struct TodayExpandableCalendar: View {
     if selected { return .white }
     if today { return QingxuPalette.accent }
     return currentMonth ? QingxuPalette.ink : QingxuPalette.quiet.opacity(0.38)
-  }
-
-  private var calendarDrag: some Gesture {
-    DragGesture(minimumDistance: 8)
-      .updating($dragOffset) { value, state, _ in
-        if expansion < 0.5 {
-          state = max(0, value.translation.height)
-        } else {
-          state = min(0, value.translation.height)
-        }
-      }
-      .onEnded { value in
-        let projected = expansion + value.predictedEndTranslation.height / 230
-        settleCalendar(expanded: projected > 0.45)
-      }
   }
 
   private func settleCalendar(expanded: Bool) {

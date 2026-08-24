@@ -45,6 +45,9 @@ private struct iOSRootView: View {
         PomodoroScreen()
           .tabItem { Label(AppTab.pomodoro.title, systemImage: AppTab.pomodoro.symbol) }
           .tag(AppTab.pomodoro)
+        RSSScreen()
+          .tabItem { Label(AppTab.rss.title, systemImage: AppTab.rss.symbol) }
+          .tag(AppTab.rss)
         SettingsScreen()
           .tabItem { Label(AppTab.settings.title, systemImage: AppTab.settings.symbol) }
           .tag(AppTab.settings)
@@ -71,6 +74,7 @@ private struct iOSRootView: View {
       switch url.host {
       case "today": selection = .today
       case "pomodoro": selection = .pomodoro
+      case "rss": selection = .rss
       default: selection = .inbox
       }
     }
