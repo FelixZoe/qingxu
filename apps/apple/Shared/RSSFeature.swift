@@ -83,6 +83,12 @@ final class RSSStore: ObservableObject {
 
   var unreadCount: Int { articles.lazy.filter { !$0.isRead }.count }
 
+  func unreadCount(for feedID: String?) -> Int {
+    articles.lazy.filter { article in
+      !article.isRead && (feedID == nil || article.feedID == feedID)
+    }.count
+  }
+
   func refreshIfNeeded() async {
     guard !subscriptions.isEmpty else { return }
     let newestFetch = subscriptions.compactMap(\.lastFetchedAt).max() ?? .distantPast
@@ -160,8 +166,10 @@ final class RSSStore: ObservableObject {
     persist()
   }
 
-  func markAllRead() {
-    for index in articles.indices { articles[index].isRead = true }
+  func markAllRead(feedID: String? = nil) {
+    for index in articles.indices where feedID == nil || articles[index].feedID == feedID {
+      articles[index].isRead = true
+    }
     persist()
   }
 
@@ -449,10 +457,33 @@ private struct RSSBrowserRoute: Identifiable {
   let url: URL
 }
 
+private struct RSSArticleGroup: Identifiable {
+  let subscription: RSSSubscription
+  let articles: [RSSArticle]
+
+  var id: String { subscription.id }
+  var unreadCount: Int { articles.lazy.filter { !$0.isRead }.count }
+  var latestDate: Date {
+    articles.map { $0.publishedAt ?? $0.fetchedAt }.max() ?? .distantPast
+  }
+}
+
 struct RSSScreen: View {
   @StateObject private var store = RSSStore()
   @State private var route: RSSRoute?
   @State private var browserRoute: RSSBrowserRoute?
+  @State private var selectedFeedID: String?
+
+  private var articleGroups: [RSSArticleGroup] {
+    store.subscriptions
+      .filter { selectedFeedID == nil || $0.id == selectedFeedID }
+      .compactMap { subscription in
+        let articles = store.articles.filter { $0.feedID == subscription.id }
+        guard !articles.isEmpty else { return nil }
+        return RSSArticleGroup(subscription: subscription, articles: articles)
+      }
+      .sorted { $0.latestDate > $1.latestDate }
+  }
 
   var body: some View {
     NavigationStack {
@@ -461,7 +492,20 @@ struct RSSScreen: View {
           RSSEmptyState { route = .addSubscription }
             .listRowBackground(Color.clear)
             .listRowSeparator(.hidden)
-        } else if store.articles.isEmpty, store.phase == .refreshing {
+        } else {
+          RSSSourceStrip(
+            subscriptions: store.subscriptions,
+            articles: store.articles,
+            selection: $selectedFeedID
+          )
+          .listRowInsets(.init(top: 2, leading: 20, bottom: 10, trailing: 20))
+          .listRowBackground(Color.clear)
+          .listRowSeparator(.hidden)
+        }
+
+        if !store.subscriptions.isEmpty,
+           store.articles.isEmpty,
+           store.phase == .refreshing {
           HStack {
             Spacer()
             ProgressView("正在获取文章…").padding(.top, 120)
@@ -469,20 +513,30 @@ struct RSSScreen: View {
           }
           .listRowBackground(Color.clear)
           .listRowSeparator(.hidden)
-        } else {
-          ForEach(store.articles) { article in
-            Button {
-              store.markRead(article)
-              if let url = URL(string: article.link), !article.link.isEmpty {
-                browserRoute = RSSBrowserRoute(url: url)
-              }
-            } label: {
-              RSSArticleRow(article: article)
-            }
-            .buttonStyle(.plain)
-            .listRowInsets(.init(top: 7, leading: 20, bottom: 7, trailing: 20))
+        } else if !store.subscriptions.isEmpty, articleGroups.isEmpty {
+          RSSNoArticlesState(sourceSelected: selectedFeedID != nil)
             .listRowBackground(Color.clear)
             .listRowSeparator(.hidden)
+        } else {
+          ForEach(articleGroups) { group in
+            Section {
+              ForEach(group.articles) { article in
+                Button {
+                  store.markRead(article)
+                  if let url = URL(string: article.link), !article.link.isEmpty {
+                    browserRoute = RSSBrowserRoute(url: url)
+                  }
+                } label: {
+                  RSSArticleRow(article: article, showsSource: false)
+                }
+                .buttonStyle(.plain)
+                .listRowInsets(.init(top: 3, leading: 20, bottom: 3, trailing: 20))
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
+              }
+            } header: {
+              RSSSourceHeader(group: group)
+            }
           }
         }
       }
@@ -493,6 +547,11 @@ struct RSSScreen: View {
       .navigationBarTitleDisplayMode(.large)
       .refreshable { await store.refresh() }
       .task { await store.refreshIfNeeded() }
+      .onChange(of: store.subscriptions.map(\.id)) { sourceIDs in
+        if let selectedFeedID, !sourceIDs.contains(selectedFeedID) {
+          self.selectedFeedID = nil
+        }
+      }
       .toolbar {
         ToolbarItem(placement: .navigationBarLeading) {
           NavigationLink {
@@ -516,6 +575,19 @@ struct RSSScreen: View {
             Image(systemName: "plus")
           }
           .accessibilityLabel("添加订阅")
+
+          if store.unreadCount(for: selectedFeedID) > 0 {
+            Menu {
+              Button {
+                store.markAllRead(feedID: selectedFeedID)
+              } label: {
+                Label(selectedFeedID == nil ? "全部标为已读" : "此来源全部已读", systemImage: "checkmark.circle")
+              }
+            } label: {
+              Image(systemName: "ellipsis")
+            }
+            .accessibilityLabel("更多 RSS 操作")
+          }
         }
       }
       .safeAreaInset(edge: .bottom) {
@@ -542,6 +614,113 @@ struct RSSScreen: View {
   }
 }
 
+private struct RSSSourceStrip: View {
+  let subscriptions: [RSSSubscription]
+  let articles: [RSSArticle]
+  @Binding var selection: String?
+
+  var body: some View {
+    ScrollView(.horizontal, showsIndicators: false) {
+      HStack(spacing: 8) {
+        sourceButton(
+          title: "全部",
+          feedID: nil,
+          unreadCount: articles.lazy.filter { !$0.isRead }.count
+        )
+
+        ForEach(subscriptions) { subscription in
+          sourceButton(
+            title: subscription.title,
+            feedID: subscription.id,
+            unreadCount: articles.lazy.filter {
+              !$0.isRead && $0.feedID == subscription.id
+            }.count
+          )
+        }
+      }
+      .padding(.vertical, 2)
+    }
+  }
+
+  private func sourceButton(title: String, feedID: String?, unreadCount: Int) -> some View {
+    let isSelected = selection == feedID
+
+    return Button {
+      withAnimation(.easeInOut(duration: 0.18)) { selection = feedID }
+      UISelectionFeedbackGenerator().selectionChanged()
+    } label: {
+      HStack(spacing: 6) {
+        Text(title)
+          .lineLimit(1)
+        if unreadCount > 0 {
+          Text("\(unreadCount)")
+            .font(.caption2.weight(.semibold))
+            .padding(.horizontal, 6)
+            .frame(minHeight: 18)
+            .background(
+              isSelected ? Color.white.opacity(0.2) : QingxuPalette.selected,
+              in: Capsule()
+            )
+        }
+      }
+      .font(.subheadline.weight(isSelected ? .semibold : .medium))
+      .foregroundStyle(isSelected ? Color.white : QingxuPalette.ink)
+      .padding(.horizontal, 13)
+      .frame(height: 36)
+      .background(isSelected ? QingxuPalette.accent : QingxuPalette.surface, in: Capsule())
+      .overlay {
+        if !isSelected {
+          Capsule().stroke(QingxuPalette.separator.opacity(0.7), lineWidth: 0.5)
+        }
+      }
+    }
+    .buttonStyle(.plain)
+    .accessibilityLabel(unreadCount == 0 ? title : "\(title)，\(unreadCount) 篇未读")
+  }
+}
+
+private struct RSSSourceHeader: View {
+  let group: RSSArticleGroup
+
+  var body: some View {
+    HStack(spacing: 8) {
+      Text(group.subscription.title)
+        .font(.subheadline.weight(.semibold))
+        .foregroundStyle(QingxuPalette.ink)
+        .lineLimit(1)
+      Text("\(group.articles.count)")
+        .font(.caption.weight(.medium))
+        .foregroundStyle(QingxuPalette.quiet)
+      Spacer()
+      if group.unreadCount > 0 {
+        Text("\(group.unreadCount) 未读")
+          .font(.caption)
+          .foregroundStyle(QingxuPalette.accent)
+      }
+    }
+    .textCase(nil)
+    .padding(.top, 8)
+  }
+}
+
+private struct RSSNoArticlesState: View {
+  let sourceSelected: Bool
+
+  var body: some View {
+    VStack(spacing: 10) {
+      Image(systemName: "doc.text.magnifyingglass")
+        .font(.system(size: 34, weight: .light))
+      Text(sourceSelected ? "这个来源还没有文章" : "还没有获取到文章")
+        .font(.headline)
+      Text("下拉刷新后再看看")
+        .font(.subheadline)
+    }
+    .foregroundStyle(QingxuPalette.quiet)
+    .frame(maxWidth: .infinity)
+    .padding(.top, 100)
+  }
+}
+
 private struct RSSInAppBrowser: UIViewControllerRepresentable {
   let url: URL
 
@@ -560,6 +739,7 @@ private struct RSSInAppBrowser: UIViewControllerRepresentable {
 
 private struct RSSArticleRow: View {
   let article: RSSArticle
+  let showsSource: Bool
 
   var body: some View {
     HStack(alignment: .top, spacing: 12) {
@@ -582,9 +762,11 @@ private struct RSSArticleRow: View {
         }
 
         HStack(spacing: 6) {
-          Text(article.feedTitle).lineLimit(1)
+          if showsSource {
+            Text(article.feedTitle).lineLimit(1)
+          }
           if let publishedAt = article.publishedAt {
-            Text("·")
+            if showsSource { Text("·") }
             Text(publishedAt, style: .relative)
           }
         }
@@ -593,9 +775,8 @@ private struct RSSArticleRow: View {
       }
       Spacer(minLength: 0)
     }
-    .padding(.horizontal, 16)
-    .padding(.vertical, 14)
-    .background(QingxuPalette.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+    .padding(.horizontal, 4)
+    .padding(.vertical, 12)
   }
 }
 
