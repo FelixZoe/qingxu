@@ -699,16 +699,35 @@ private struct TodayExpandableCalendar: View {
     (gridDays.firstIndex { calendar.isDate($0, inSameDayAs: selection) } ?? 0) / 7
   }
 
-  /// Pulling down first reveals the weeks that precede the selected week.
-  /// Once the selected week reaches its real month position, the remaining
-  /// weeks are appended below it. This matches the reference transition and
-  /// avoids growing equally in both directions around the selected row.
-  private var revealedLeadingRows: CGFloat {
-    min(CGFloat(selectedRow), 5 * progress)
+  /// Reveal the month from the selected week outwards. Each pull step exposes
+  /// the nearest hidden row above, then the nearest hidden row below, before
+  /// moving farther away from the selected week.
+  private var revealedRows: (leading: CGFloat, trailing: CGFloat) {
+    var order: [Bool] = [] // true = row above, false = row below
+
+    for distance in 1..<6 {
+      if selectedRow - distance >= 0 { order.append(true) }
+      if selectedRow + distance < 6 { order.append(false) }
+    }
+
+    let revealedUnits = 5 * progress
+    var leading: CGFloat = 0
+    var trailing: CGFloat = 0
+
+    for (index, isLeading) in order.enumerated() {
+      let fraction = min(1, max(0, revealedUnits - CGFloat(index)))
+      if isLeading {
+        leading += fraction
+      } else {
+        trailing += fraction
+      }
+    }
+
+    return (leading, trailing)
   }
 
   private var gridOffset: CGFloat {
-    -(CGFloat(selectedRow) - revealedLeadingRows) * rowHeight
+    -(CGFloat(selectedRow) - revealedRows.leading) * rowHeight
   }
 
   var body: some View {
@@ -757,11 +776,12 @@ private struct TodayExpandableCalendar: View {
     let isToday = calendar.isDateInToday(day)
     let isCurrentMonth = calendar.isDate(day, equalTo: selection, toGranularity: .month)
     let hasTasks = !store.tasks(on: day).isEmpty
+    let festival = QingxuFestivalCalendar.title(for: day)
 
     return Button {
       withAnimation(.easeInOut(duration: 0.18)) { selection = day }
     } label: {
-      VStack(spacing: 2) {
+      VStack(spacing: 0) {
         Text("\(calendar.component(.day, from: day))")
           .font(.system(size: 16, weight: isSelected ? .semibold : .medium, design: .rounded))
           .frame(width: 38, height: 38)
@@ -772,10 +792,20 @@ private struct TodayExpandableCalendar: View {
           ))
           .background(isSelected ? QingxuPalette.accent : Color.clear, in: Circle())
 
-        Circle()
-          .fill(isSelected ? Color.white.opacity(0.9) : QingxuPalette.accent)
-          .frame(width: 3.5, height: 3.5)
-          .opacity(hasTasks ? 1 : 0)
+        ZStack {
+          if let festival {
+            Text(festival)
+              .font(.system(size: 9, weight: .medium))
+              .lineLimit(1)
+              .minimumScaleFactor(0.72)
+              .foregroundStyle(isSelected ? Color.white.opacity(0.92) : QingxuPalette.success)
+          } else if hasTasks {
+            Circle()
+              .fill(isSelected ? Color.white.opacity(0.9) : QingxuPalette.accent)
+              .frame(width: 3.5, height: 3.5)
+          }
+        }
+        .frame(height: 11)
       }
       .frame(maxWidth: .infinity)
       .frame(height: rowHeight)
