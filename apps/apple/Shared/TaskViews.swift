@@ -52,63 +52,18 @@ struct TaskListScreen: View {
   var body: some View {
     NavigationStack {
       ZStack {
-        List {
-          #if os(iOS)
-          if scope == .today {
-            TodayExpandableCalendar(
-              selection: $selectedDate,
-              expansion: $calendarExpansion,
-              showsFestivals: showFestivalLabels,
-              showsTaskIndicators: showTaskIndicators
-            )
-              .listRowInsets(.init(top: 4, leading: 20, bottom: 8, trailing: 20))
-              .listRowBackground(Color.clear)
-              .listRowSeparator(.hidden)
-          }
-          #endif
-          ForEach(tasks) { task in
-            TaskRow(task: task) {
-              withAnimation(.easeInOut(duration: 0.2)) { store.toggleTask(task) }
-            }
-            .contentShape(Rectangle())
-            .onTapGesture { editor = TaskEditorRoute(task: task, scope: scope) }
-            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-              Button(role: .destructive) { pendingDelete = task } label: {
-                Label("删除", systemImage: "trash")
-              }
-            }
-            .listRowInsets(.init(top: 5, leading: 20, bottom: 5, trailing: 20))
-            .listRowBackground(Color.clear)
-            .listRowSeparator(.hidden)
-          }
-
-          if tasks.isEmpty {
-            Group {
-              #if os(iOS)
-              if scope == .today {
-                TodayEmptyState()
-              } else {
-                defaultEmptyState
-              }
-              #else
-              defaultEmptyState
-              #endif
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.top, scope == .today ? 18 : 120)
-            .listRowBackground(Color.clear)
-            .listRowSeparator(.hidden)
-          }
-        }
-        .listStyle(.plain)
-        .environment(\.defaultMinListRowHeight, 1)
         #if os(iOS)
-        .scrollDisabled(scope == .today && (tasks.isEmpty || calendarDragStart != nil))
+        if scope == .today {
+          todayFixedLayout
+        } else {
+          standardTaskList
+        }
+        #else
+        standardTaskList
         #endif
       }
       .qingxuScreen()
       #if os(iOS)
-      .simultaneousGesture(todayCalendarDrag)
       .navigationTitle(scope == .today ? "" : navigationTitle)
       .navigationBarTitleDisplayMode(scope == .today ? .inline : .large)
       .qingxuInboxSearch(enabled: scope == .inbox, text: $searchText)
@@ -219,6 +174,86 @@ struct TaskListScreen: View {
     }
     .foregroundStyle(QingxuPalette.quiet)
   }
+
+  private var standardTaskList: some View {
+    List {
+      taskRows
+
+      if tasks.isEmpty {
+        defaultEmptyState
+          .frame(maxWidth: .infinity)
+          .padding(.top, 120)
+          .listRowBackground(Color.clear)
+          .listRowSeparator(.hidden)
+      }
+    }
+    .listStyle(.plain)
+    .environment(\.defaultMinListRowHeight, 1)
+  }
+
+  @ViewBuilder
+  private var taskRows: some View {
+    ForEach(tasks) { task in
+      TaskRow(task: task) {
+        withAnimation(.easeInOut(duration: 0.2)) { store.toggleTask(task) }
+      }
+      .contentShape(Rectangle())
+      .onTapGesture { editor = TaskEditorRoute(task: task, scope: scope) }
+      .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+        Button(role: .destructive) { pendingDelete = task } label: {
+          Label("删除", systemImage: "trash")
+        }
+      }
+      .listRowInsets(.init(top: 5, leading: 20, bottom: 5, trailing: 20))
+      .listRowBackground(Color.clear)
+      .listRowSeparator(.hidden)
+    }
+  }
+
+  #if os(iOS)
+  private var todayFixedLayout: some View {
+    VStack(spacing: 0) {
+      TodayExpandableCalendar(
+        selection: $selectedDate,
+        expansion: $calendarExpansion,
+        showsFestivals: showFestivalLabels,
+        showsTaskIndicators: showTaskIndicators
+      )
+      .padding(.horizontal, 20)
+      .padding(.top, 4)
+      .background(QingxuPalette.background)
+      .contentShape(Rectangle())
+      .gesture(todayCalendarDrag)
+      .zIndex(1)
+
+      List {
+        TodayContentHandle()
+          .listRowInsets(.init(top: 8, leading: 20, bottom: 6, trailing: 20))
+          .listRowBackground(Color.clear)
+          .listRowSeparator(.hidden)
+
+        taskRows
+
+        if tasks.isEmpty {
+          TodayEmptyState()
+            .frame(maxWidth: .infinity)
+            .padding(.top, 58)
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
+
+          Color.clear
+            .frame(height: 360)
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
+        }
+      }
+      .listStyle(.plain)
+      .environment(\.defaultMinListRowHeight, 1)
+      .scrollContentBackground(.hidden)
+      .background(QingxuPalette.background)
+    }
+  }
+  #endif
 
   private var addButton: some View {
     Button {
@@ -731,6 +766,16 @@ private enum TodayCalendarMetrics {
   static let expansionDistance = rowHeight * 5
 }
 
+private struct TodayContentHandle: View {
+  var body: some View {
+    Capsule()
+      .fill(QingxuPalette.separator.opacity(0.95))
+      .frame(width: 34, height: 4)
+      .frame(maxWidth: .infinity, minHeight: 14)
+      .accessibilityHidden(true)
+  }
+}
+
 private struct TodayNavigationTitle: View {
   let date: Date
   let expansion: CGFloat
@@ -839,26 +884,8 @@ private struct TodayExpandableCalendar: View {
       }
       .frame(height: rowHeight * (1 + 5 * progress), alignment: .top)
       .clipped()
-
-      Button {
-        settleCalendar(expanded: expansion < 0.5)
-      } label: {
-        Capsule()
-          .fill(QingxuPalette.separator.opacity(0.9))
-          .frame(width: 34, height: 4)
-          .frame(maxWidth: .infinity, minHeight: 18)
-      }
-      .buttonStyle(.plain)
-      .accessibilityLabel(expansion < 0.5 ? "展开月历" : "收起月历")
     }
     .contentShape(Rectangle())
-  }
-
-  private func settleCalendar(expanded: Bool) {
-    withAnimation(.spring(response: 0.4, dampingFraction: 0.86)) {
-      expansion = expanded ? 1 : 0
-    }
-    UISelectionFeedbackGenerator().selectionChanged()
   }
 }
 
