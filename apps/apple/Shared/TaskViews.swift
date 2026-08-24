@@ -699,8 +699,16 @@ private struct TodayExpandableCalendar: View {
     (gridDays.firstIndex { calendar.isDate($0, inSameDayAs: selection) } ?? 0) / 7
   }
 
+  /// Pulling down first reveals the weeks that precede the selected week.
+  /// Once the selected week reaches its real month position, the remaining
+  /// weeks are appended below it. This matches the reference transition and
+  /// avoids growing equally in both directions around the selected row.
+  private var revealedLeadingRows: CGFloat {
+    min(CGFloat(selectedRow), 5 * progress)
+  }
+
   private var gridOffset: CGFloat {
-    -CGFloat(selectedRow) * rowHeight * (1 - progress)
+    -(CGFloat(selectedRow) - revealedLeadingRows) * rowHeight
   }
 
   var body: some View {
