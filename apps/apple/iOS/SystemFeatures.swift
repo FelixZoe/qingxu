@@ -33,7 +33,7 @@ enum SystemFeatures {
       TimeInterval(-pomodoro.remainingSeconds)
     )
     ActivityContent(
-      state: .init(
+      state: QingxuPomodoroAttributes.ContentState(
         mode: pomodoro.mode.rawValue,
         status: pomodoro.status.rawValue,
         timerDirection: pomodoro.timerDirection.rawValue,
