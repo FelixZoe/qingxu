@@ -29,6 +29,9 @@ enum SystemFeatures {
 
   @available(iOS 16.2, *)
   private static func content(_ pomodoro: PomodoroState) -> ActivityContent<QingxuPomodoroAttributes.ContentState> {
+    let countUpDisplayStart = pomodoro.startedAt?.addingTimeInterval(
+      TimeInterval(-pomodoro.remainingSeconds)
+    )
     ActivityContent(
       state: .init(
         mode: pomodoro.mode.rawValue,
