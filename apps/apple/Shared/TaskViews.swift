@@ -880,7 +880,7 @@ private struct TodayCalendarGrid: View, Equatable {
 
   static func == (lhs: Self, rhs: Self) -> Bool {
     lhs.days == rhs.days
-      && lhs.selection.wrappedValue == rhs.selection.wrappedValue
+      && lhs.selection == rhs.selection
       && lhs.showsFestivals == rhs.showsFestivals
       && lhs.showsTaskIndicators == rhs.showsTaskIndicators
   }
