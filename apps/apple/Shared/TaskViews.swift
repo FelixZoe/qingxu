@@ -928,10 +928,10 @@ private struct TodayNavigationTitle: View {
     VStack(spacing: 0) {
       Text(monthTitle)
         .font(.subheadline.weight(.semibold))
-        .foregroundStyle(QingxuPalette.ink.opacity(0.48 + 0.52 * expansion))
+        .foregroundStyle(QingxuPalette.ink.opacity(0.48 + 0.52 * Double(expansion)))
       Text(dayTitle)
         .font(.headline)
-        .foregroundStyle(QingxuPalette.ink.opacity(1 - 0.34 * expansion))
+        .foregroundStyle(QingxuPalette.ink.opacity(1 - 0.34 * Double(expansion)))
         .opacity(1 - expansion)
         .frame(height: max(0, 20 * (1 - expansion)))
         .clipped()
@@ -1145,7 +1145,7 @@ private struct TodayCalendarGrid: View, Equatable {
       .frame(height: rowHeight)
     }
     .buttonStyle(.plain)
-    .opacity(0.14 + 0.86 * visibility)
+    .opacity(Double(0.14 + 0.86 * visibility))
     .scaleEffect(0.975 + 0.025 * visibility)
     .accessibilityLabel(day.formatted(date: .complete, time: .omitted))
   }
