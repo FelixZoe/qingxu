@@ -7,6 +7,7 @@ private let qingxuAppGroup = "group.one.darker.qingxu"
 private struct QingxuEntry: TimelineEntry {
   let date: Date
   let todayTaskCount: Int
+  let nextTodayTaskTitle: String?
   let mode: String
   let status: String
   let endsAt: Date?
@@ -18,6 +19,7 @@ private struct QingxuProvider: TimelineProvider {
     QingxuEntry(
       date: .now,
       todayTaskCount: 3,
+      nextTodayTaskTitle: "整理今天的安排",
       mode: "focus",
       status: "idle",
       endsAt: nil,
@@ -32,7 +34,7 @@ private struct QingxuProvider: TimelineProvider {
   func getTimeline(in context: Context, completion: @escaping (Timeline<QingxuEntry>) -> Void) {
     let snapshot = entry()
     let nextUpdate = snapshot.status == "running"
-      ? Date().addingTimeInterval(30)
+      ? max(Date().addingTimeInterval(60), snapshot.endsAt ?? Date().addingTimeInterval(15 * 60))
       : Date().addingTimeInterval(15 * 60)
     completion(Timeline(entries: [snapshot], policy: .after(nextUpdate)))
   }
@@ -42,6 +44,7 @@ private struct QingxuProvider: TimelineProvider {
     return QingxuEntry(
       date: .now,
       todayTaskCount: defaults?.integer(forKey: "todayTaskCount") ?? 0,
+      nextTodayTaskTitle: defaults?.string(forKey: "nextTodayTaskTitle"),
       mode: defaults?.string(forKey: "pomodoroMode") ?? "focus",
       status: defaults?.string(forKey: "pomodoroStatus") ?? "idle",
       endsAt: defaults?.object(forKey: "pomodoroEndsAt") as? Date,
@@ -77,9 +80,30 @@ private extension View {
 
 private struct TodayWidgetView: View {
   let entry: QingxuEntry
+  @Environment(\.widgetFamily) private var family
 
   var body: some View {
-    QingxuWidgetSurface {
+    if family == .accessoryCircular {
+      VStack(spacing: 1) {
+        Image(systemName: "checkmark.circle")
+        Text("\(entry.todayTaskCount)").font(.title3.bold().monospacedDigit())
+      }
+      .widgetURL(URL(string: "qingxu://today"))
+    } else if family == .accessoryRectangular {
+      VStack(alignment: .leading, spacing: 3) {
+        Label("今日任务", systemImage: "checkmark.circle")
+          .font(.caption.weight(.semibold))
+        Text(entry.nextTodayTaskTitle ?? (entry.todayTaskCount == 0 ? "今天已清空" : "还有 \(entry.todayTaskCount) 项待办"))
+          .font(.caption2)
+          .lineLimit(2)
+      }
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .widgetURL(URL(string: "qingxu://today"))
+    } else if family == .accessoryInline {
+      Label("今日 \(entry.todayTaskCount) 项待办", systemImage: "checkmark.circle")
+        .widgetURL(URL(string: "qingxu://today"))
+    } else {
+      QingxuWidgetSurface {
       VStack(alignment: .leading, spacing: 8) {
         HStack {
           Image(systemName: "sun.max.fill")
@@ -90,35 +114,74 @@ private struct TodayWidgetView: View {
             .foregroundStyle(.secondary)
         }
         Spacer()
-        Text("\(entry.todayTaskCount)")
-          .font(.system(size: 38, weight: .bold, design: .rounded))
-        Text(entry.todayTaskCount == 0 ? "今天已清空" : "项待办 · 今天")
-          .font(.caption)
-          .foregroundStyle(.secondary)
+        if family == .systemMedium {
+          HStack(alignment: .bottom, spacing: 16) {
+            Text("\(entry.todayTaskCount)")
+              .font(.system(size: 40, weight: .bold, design: .rounded))
+            VStack(alignment: .leading, spacing: 4) {
+              Text(entry.todayTaskCount == 0 ? "今天已清空" : "项待办")
+                .font(.caption).foregroundStyle(.secondary)
+              Text(entry.nextTodayTaskTitle ?? "给自己留一点轻松")
+                .font(.subheadline.weight(.semibold))
+                .lineLimit(1)
+            }
+            Spacer()
+          }
+        } else {
+          Text("\(entry.todayTaskCount)")
+            .font(.system(size: 38, weight: .bold, design: .rounded))
+          Text(entry.todayTaskCount == 0 ? "今天已清空" : "项待办 · 今天")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        }
       }
+      }
+      .widgetURL(URL(string: "qingxu://today"))
     }
-    .widgetURL(URL(string: "qingxu://today"))
   }
 }
 
 private struct FocusWidgetView: View {
   let entry: QingxuEntry
+  @Environment(\.widgetFamily) private var family
 
   var body: some View {
-    QingxuWidgetSurface {
-      VStack(alignment: .leading, spacing: 10) {
-        Label(modeTitle, systemImage: "timer")
-          .font(.caption.weight(.semibold))
-          .foregroundStyle(Color(red: 0.325, green: 0.459, blue: 0.561))
-        Spacer()
+    if family == .accessoryCircular {
+      VStack(spacing: 1) {
+        Image(systemName: "timer")
         timerText
-          .font(.system(size: 32, weight: .bold, design: .rounded).monospacedDigit())
-        Text(entry.status == "running" ? "正在所有设备同步" : "轻触打开番茄钟")
-          .font(.caption2)
-          .foregroundStyle(.secondary)
+          .font(.caption2.bold().monospacedDigit())
       }
+      .widgetURL(URL(string: "qingxu://pomodoro"))
+    } else if family == .accessoryRectangular {
+      VStack(alignment: .leading, spacing: 3) {
+        Label(modeTitle, systemImage: "timer").font(.caption.weight(.semibold))
+        timerText.font(.title3.bold().monospacedDigit())
+      }
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .widgetURL(URL(string: "qingxu://pomodoro"))
+    } else if family == .accessoryInline {
+      HStack(spacing: 4) {
+        Text(modeTitle)
+        timerText
+      }
+      .widgetURL(URL(string: "qingxu://pomodoro"))
+    } else {
+      QingxuWidgetSurface {
+        VStack(alignment: .leading, spacing: 10) {
+          Label(modeTitle, systemImage: "timer")
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(Color(red: 0.325, green: 0.459, blue: 0.561))
+          Spacer()
+          timerText
+            .font(.system(size: 32, weight: .bold, design: .rounded).monospacedDigit())
+          Text(entry.status == "running" ? "正在所有设备同步" : "轻触打开番茄钟")
+            .font(.caption2)
+            .foregroundStyle(.secondary)
+        }
+      }
+      .widgetURL(URL(string: "qingxu://pomodoro"))
     }
-    .widgetURL(URL(string: "qingxu://pomodoro"))
   }
 
   @ViewBuilder
@@ -152,7 +215,7 @@ struct QingxuTodayWidget: Widget {
     }
     .configurationDisplayName("今日任务")
     .description("快速查看今天还剩多少项任务。")
-    .supportedFamilies([.systemSmall])
+    .supportedFamilies([.systemSmall, .systemMedium, .accessoryCircular, .accessoryRectangular, .accessoryInline])
   }
 }
 
@@ -165,7 +228,7 @@ struct QingxuFocusWidget: Widget {
     }
     .configurationDisplayName("专注状态")
     .description("查看当前番茄钟，并快速回到专注页面。")
-    .supportedFamilies([.systemSmall, .systemMedium])
+    .supportedFamilies([.systemSmall, .systemMedium, .accessoryCircular, .accessoryRectangular, .accessoryInline])
   }
 }
 
@@ -175,7 +238,7 @@ struct QingxuLiveActivity: Widget {
     ActivityConfiguration(for: QingxuPomodoroAttributes.self) { context in
       HStack(spacing: 12) {
         Image(systemName: "timer")
-          .foregroundStyle(.green)
+          .foregroundStyle(Color(red: 0.28, green: 0.45, blue: 0.79))
         VStack(alignment: .leading, spacing: 2) {
           Text(modeTitle(context.state.mode)).font(.caption.weight(.semibold))
           liveTimer(context.state)
@@ -201,16 +264,17 @@ struct QingxuLiveActivity: Widget {
             .font(.title.bold().monospacedDigit())
         }
       } compactLeading: {
-        Image(systemName: "timer")
+        Image(systemName: context.state.mode == "focus" ? "timer" : "cup.and.saucer.fill")
+          .foregroundStyle(Color(red: 0.51, green: 0.70, blue: 0.94))
       } compactTrailing: {
         liveTimer(context.state)
           .font(.caption2.monospacedDigit())
           .frame(maxWidth: 52)
       } minimal: {
-        Image(systemName: "timer")
+        Image(systemName: context.state.mode == "focus" ? "timer" : "cup.and.saucer.fill")
       }
       .widgetURL(URL(string: "qingxu://pomodoro"))
-      .keylineTint(.green)
+      .keylineTint(Color(red: 0.51, green: 0.70, blue: 0.94))
     }
   }
 

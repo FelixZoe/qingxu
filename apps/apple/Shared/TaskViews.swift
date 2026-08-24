@@ -33,19 +33,22 @@ struct TaskListScreen: View {
   @State private var pendingDelete: TaskItem?
   @State private var recentlyDeleted: TaskItem?
   @State private var selectedDate = Date.now
-  @AppStorage("qingxu.calendar.showFestivals") private var showFestivalLabels = true
-  @AppStorage("qingxu.calendar.showTaskIndicators") private var showTaskIndicators = true
+  @AppStorage(QingxuPreferenceKey.showFestivals) private var showFestivalLabels = true
+  @AppStorage(QingxuPreferenceKey.showTaskIndicators) private var showTaskIndicators = true
+  @AppStorage(QingxuPreferenceKey.weekStartsMonday) private var weekStartsMonday = true
+  #if os(iOS)
+  @AppStorage(QingxuPreferenceKey.haptics) private var hapticsEnabled = true
+  @AppStorage(QingxuPreferenceKey.completionSound) private var completionSoundEnabled = false
+  #endif
   #if os(iOS)
   @State private var calendarExpansion: CGFloat = 0
   @State private var calendarDragStart: CGFloat?
-  @State private var todayContentTopBaseline: CGFloat?
-  @State private var todayContentIsAtTop = true
-  @State private var todayContentPullOrigin: CGFloat?
-  @State private var todayContentDragDirection: TodayCalendarDragDirection?
   #endif
 
   private var tasks: [TaskItem] {
-    let values = scope == .inbox ? store.inboxTasks : store.tasks(on: selectedDate)
+    let values = scope == .inbox
+      ? store.displayedInboxTasks
+      : store.displayedTasks(on: selectedDate)
     guard scope == .inbox, !searchText.isEmpty else { return values }
     return values.filter {
       $0.title.localizedStandardContains(searchText) ||
@@ -163,7 +166,7 @@ struct TaskListScreen: View {
   private var navigationTitle: String {
     guard scope == .today else { return scope.title }
     if Calendar.autoupdatingCurrent.isDateInToday(selectedDate) { return "今天" }
-    return selectedDate.formatted(.dateTime.month().day().weekday(.wide))
+    return chineseDateLabel(selectedDate, includesWeekday: true)
   }
 
   private var defaultEmptyState: some View {
@@ -190,6 +193,12 @@ struct TaskListScreen: View {
           .listRowBackground(Color.clear)
           .listRowSeparator(.hidden)
       }
+
+      Color.clear
+        .frame(height: 92)
+        .listRowInsets(.init())
+        .listRowBackground(Color.clear)
+        .listRowSeparator(.hidden)
     }
     .listStyle(.plain)
     .environment(\.defaultMinListRowHeight, 1)
@@ -203,7 +212,18 @@ struct TaskListScreen: View {
         style: scope == .today ? .todayPanel : .card,
         scheduleLabel: scope == .today ? selectedDateLabel : nil
       ) {
+        let completing = task.status != .completed
         withAnimation(.easeInOut(duration: 0.2)) { store.toggleTask(task) }
+        #if os(iOS)
+        if completing {
+          QingxuFeedback.taskCompletion(
+            haptics: hapticsEnabled,
+            sound: completionSoundEnabled
+          )
+        } else {
+          QingxuFeedback.selection(enabled: hapticsEnabled)
+        }
+        #endif
       }
       .contentShape(Rectangle())
       .onTapGesture { editor = TaskEditorRoute(task: task, scope: scope) }
@@ -226,7 +246,8 @@ struct TaskListScreen: View {
           selection: $selectedDate,
           expansion: $calendarExpansion,
           showsFestivals: showFestivalLabels,
-          showsTaskIndicators: showTaskIndicators
+          showsTaskIndicators: showTaskIndicators,
+          weekStartsMonday: weekStartsMonday
         )
         .padding(.horizontal, 20)
         .padding(.top, TodayCalendarMetrics.topPadding)
@@ -236,24 +257,21 @@ struct TaskListScreen: View {
         .zIndex(1)
 
         List {
-          GeometryReader { geometry in
-            Color.clear.preference(
-              key: TodayTaskScrollOffsetKey.self,
-              value: geometry.frame(in: .named(TodayTaskScrollSpace.name)).minY
-            )
-          }
-          .frame(height: 0)
-          .listRowInsets(.init())
-          .listRowBackground(Color.clear)
-          .listRowSeparator(.hidden)
-
           TodayTaskPanelHeader(title: selectedDateLabel)
             .listRowInsets(.init(top: 8, leading: 20, bottom: 8, trailing: 20))
             .listRowBackground(Color.clear)
             .listRowSeparator(.hidden)
-            .background(TodayTaskScrollConfigurator())
+            .background(TodayTaskScrollConfigurator(expansion: $calendarExpansion))
 
           taskRows
+
+          if !tasks.isEmpty {
+            Color.clear
+              .frame(height: 104)
+              .listRowInsets(.init())
+              .listRowBackground(Color.clear)
+              .listRowSeparator(.hidden)
+          }
 
           if tasks.isEmpty {
             TodayEmptyState()
@@ -271,12 +289,6 @@ struct TaskListScreen: View {
         .listStyle(.plain)
         .environment(\.defaultMinListRowHeight, 1)
         .scrollContentBackground(.hidden)
-        .coordinateSpace(name: TodayTaskScrollSpace.name)
-        .onPreferenceChange(TodayTaskScrollOffsetKey.self) { offset in
-          if todayContentTopBaseline == nil { todayContentTopBaseline = offset }
-          let baseline = todayContentTopBaseline ?? offset
-          todayContentIsAtTop = offset >= baseline - 1
-        }
         // Keep the UIKit-backed list at one stable size. Only this outer
         // surface moves while the calendar changes height, avoiding a full
         // list layout pass for every drag frame.
@@ -284,8 +296,6 @@ struct TaskListScreen: View {
           height: max(1, geometry.size.height - TodayCalendarMetrics.collapsedHeight),
           alignment: .top
         )
-        .scrollDisabled(calendarExpansion > 0.001 || todayContentDragDirection != nil)
-        .simultaneousGesture(todayContentPullGesture)
         .background(QingxuPalette.surface)
         .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
         .padding(.horizontal, 12)
@@ -302,7 +312,18 @@ struct TaskListScreen: View {
     let calendar = Calendar.autoupdatingCurrent
     if calendar.isDateInToday(selectedDate) { return "今天" }
     if calendar.isDateInTomorrow(selectedDate) { return "明天" }
-    return selectedDate.formatted(.dateTime.month().day())
+    return chineseDateLabel(selectedDate)
+  }
+
+  private func chineseDateLabel(_ date: Date, includesWeekday: Bool = false) -> String {
+    let calendar = Calendar.autoupdatingCurrent
+    let month = calendar.component(.month, from: date)
+    let day = calendar.component(.day, from: date)
+    guard includesWeekday else { return "\(month)月\(day)日" }
+    let formatter = DateFormatter()
+    formatter.locale = Locale(identifier: "zh_CN")
+    formatter.dateFormat = "EEEE"
+    return "\(month)月\(day)日 \(formatter.string(from: date))"
   }
 
   private var addButton: some View {
@@ -319,8 +340,8 @@ struct TaskListScreen: View {
       Image(systemName: "plus")
         .font(.system(size: 20, weight: .semibold))
         .frame(width: 54, height: 54)
-        .foregroundStyle(.white)
-        .background(QingxuPalette.accent, in: Circle())
+        .foregroundStyle(QingxuPalette.onAccent)
+        .background(QingxuPalette.actionGradient, in: Circle())
     }
     .buttonStyle(.plain)
     .accessibilityLabel("新增任务")
@@ -430,7 +451,7 @@ struct TaskListScreen: View {
   }
 
   private func setCalendarExpanded(_ expanded: Bool) {
-    withAnimation(.easeOut(duration: 0.18)) {
+    withAnimation(.timingCurve(0.2, 0.8, 0.2, 1, duration: 0.24)) {
       calendarExpansion = expanded ? 1 : 0
     }
     UISelectionFeedbackGenerator().selectionChanged()
@@ -461,63 +482,15 @@ struct TaskListScreen: View {
           max(0, start + value.translation.height / TodayCalendarMetrics.expansionDistance)
         )
       }
-      .onEnded { _ in
+      .onEnded { value in
         guard scope == .today, let start = calendarDragStart else { return }
-        let target: CGFloat = calendarExpansion >= 0.5 ? 1 : 0
-        calendarDragStart = nil
-        withAnimation(.easeOut(duration: 0.16)) {
-          calendarExpansion = target
-        }
-        if (start < 0.5 && target == 1) || (start >= 0.5 && target == 0) {
-          UISelectionFeedbackGenerator().selectionChanged()
-        }
-      }
-  }
-
-  private var todayContentPullGesture: some Gesture {
-    DragGesture(minimumDistance: 3)
-      .onChanged { value in
-        guard capture == nil,
-              abs(value.translation.height) > abs(value.translation.width)
-        else { return }
-
-        if todayContentDragDirection == nil {
-          if value.translation.height > 0, todayContentIsAtTop {
-            todayContentDragDirection = .expand
-          } else if value.translation.height < 0, calendarExpansion > 0.001 {
-            todayContentDragDirection = .collapse
-          } else {
-            return
-          }
-          todayContentPullOrigin = value.translation.height
-          calendarDragStart = calendarExpansion
-        }
-
-        guard let direction = todayContentDragDirection else { return }
-        let origin = todayContentPullOrigin ?? value.translation.height
-        let start = calendarDragStart ?? calendarExpansion
-        let translation = value.translation.height - origin
-        let distance = direction == .expand
-          ? max(0, translation)
-          : min(0, translation)
-        calendarExpansion = min(
+        let projected = min(
           1,
-          max(0, start + distance / TodayCalendarMetrics.expansionDistance)
+          max(0, start + value.predictedEndTranslation.height / TodayCalendarMetrics.expansionDistance)
         )
-      }
-      .onEnded { _ in
-        defer {
-          todayContentPullOrigin = nil
-          calendarDragStart = nil
-          todayContentDragDirection = nil
-        }
-        guard let start = calendarDragStart,
-              let direction = todayContentDragDirection
-        else { return }
-
-        let threshold: CGFloat = direction == .expand ? 0.42 : 0.58
-        let target: CGFloat = calendarExpansion >= threshold ? 1 : 0
-        withAnimation(.easeOut(duration: 0.16)) {
+        let target: CGFloat = projected >= 0.5 ? 1 : 0
+        calendarDragStart = nil
+        withAnimation(.timingCurve(0.2, 0.8, 0.2, 1, duration: 0.24)) {
           calendarExpansion = target
         }
         if (start < 0.5 && target == 1) || (start >= 0.5 && target == 0) {
@@ -525,6 +498,7 @@ struct TaskListScreen: View {
         }
       }
   }
+
   #endif
 
   private func undoBanner(for task: TaskItem) -> some View {
@@ -563,20 +537,20 @@ private struct TaskRow: View {
           ZStack {
             RoundedRectangle(cornerRadius: 5, style: .continuous)
               .stroke(
-                task.status == .completed ? QingxuPalette.accent : QingxuPalette.quiet.opacity(0.55),
+                task.status == .completed ? QingxuPalette.success : QingxuPalette.quiet.opacity(0.55),
                 lineWidth: 1.6
               )
               .frame(width: 23, height: 23)
             if task.status == .completed {
               Image(systemName: "checkmark")
                 .font(.caption.weight(.bold))
-                .foregroundStyle(QingxuPalette.accent)
+                .foregroundStyle(QingxuPalette.success)
             }
           }
         } else {
           Image(systemName: task.status == .completed ? "checkmark.circle.fill" : "circle")
             .font(.title3)
-            .foregroundStyle(task.status == .completed ? QingxuPalette.accent : QingxuPalette.quiet)
+            .foregroundStyle(task.status == .completed ? QingxuPalette.success : QingxuPalette.quiet)
         }
       }
       .buttonStyle(.plain)
@@ -585,6 +559,7 @@ private struct TaskRow: View {
         Text(task.title)
           .font(style == .todayPanel ? .title3.weight(.regular) : .body.weight(.medium))
           .strikethrough(task.status == .completed)
+          .foregroundStyle(task.status == .completed ? QingxuPalette.quiet : QingxuPalette.ink)
         if !task.notes.isEmpty {
           Text(task.notes)
             .font(.subheadline)
@@ -600,7 +575,7 @@ private struct TaskRow: View {
           .accessibilityLabel(priority.title)
       }
       if let deadline = task.deadlineAt {
-        Text(deadline, format: .dateTime.month().day())
+        Text(numericChineseDate(deadline))
           .font(.caption)
           .foregroundStyle(QingxuPalette.quiet)
       } else if let scheduleLabel {
@@ -611,12 +586,18 @@ private struct TaskRow: View {
     }
     .padding(.horizontal, style == .todayPanel ? 4 : 16)
     .padding(.vertical, style == .todayPanel ? 15 : 13)
+    .opacity(task.status == .completed ? 0.72 : 1)
     .background {
       if style == .card {
         QingxuPalette.surface
           .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
       }
     }
+  }
+
+  private func numericChineseDate(_ date: Date) -> String {
+    let calendar = Calendar.autoupdatingCurrent
+    return "\(calendar.component(.month, from: date))月\(calendar.component(.day, from: date))日"
   }
 }
 
@@ -750,8 +731,8 @@ private struct TaskQuickCaptureBar: View {
           Image(systemName: "checkmark")
             .font(.system(size: 17, weight: .bold))
             .frame(width: 42, height: 42)
-            .foregroundStyle(.white)
-            .background(QingxuPalette.accent, in: Circle())
+            .foregroundStyle(QingxuPalette.onAccent)
+            .background(QingxuPalette.actionGradient, in: Circle())
         }
         .buttonStyle(.plain)
         .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
@@ -875,7 +856,8 @@ private struct TaskQuickCaptureBar: View {
   private var scheduleLabel: String {
     if Calendar.autoupdatingCurrent.isDateInToday(scheduledAt) { return "今天" }
     if Calendar.autoupdatingCurrent.isDateInTomorrow(scheduledAt) { return "明天" }
-    return scheduledAt.formatted(.dateTime.month().day())
+    let calendar = Calendar.autoupdatingCurrent
+    return "\(calendar.component(.month, from: scheduledAt))月\(calendar.component(.day, from: scheduledAt))日"
   }
 
   private func save() {
@@ -907,44 +889,121 @@ private enum TodayCalendarDragDirection: Equatable {
   case collapse
 }
 
-private enum TodayTaskScrollSpace {
-  static let name = "qingxu.today.task-scroll"
-}
-
-private struct TodayTaskScrollOffsetKey: PreferenceKey {
-  static var defaultValue: CGFloat = 0
-  static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-    value = nextValue()
-  }
-}
-
-/// SwiftUI does not expose per-list bounce control on the iOS 16 deployment
-/// target. The marker lives inside the List and configures its enclosing
-/// UIKit scroll view so a top-edge pull belongs only to the calendar gesture.
+/// Observe the List's existing UIKit pan recognizer instead of adding a second
+/// SwiftUI drag recognizer. This gives the calendar one continuous progress
+/// source and prevents List scrolling, scroll disabling and layout updates
+/// from fighting over the same gesture.
 private struct TodayTaskScrollConfigurator: UIViewRepresentable {
+  @Binding var expansion: CGFloat
+
+  func makeCoordinator() -> Coordinator {
+    Coordinator(expansion: $expansion)
+  }
+
   func makeUIView(context: Context) -> UIView {
     let marker = UIView(frame: .zero)
     marker.isUserInteractionEnabled = false
-    configureEnclosingScrollView(from: marker)
+    configureEnclosingScrollView(from: marker, coordinator: context.coordinator)
     return marker
   }
 
   func updateUIView(_ uiView: UIView, context: Context) {
-    configureEnclosingScrollView(from: uiView)
+    context.coordinator.expansion = $expansion
+    configureEnclosingScrollView(from: uiView, coordinator: context.coordinator)
   }
 
-  private func configureEnclosingScrollView(from marker: UIView) {
-    DispatchQueue.main.async { [weak marker] in
+  private func configureEnclosingScrollView(from marker: UIView, coordinator: Coordinator) {
+    DispatchQueue.main.async { [weak marker, weak coordinator] in
       var ancestor = marker?.superview
       while let view = ancestor {
         if let scrollView = view as? UIScrollView {
           scrollView.bounces = false
           scrollView.alwaysBounceVertical = false
           scrollView.isDirectionalLockEnabled = true
+          coordinator?.attach(to: scrollView)
           return
         }
         ancestor = view.superview
       }
+    }
+  }
+
+  final class Coordinator: NSObject {
+    var expansion: Binding<CGFloat>
+    private weak var scrollView: UIScrollView?
+    private var direction: TodayCalendarDragDirection?
+    private var startExpansion: CGFloat = 0
+    private var startTranslation: CGFloat = 0
+
+    init(expansion: Binding<CGFloat>) {
+      self.expansion = expansion
+    }
+
+    deinit {
+      scrollView?.panGestureRecognizer.removeTarget(self, action: #selector(handlePan(_:)))
+    }
+
+    func attach(to scrollView: UIScrollView) {
+      guard self.scrollView !== scrollView else { return }
+      self.scrollView?.panGestureRecognizer.removeTarget(self, action: #selector(handlePan(_:)))
+      self.scrollView = scrollView
+      scrollView.panGestureRecognizer.addTarget(self, action: #selector(handlePan(_:)))
+    }
+
+    @objc private func handlePan(_ recognizer: UIPanGestureRecognizer) {
+      guard let scrollView else { return }
+      let translation = recognizer.translation(in: scrollView).y
+
+      switch recognizer.state {
+      case .began:
+        let top = -scrollView.adjustedContentInset.top
+        let atTop = scrollView.contentOffset.y <= top + 1
+        let verticalVelocity = recognizer.velocity(in: scrollView).y
+        if verticalVelocity > 0, atTop, expansion.wrappedValue < 0.999 {
+          direction = .expand
+        } else if verticalVelocity < 0, expansion.wrappedValue > 0.001 {
+          direction = .collapse
+        } else {
+          direction = nil
+        }
+        startExpansion = expansion.wrappedValue
+        startTranslation = translation
+
+      case .changed:
+        guard let direction else { return }
+        keepListAtTop(scrollView)
+        let delta = translation - startTranslation
+        let directionalDelta = direction == .expand ? max(0, delta) : min(0, delta)
+        expansion.wrappedValue = min(
+          1,
+          max(0, startExpansion + directionalDelta / TodayCalendarMetrics.expansionDistance)
+        )
+
+      case .ended, .cancelled, .failed:
+        guard let direction else { return }
+        keepListAtTop(scrollView)
+        let velocity = recognizer.velocity(in: scrollView).y
+        let projected = expansion.wrappedValue
+          + velocity * 0.12 / TodayCalendarMetrics.expansionDistance
+        let threshold: CGFloat = direction == .expand ? 0.42 : 0.58
+        let target: CGFloat = projected >= threshold ? 1 : 0
+        let crossedState = (startExpansion < 0.5 && target == 1)
+          || (startExpansion >= 0.5 && target == 0)
+        withAnimation(.timingCurve(0.2, 0.8, 0.2, 1, duration: 0.24)) {
+          expansion.wrappedValue = target
+        }
+        if crossedState { UISelectionFeedbackGenerator().selectionChanged() }
+        self.direction = nil
+
+      default:
+        break
+      }
+    }
+
+    private func keepListAtTop(_ scrollView: UIScrollView) {
+      let top = -scrollView.adjustedContentInset.top
+      guard abs(scrollView.contentOffset.y - top) > 0.5 else { return }
+      scrollView.setContentOffset(CGPoint(x: scrollView.contentOffset.x, y: top), animated: false)
     }
   }
 }
@@ -963,7 +1022,11 @@ private struct TodayTaskPanelHeader: View {
       Text(title)
         .font(.title2.weight(.bold))
         .foregroundStyle(QingxuPalette.ink)
+        .fixedSize(horizontal: false, vertical: true)
+        .padding(.bottom, 2)
     }
+    .padding(.top, 4)
+    .frame(minHeight: 64, alignment: .topLeading)
   }
 }
 
@@ -972,37 +1035,31 @@ private struct TodayNavigationTitle: View {
   let expansion: CGFloat
 
   private let calendar = Calendar.autoupdatingCurrent
-  private let months = [
-    "一月", "二月", "三月", "四月", "五月", "六月",
-    "七月", "八月", "九月", "十月", "十一月", "十二月"
-  ]
-  private let weekdays = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"]
-
   var body: some View {
     ZStack {
       Text(monthTitle)
-        .font(.subheadline.weight(.semibold))
-        .foregroundStyle(QingxuPalette.ink.opacity(0.48 + 0.52 * Double(expansion)))
-        .offset(y: -9 * (1 - expansion))
+        .font(.caption.weight(.semibold))
+        .foregroundStyle(QingxuPalette.quiet.opacity(0.72 + 0.28 * Double(expansion)))
+        .offset(y: -7 * (1 - expansion))
       Text(dayTitle)
         .font(.headline)
-        .foregroundStyle(QingxuPalette.ink.opacity(1 - 0.34 * Double(expansion)))
+        .foregroundStyle(QingxuPalette.ink)
         .opacity(1 - expansion)
-        .offset(y: 9 + 3 * expansion)
+        .offset(y: 8 * (1 - expansion))
     }
-    .frame(height: 40)
+    .frame(width: 132, height: 44)
+    .contentShape(Rectangle())
     .accessibilityElement(children: .combine)
   }
 
   private var monthTitle: String {
-    months[calendar.component(.month, from: date) - 1]
+    "\(calendar.component(.month, from: date))月"
   }
 
   private var dayTitle: String {
-    if calendar.isDateInToday(date) { return "今天" }
+    let month = calendar.component(.month, from: date)
     let day = calendar.component(.day, from: date)
-    let weekday = weekdays[calendar.component(.weekday, from: date) - 1]
-    return "\(day)日 \(weekday)"
+    return "\(month)月\(day)日"
   }
 }
 
@@ -1011,14 +1068,19 @@ private struct TodayExpandableCalendar: View {
   @Binding var expansion: CGFloat
   let showsFestivals: Bool
   let showsTaskIndicators: Bool
+  let weekStartsMonday: Bool
 
   private let rowHeight = TodayCalendarMetrics.rowHeight
-  private let weekdays = ["一", "二", "三", "四", "五", "六", "日"]
+  private var weekdays: [String] {
+    weekStartsMonday
+      ? ["一", "二", "三", "四", "五", "六", "日"]
+      : ["日", "一", "二", "三", "四", "五", "六"]
+  }
 
   private var calendar: Calendar {
     var value = Calendar(identifier: .gregorian)
     value.locale = Locale(identifier: "zh_CN")
-    value.firstWeekday = 2
+    value.firstWeekday = weekStartsMonday ? 2 : 1
     return value
   }
 
@@ -1038,34 +1100,23 @@ private struct TodayExpandableCalendar: View {
     return (0..<42).compactMap { calendar.date(byAdding: .day, value: $0, to: gridStart) }
   }
 
-  private var selectedRow: Int {
-    (gridDays.firstIndex { calendar.isDate($0, inSameDayAs: selection) } ?? 0) / 7
-  }
-
-  private var revealedRows: CGFloat {
-    5 * progress
-  }
-
-  /// Reveal the month from both sides of the selected week. Near the first or
-  /// last week, unused space naturally spills to the side that still has rows.
-  private var revealedLeadingRows: CGFloat {
+  var body: some View {
+    let days = gridDays
+    let selectedRow = (days.firstIndex {
+      calendar.isDate($0, inSameDayAs: selection)
+    } ?? 0) / 7
+    let revealedRows = 5 * progress
     let leadingCapacity = CGFloat(selectedRow)
     let trailingCapacity = CGFloat(5 - selectedRow)
-    var leading = min(leadingCapacity, revealedRows / 2)
-    let trailing = min(trailingCapacity, revealedRows / 2)
-    leading += min(leadingCapacity - leading, revealedRows - leading - trailing)
-    return leading
-  }
+    var revealedLeadingRows = min(leadingCapacity, revealedRows / 2)
+    let revealedTrailingRows = min(trailingCapacity, revealedRows / 2)
+    revealedLeadingRows += min(
+      leadingCapacity - revealedLeadingRows,
+      revealedRows - revealedLeadingRows - revealedTrailingRows
+    )
+    let gridOffset = -(CGFloat(selectedRow) - revealedLeadingRows) * rowHeight
+    let visibleGridHeight = rowHeight * (1 + revealedRows)
 
-  private var gridOffset: CGFloat {
-    -(CGFloat(selectedRow) - revealedLeadingRows) * rowHeight
-  }
-
-  private var visibleGridHeight: CGFloat {
-    rowHeight * (1 + revealedRows)
-  }
-
-  var body: some View {
     VStack(spacing: 5) {
       HStack(spacing: 0) {
         ForEach(weekdays, id: \.self) { value in
@@ -1079,13 +1130,10 @@ private struct TodayExpandableCalendar: View {
 
       ZStack(alignment: .top) {
         TodayCalendarGrid(
-          days: gridDays,
+          days: days,
           selection: $selection,
           showsFestivals: showsFestivals,
-          showsTaskIndicators: showsTaskIndicators,
-          expansion: progress,
-          selectedRow: selectedRow,
-          revealedLeadingRows: revealedLeadingRows
+          showsTaskIndicators: showsTaskIndicators
         )
         .equatable()
         .offset(y: gridOffset)
@@ -1103,9 +1151,6 @@ private struct TodayCalendarGrid: View, Equatable {
   @Binding var selection: Date
   let showsFestivals: Bool
   let showsTaskIndicators: Bool
-  let expansion: CGFloat
-  let selectedRow: Int
-  let revealedLeadingRows: CGFloat
 
   private let rowHeight = TodayCalendarMetrics.rowHeight
 
@@ -1121,9 +1166,6 @@ private struct TodayCalendarGrid: View, Equatable {
       && lhs.selection == rhs.selection
       && lhs.showsFestivals == rhs.showsFestivals
       && lhs.showsTaskIndicators == rhs.showsTaskIndicators
-      && lhs.expansion == rhs.expansion
-      && lhs.selectedRow == rhs.selectedRow
-      && lhs.revealedLeadingRows == rhs.revealedLeadingRows
   }
 
   var body: some View {
@@ -1133,11 +1175,10 @@ private struct TodayCalendarGrid: View, Equatable {
       columns: Array(repeating: GridItem(.flexible(), spacing: 0), count: 7),
       spacing: 0
     ) {
-      ForEach(Array(days.enumerated()), id: \.element) { index, day in
+      ForEach(days, id: \.self) { day in
         dayCell(
           day,
-          hasTasks: markedDays.contains(calendar.startOfDay(for: day)),
-          visibility: rowVisibility(index / 7)
+          hasTasks: markedDays.contains(calendar.startOfDay(for: day))
         )
       }
     }
@@ -1152,16 +1193,7 @@ private struct TodayCalendarGrid: View, Equatable {
       .map { calendar.startOfDay(for: $0) })
   }
 
-  private func rowVisibility(_ row: Int) -> CGFloat {
-    guard row != selectedRow else { return 1 }
-    let viewportStart = CGFloat(selectedRow) - revealedLeadingRows
-    let viewportEnd = viewportStart + 1 + expansion * 5
-    let visiblePart = min(CGFloat(row + 1), viewportEnd)
-      - max(CGFloat(row), viewportStart)
-    return min(1, max(0, visiblePart))
-  }
-
-  private func dayCell(_ day: Date, hasTasks: Bool, visibility: CGFloat) -> some View {
+  private func dayCell(_ day: Date, hasTasks: Bool) -> some View {
     let isSelected = calendar.isDate(day, inSameDayAs: selection)
     let isToday = calendar.isDateInToday(day)
     let isCurrentMonth = calendar.isDate(day, equalTo: selection, toGranularity: .month)
@@ -1187,10 +1219,10 @@ private struct TodayCalendarGrid: View, Equatable {
               .font(.system(size: 9, weight: .medium))
               .lineLimit(1)
               .minimumScaleFactor(0.72)
-              .foregroundStyle(isSelected ? Color.white.opacity(0.92) : QingxuPalette.success)
+              .foregroundStyle(isSelected ? QingxuPalette.onAccent.opacity(0.92) : QingxuPalette.success)
           } else if hasTasks {
             Circle()
-              .fill(isSelected ? Color.white.opacity(0.9) : QingxuPalette.accent)
+              .fill(isSelected ? QingxuPalette.onAccent.opacity(0.9) : QingxuPalette.accent)
               .frame(width: 3.5, height: 3.5)
           }
         }
@@ -1200,12 +1232,11 @@ private struct TodayCalendarGrid: View, Equatable {
       .frame(height: rowHeight)
     }
     .buttonStyle(.plain)
-    .opacity(Double(0.14 + 0.86 * visibility))
     .accessibilityLabel(day.formatted(date: .complete, time: .omitted))
   }
 
   private func dayForeground(selected: Bool, today: Bool, currentMonth: Bool) -> Color {
-    if selected { return .white }
+    if selected { return QingxuPalette.onAccent }
     if today { return QingxuPalette.accent }
     return currentMonth ? QingxuPalette.ink : QingxuPalette.quiet.opacity(0.38)
   }

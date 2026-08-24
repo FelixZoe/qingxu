@@ -35,6 +35,8 @@ private struct iOSRootView: View {
   @State private var selection = AppTab.inbox
   @State private var showingLaunchExperience = true
   @State private var availableUpdate: QingxuRelease?
+  @AppStorage(QingxuPreferenceKey.pomodoroModule) private var pomodoroEnabled = true
+  @AppStorage(QingxuPreferenceKey.rssModule) private var rssEnabled = true
 
   var body: some View {
     ZStack {
@@ -47,12 +49,16 @@ private struct iOSRootView: View {
         TaskListScreen(scope: .today)
           .tabItem { Label(AppTab.today.title, systemImage: AppTab.today.symbol) }
           .tag(AppTab.today)
-        PomodoroScreen()
-          .tabItem { Label(AppTab.pomodoro.title, systemImage: AppTab.pomodoro.symbol) }
-          .tag(AppTab.pomodoro)
-        RSSScreen()
-          .tabItem { Label(AppTab.rss.title, systemImage: AppTab.rss.symbol) }
-          .tag(AppTab.rss)
+        if pomodoroEnabled {
+          PomodoroScreen()
+            .tabItem { Label(AppTab.pomodoro.title, systemImage: AppTab.pomodoro.symbol) }
+            .tag(AppTab.pomodoro)
+        }
+        if rssEnabled {
+          RSSScreen()
+            .tabItem { Label(AppTab.rss.title, systemImage: AppTab.rss.symbol) }
+            .tag(AppTab.rss)
+        }
         SettingsScreen()
           .tabItem { Label(AppTab.settings.title, systemImage: AppTab.settings.symbol) }
           .tag(AppTab.settings)
@@ -72,6 +78,12 @@ private struct iOSRootView: View {
       guard !showingLaunchExperience else { return }
       UISelectionFeedbackGenerator().selectionChanged()
     }
+    .onChange(of: pomodoroEnabled) { enabled in
+      if !enabled, selection == .pomodoro { selection = .inbox }
+    }
+    .onChange(of: rssEnabled) { enabled in
+      if !enabled, selection == .rss { selection = .inbox }
+    }
     .onChange(of: scenePhase) { phase in
       guard phase == .active else { return }
       Task { await store.syncNow() }
@@ -79,8 +91,8 @@ private struct iOSRootView: View {
     .onOpenURL { url in
       switch url.host {
       case "today": selection = .today
-      case "pomodoro": selection = .pomodoro
-      case "rss": selection = .rss
+      case "pomodoro": selection = pomodoroEnabled ? .pomodoro : .inbox
+      case "rss": selection = rssEnabled ? .rss : .inbox
       case "settings": selection = .settings
       default: selection = .inbox
       }
@@ -89,8 +101,8 @@ private struct iOSRootView: View {
       Alert(
         title: Text("发现新版本 v\(release.version)"),
         message: Text(updateMessage(release)),
-        primaryButton: .default(Text("查看更新")) {
-          openURL(release.htmlURL)
+        primaryButton: .default(Text("直接下载")) {
+          openURL(release.iOSAsset?.browserDownloadURL ?? release.htmlURL)
         },
         secondaryButton: .cancel(Text("稍后"))
       )

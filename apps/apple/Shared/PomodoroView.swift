@@ -45,7 +45,7 @@ struct PomodoroScreen: View {
           Circle()
             .trim(from: 0, to: min(1, max(0, progress)))
             .stroke(
-              QingxuPalette.accent,
+              QingxuPalette.actionGradient,
               style: StrokeStyle(lineWidth: 6, lineCap: .round)
             )
             .rotationEffect(.degrees(-90))
@@ -81,8 +81,8 @@ struct PomodoroScreen: View {
             Text(store.pomodoro.status == .running ? "暂停" : "开始")
               .font(.headline)
               .frame(width: 148, height: 52)
-              .foregroundStyle(.white)
-              .background(QingxuPalette.accent, in: Capsule())
+              .foregroundStyle(QingxuPalette.onAccent)
+              .background(QingxuPalette.actionGradient, in: Capsule())
           }
           .buttonStyle(.plain)
 
@@ -98,7 +98,7 @@ struct PomodoroScreen: View {
         Spacer(minLength: 34)
       }
       .frame(maxWidth: .infinity, maxHeight: .infinity)
-      .background(QingxuPalette.background.ignoresSafeArea())
+      .background(QingxuPalette.canvasGradient.ignoresSafeArea())
       .tint(QingxuPalette.accent)
       .navigationTitle("番茄钟")
       .toolbar {

@@ -658,13 +658,13 @@ private struct RSSSourceStrip: View {
             .padding(.horizontal, 6)
             .frame(minHeight: 18)
             .background(
-              isSelected ? Color.white.opacity(0.2) : QingxuPalette.selected,
+              isSelected ? QingxuPalette.onAccent.opacity(0.2) : QingxuPalette.selected,
               in: Capsule()
             )
         }
       }
       .font(.subheadline.weight(isSelected ? .semibold : .medium))
-      .foregroundStyle(isSelected ? Color.white : QingxuPalette.ink)
+      .foregroundStyle(isSelected ? QingxuPalette.onAccent : QingxuPalette.ink)
       .padding(.horizontal, 13)
       .frame(height: 36)
       .background(isSelected ? QingxuPalette.accent : QingxuPalette.surface, in: Capsule())
@@ -797,7 +797,7 @@ private struct RSSEmptyState: View {
         .multilineTextAlignment(.center)
       Button("添加第一个订阅", action: add)
         .font(.subheadline.weight(.semibold))
-        .foregroundStyle(.white)
+        .foregroundStyle(QingxuPalette.onAccent)
         .padding(.horizontal, 18)
         .frame(height: 42)
         .background(QingxuPalette.accent, in: Capsule())

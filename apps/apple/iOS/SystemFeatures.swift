@@ -10,9 +10,10 @@ enum SystemFeatures {
     category: "LiveActivity"
   )
 
-  static func refresh(pomodoro: PomodoroState, todayTaskCount: Int) {
+  static func refresh(pomodoro: PomodoroState, todayTaskCount: Int, nextTodayTaskTitle: String?) {
     let defaults = UserDefaults(suiteName: appGroup)
     defaults?.set(todayTaskCount, forKey: "todayTaskCount")
+    defaults?.set(nextTodayTaskTitle, forKey: "nextTodayTaskTitle")
     defaults?.set(pomodoro.mode.rawValue, forKey: "pomodoroMode")
     defaults?.set(pomodoro.status.rawValue, forKey: "pomodoroStatus")
     defaults?.set(pomodoro.remaining(at: .now), forKey: "pomodoroRemainingSeconds")

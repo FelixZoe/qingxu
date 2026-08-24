@@ -9,86 +9,145 @@ struct SettingsScreen: View {
 
   var body: some View {
     NavigationStack {
-      Form {
-        Section {
-          HStack(spacing: 14) {
-            Image(systemName: "checkmark")
-              .font(.title2.weight(.bold))
-              .foregroundStyle(.white)
-              .frame(width: 48, height: 48)
-              .background(QingxuPalette.accent, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-            VStack(alignment: .leading, spacing: 3) {
-              Text("清序").font(.headline)
-              Text("版本 \(appVersion)")
-                .font(.caption)
-                .foregroundStyle(QingxuPalette.quiet)
+      ScrollView {
+        LazyVStack(spacing: 22) {
+          settingsHero
+
+          SettingsGroup(title: "效率与界面") {
+            NavigationLink { FeatureModulesSettingsView() } label: {
+              SettingsDestinationRow(
+                symbol: "square.grid.2x2.fill",
+                title: "功能模块",
+                detail: "管理底部导航",
+                tint: QingxuPalette.warning
+              )
             }
-            Spacer()
+            SettingsDivider()
+            NavigationLink { AppearanceSettingsView() } label: {
+              SettingsDestinationRow(
+                symbol: "paintpalette.fill",
+                title: "外观",
+                detail: AppearanceMode(rawValue: appearance)?.title ?? "跟随系统",
+                tint: QingxuPalette.accent
+              )
+            }
             #if os(iOS)
-            if updateChecker.availableRelease != nil {
-              Text("可更新")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(QingxuPalette.accent)
+            SettingsDivider()
+            NavigationLink { NotificationAndFeedbackSettingsView() } label: {
+              SettingsDestinationRow(
+                symbol: "bell.badge.fill",
+                title: "声音、提醒与触感",
+                detail: "每日提醒与完成反馈",
+                tint: QingxuPalette.danger
+              )
             }
             #endif
-            Image(systemName: store.syncSettings.isConfigured ? "cloud.fill" : "iphone")
-              .foregroundStyle(store.syncSettings.isConfigured ? QingxuPalette.success : QingxuPalette.quiet)
+            SettingsDivider()
+            NavigationLink { CalendarPreferencesView() } label: {
+              SettingsDestinationRow(
+                symbol: "calendar",
+                title: "日期与日历",
+                detail: "周起始日与显示内容",
+                tint: QingxuPalette.success
+              )
+            }
           }
-          .padding(.vertical, 5)
-        }
 
-        Section("偏好") {
-          NavigationLink {
-            AppearanceSettingsView()
-          } label: {
-            SettingsRow(
-              symbol: "circle.lefthalf.filled",
-              title: "外观",
-              detail: AppearanceMode(rawValue: appearance)?.title ?? "跟随系统",
-              tint: QingxuPalette.accent
-            )
+          SettingsGroup(title: "数据与系统") {
+            NavigationLink { SyncSettingsView().environmentObject(store) } label: {
+              SettingsDestinationRow(
+                symbol: "arrow.triangle.2.circlepath",
+                title: "自托管同步",
+                detail: store.syncSettings.isConfigured ? store.syncPhase.title : "未配置",
+                tint: QingxuPalette.success
+              )
+            }
+            #if os(iOS)
+            SettingsDivider()
+            NavigationLink { WidgetSettingsView() } label: {
+              SettingsDestinationRow(
+                symbol: "rectangle.3.group.fill",
+                title: "小组件与灵动岛",
+                detail: "任务和专注状态",
+                tint: QingxuPalette.accent
+              )
+            }
+            SettingsDivider()
+            NavigationLink { AppUpdateSettingsView().environmentObject(updateChecker) } label: {
+              SettingsDestinationRow(
+                symbol: "arrow.down.circle.fill",
+                title: "软件更新",
+                detail: updateDetail,
+                tint: QingxuPalette.warning
+              )
+            }
+            #endif
           }
-          NavigationLink {
-            SyncSettingsView()
-              .environmentObject(store)
-          } label: {
-            SettingsRow(
-              symbol: "arrow.triangle.2.circlepath",
-              title: "自托管同步",
-              detail: store.syncSettings.isConfigured ? store.syncPhase.title : "未配置",
-              tint: QingxuPalette.success
-            )
-          }
-          #if os(iOS)
-          NavigationLink {
-            AppUpdateSettingsView()
-              .environmentObject(updateChecker)
-          } label: {
-            SettingsRow(
-              symbol: "arrow.down.circle.fill",
-              title: "软件更新",
-              detail: updateDetail,
-              tint: QingxuPalette.accent
-            )
-          }
-          #endif
-        }
 
-        Section("数据") {
-          LabeledContent("待办任务", value: "\(store.inboxTasks.count)")
-          LabeledContent("已完成", value: "\(store.completedTasks.count)")
+          SettingsGroup(title: "概览") {
+            SettingsValueRow(title: "待办任务", value: "\(store.inboxTasks.count)")
+            SettingsDivider()
+            SettingsValueRow(title: "已完成", value: "\(store.completedTasks.count)")
+            SettingsDivider()
+            Link(destination: URL(string: "https://github.com/FelixZoe/qingxu")!) {
+              SettingsDestinationRow(
+                symbol: "chevron.left.forwardslash.chevron.right",
+                title: "项目与下载",
+                detail: "GitHub",
+                tint: QingxuPalette.ink
+              )
+            }
+          }
         }
-
-        Section("关于") {
-          LabeledContent("清序", value: appVersion)
-          Link("项目与下载", destination: URL(string: "https://github.com/FelixZoe/qingxu")!)
-        }
+        .padding(.horizontal, 18)
+        .padding(.top, 8)
+        .padding(.bottom, 120)
       }
       .qingxuScreen()
       .navigationTitle("设置")
       #if os(iOS)
       .task { await updateChecker.check() }
       #endif
+    }
+  }
+
+  private var settingsHero: some View {
+    HStack(spacing: 15) {
+      Image(systemName: "checkmark")
+        .font(.title2.weight(.bold))
+        .foregroundStyle(QingxuPalette.onAccent)
+        .frame(width: 56, height: 56)
+        .background(
+          QingxuPalette.actionGradient,
+          in: RoundedRectangle(cornerRadius: 17, style: .continuous)
+        )
+
+      VStack(alignment: .leading, spacing: 4) {
+        Text("清序").font(.title3.weight(.bold))
+        Text("轻松安排，专注完成")
+          .font(.subheadline)
+          .foregroundStyle(QingxuPalette.quiet)
+      }
+
+      Spacer()
+
+      VStack(alignment: .trailing, spacing: 5) {
+        Label(
+          store.syncSettings.isConfigured ? "同步已连接" : "仅保存在本地",
+          systemImage: store.syncSettings.isConfigured ? "checkmark.icloud.fill" : "iphone"
+        )
+        .font(.caption.weight(.semibold))
+        .foregroundStyle(store.syncSettings.isConfigured ? QingxuPalette.success : QingxuPalette.quiet)
+        Text("v\(appVersion)")
+          .font(.caption2.monospacedDigit())
+          .foregroundStyle(QingxuPalette.faint)
+      }
+    }
+    .padding(18)
+    .background(QingxuPalette.surface, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+    .overlay {
+      RoundedRectangle(cornerRadius: 24, style: .continuous)
+        .stroke(QingxuPalette.separator.opacity(0.7), lineWidth: 0.6)
     }
   }
 
@@ -124,7 +183,11 @@ private struct AppUpdateSettingsView: View {
       Section("更新状态") {
         updateStatus
         Button {
-          Task { await updateChecker.check(force: true) }
+          Task {
+            if let release = await updateChecker.check(force: true) {
+              openURL(release.iOSAsset?.browserDownloadURL ?? release.htmlURL)
+            }
+          }
         } label: {
           if case .checking = updateChecker.state {
             HStack(spacing: 10) {
@@ -203,26 +266,174 @@ private struct AppUpdateSettingsView: View {
 }
 #endif
 
-private struct SettingsRow: View {
+private struct SettingsGroup<Content: View>: View {
+  let title: String
+  let content: Content
+
+  init(title: String, @ViewBuilder content: () -> Content) {
+    self.title = title
+    self.content = content()
+  }
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 9) {
+      Text(title)
+        .font(.subheadline.weight(.semibold))
+        .foregroundStyle(QingxuPalette.quiet)
+        .padding(.leading, 7)
+
+      VStack(spacing: 0) { content }
+        .background(QingxuPalette.surface, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .overlay {
+          RoundedRectangle(cornerRadius: 22, style: .continuous)
+            .stroke(QingxuPalette.separator.opacity(0.65), lineWidth: 0.6)
+        }
+    }
+  }
+}
+
+private struct SettingsDivider: View {
+  var body: some View {
+    Divider().overlay(QingxuPalette.separator).padding(.leading, 64)
+  }
+}
+
+private struct SettingsDestinationRow: View {
   let symbol: String
   let title: String
   let detail: String
   let tint: Color
 
   var body: some View {
-    Label {
-      HStack {
-        Text(title)
-        Spacer()
-        Text(detail).font(.subheadline).foregroundStyle(QingxuPalette.quiet)
-      }
-    } icon: {
+    HStack(spacing: 14) {
       Image(systemName: symbol)
-        .font(.system(size: 14, weight: .semibold))
-        .foregroundStyle(.white)
-        .frame(width: 30, height: 30)
-        .background(tint, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .font(.system(size: 15, weight: .semibold))
+        .foregroundStyle(QingxuPalette.onAccent)
+        .frame(width: 34, height: 34)
+        .background(tint, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+      VStack(alignment: .leading, spacing: 3) {
+        Text(title)
+          .font(.body.weight(.medium))
+          .foregroundStyle(QingxuPalette.ink)
+        if !detail.isEmpty {
+          Text(detail)
+            .font(.caption)
+            .foregroundStyle(QingxuPalette.quiet)
+            .lineLimit(1)
+        }
+      }
+
+      Spacer(minLength: 8)
+      Image(systemName: "chevron.right")
+        .font(.caption.weight(.semibold))
+        .foregroundStyle(QingxuPalette.faint)
     }
+    .padding(.horizontal, 16)
+    .frame(minHeight: 68)
+    .contentShape(Rectangle())
+  }
+}
+
+private struct SettingsValueRow: View {
+  let title: String
+  let value: String
+
+  var body: some View {
+    HStack {
+      Text(title).foregroundStyle(QingxuPalette.ink)
+      Spacer()
+      Text(value).foregroundStyle(QingxuPalette.quiet).monospacedDigit()
+    }
+    .padding(.horizontal, 18)
+    .frame(minHeight: 54)
+  }
+}
+
+private struct PreferenceToggleRow: View {
+  let symbol: String
+  let title: String
+  let detail: String
+  let tint: Color
+  @Binding var isOn: Bool
+
+  var body: some View {
+    HStack(spacing: 14) {
+      Image(systemName: symbol)
+        .font(.system(size: 15, weight: .semibold))
+        .foregroundStyle(QingxuPalette.onAccent)
+        .frame(width: 34, height: 34)
+        .background(tint, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+      VStack(alignment: .leading, spacing: 3) {
+        Text(title).font(.body.weight(.medium)).foregroundStyle(QingxuPalette.ink)
+        Text(detail).font(.caption).foregroundStyle(QingxuPalette.quiet)
+      }
+      Spacer(minLength: 8)
+      Toggle("", isOn: $isOn).labelsHidden().tint(QingxuPalette.accent)
+    }
+    .padding(.horizontal, 16)
+    .frame(minHeight: 72)
+  }
+}
+
+private struct FeatureModulesSettingsView: View {
+  @AppStorage(QingxuPreferenceKey.pomodoroModule) private var pomodoroEnabled = true
+  @AppStorage(QingxuPreferenceKey.rssModule) private var rssEnabled = true
+
+  var body: some View {
+    ScrollView {
+      VStack(spacing: 22) {
+        SettingsGroup(title: "固定模块") {
+          moduleRow(symbol: "tray.fill", title: "收集箱", detail: "快速记录任务和想法", tint: QingxuPalette.accent)
+          SettingsDivider()
+          moduleRow(symbol: "calendar", title: "今天", detail: "日历与当天任务", tint: QingxuPalette.success)
+          SettingsDivider()
+          moduleRow(symbol: "gearshape.fill", title: "设置", detail: "管理应用与同步", tint: QingxuPalette.quiet)
+        }
+
+        SettingsGroup(title: "可选模块") {
+          PreferenceToggleRow(
+            symbol: "timer", title: "番茄钟", detail: "专注计时与实时同步",
+            tint: QingxuPalette.warning, isOn: $pomodoroEnabled
+          )
+          SettingsDivider()
+          PreferenceToggleRow(
+            symbol: "dot.radiowaves.left.and.right", title: "RSS 订阅", detail: "按来源阅读订阅内容",
+            tint: QingxuPalette.success, isOn: $rssEnabled
+          )
+        }
+
+        Text("关闭可选模块后，它会从底部导航隐藏，数据不会被删除。")
+          .font(.footnote)
+          .foregroundStyle(QingxuPalette.quiet)
+          .frame(maxWidth: .infinity, alignment: .leading)
+          .padding(.horizontal, 7)
+      }
+      .padding(18)
+      .padding(.bottom, 80)
+    }
+    .qingxuScreen()
+    .navigationTitle("功能模块")
+    #if os(iOS)
+    .navigationBarTitleDisplayMode(.inline)
+    #endif
+  }
+
+  private func moduleRow(symbol: String, title: String, detail: String, tint: Color) -> some View {
+    HStack(spacing: 14) {
+      Image(systemName: symbol)
+        .foregroundStyle(QingxuPalette.onAccent)
+        .frame(width: 34, height: 34)
+        .background(tint, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+      VStack(alignment: .leading, spacing: 3) {
+        Text(title).font(.body.weight(.medium))
+        Text(detail).font(.caption).foregroundStyle(QingxuPalette.quiet)
+      }
+      Spacer()
+      Image(systemName: "lock.fill").font(.caption).foregroundStyle(QingxuPalette.faint)
+    }
+    .padding(.horizontal, 16)
+    .frame(minHeight: 68)
   }
 }
 
@@ -230,32 +441,270 @@ struct AppearanceSettingsView: View {
   @AppStorage("qingxu.appearance") private var appearance = AppearanceMode.system.rawValue
 
   var body: some View {
-    Form {
-      Section {
-        ForEach(AppearanceMode.allCases) { mode in
-          Button {
-            appearance = mode.rawValue
-          } label: {
-            HStack {
-              Text(mode.title).foregroundStyle(QingxuPalette.ink)
-              Spacer()
-              if appearance == mode.rawValue {
-                Image(systemName: "checkmark").foregroundStyle(QingxuPalette.accent)
+    ScrollView {
+      VStack(spacing: 22) {
+        SettingsGroup(title: "显示模式") {
+          ForEach(Array(AppearanceMode.allCases.enumerated()), id: \.element.id) { index, mode in
+            Button {
+              withAnimation(.easeInOut(duration: 0.2)) { appearance = mode.rawValue }
+            } label: {
+              HStack {
+                Image(systemName: modeSymbol(mode))
+                  .foregroundStyle(QingxuPalette.accent)
+                  .frame(width: 32)
+                Text(mode.title).foregroundStyle(QingxuPalette.ink)
+                Spacer()
+                if appearance == mode.rawValue {
+                  Image(systemName: "checkmark.circle.fill").foregroundStyle(QingxuPalette.success)
+                }
               }
+              .padding(.horizontal, 18)
+              .frame(minHeight: 58)
             }
+            .buttonStyle(.plain)
+            if index < AppearanceMode.allCases.count - 1 { SettingsDivider() }
           }
-          .buttonStyle(.plain)
         }
-      } header: {
-        Text("配色")
-      } footer: {
-        Text("日间使用冷瓷白与雾蓝；暗色使用深蓝石墨与柔和蓝光，所有页面共用同一套语义色。")
+
+        SettingsGroup(title: "清序配色") {
+          HStack(spacing: 14) {
+            paletteDot(QingxuPalette.background)
+            paletteDot(QingxuPalette.accent)
+            paletteDot(QingxuPalette.success)
+            paletteDot(QingxuPalette.warning)
+            Spacer()
+            Text("奶油白 · 晨光蓝 · 嫩芽绿")
+              .font(.caption)
+              .foregroundStyle(QingxuPalette.quiet)
+          }
+          .padding(.horizontal, 18)
+          .frame(minHeight: 72)
+        }
       }
+      .padding(18)
+      .padding(.bottom, 80)
     }
     .qingxuScreen()
     .navigationTitle("外观")
+    #if os(iOS)
+    .navigationBarTitleDisplayMode(.inline)
+    #endif
+  }
+
+  private func modeSymbol(_ mode: AppearanceMode) -> String {
+    switch mode {
+    case .system: "circle.lefthalf.filled"
+    case .light: "sun.max.fill"
+    case .dark: "moon.stars.fill"
+    }
+  }
+
+  private func paletteDot(_ color: Color) -> some View {
+    Circle().fill(color).frame(width: 30, height: 30)
+      .overlay(Circle().stroke(QingxuPalette.separator, lineWidth: 0.8))
   }
 }
+
+#if os(iOS)
+private struct NotificationAndFeedbackSettingsView: View {
+  @AppStorage(QingxuPreferenceKey.haptics) private var hapticsEnabled = true
+  @AppStorage(QingxuPreferenceKey.completionSound) private var completionSoundEnabled = false
+  @AppStorage(QingxuPreferenceKey.dailyReminder) private var dailyReminderEnabled = false
+  @AppStorage(QingxuPreferenceKey.dailyReminderMinutes) private var reminderMinutes = 9 * 60
+  @State private var reminderMessage = ""
+
+  var body: some View {
+    ScrollView {
+      VStack(spacing: 22) {
+        SettingsGroup(title: "完成反馈") {
+          PreferenceToggleRow(
+            symbol: "hand.tap.fill", title: "完成任务时触感", detail: "勾选任务时给出轻柔反馈",
+            tint: QingxuPalette.accent, isOn: $hapticsEnabled
+          )
+          SettingsDivider()
+          PreferenceToggleRow(
+            symbol: "speaker.wave.2.fill", title: "完成提示音", detail: "完成任务时播放简短声音",
+            tint: QingxuPalette.success, isOn: $completionSoundEnabled
+          )
+
+          Button {
+            QingxuFeedback.taskCompletion(haptics: hapticsEnabled, sound: completionSoundEnabled)
+          } label: {
+            Text("测试完成反馈")
+              .font(.subheadline.weight(.semibold))
+              .foregroundStyle(QingxuPalette.accent)
+              .frame(maxWidth: .infinity)
+              .frame(height: 48)
+          }
+          .buttonStyle(.plain)
+        }
+
+        SettingsGroup(title: "每日提醒") {
+          PreferenceToggleRow(
+            symbol: "bell.badge.fill", title: "提醒查看今日任务", detail: "每天一次，不会持续打扰",
+            tint: QingxuPalette.warning,
+            isOn: Binding(
+              get: { dailyReminderEnabled },
+              set: { value in
+                dailyReminderEnabled = value
+                updateReminder()
+              }
+            )
+          )
+          SettingsDivider()
+          DatePicker("提醒时间", selection: reminderDate, displayedComponents: .hourAndMinute)
+            .disabled(!dailyReminderEnabled)
+            .padding(.horizontal, 18)
+            .frame(minHeight: 56)
+            .onChange(of: reminderMinutes) { _ in
+              if dailyReminderEnabled { updateReminder() }
+            }
+        }
+
+        if !reminderMessage.isEmpty {
+          Text(reminderMessage)
+            .font(.footnote)
+            .foregroundStyle(QingxuPalette.quiet)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 7)
+        }
+      }
+      .padding(18)
+      .padding(.bottom, 80)
+    }
+    .qingxuScreen()
+    .navigationTitle("声音、提醒与触感")
+    .navigationBarTitleDisplayMode(.inline)
+  }
+
+  private var reminderDate: Binding<Date> {
+    Binding(
+      get: {
+        Calendar.current.date(
+          bySettingHour: reminderMinutes / 60,
+          minute: reminderMinutes % 60,
+          second: 0,
+          of: .now
+        ) ?? .now
+      },
+      set: { date in
+        let values = Calendar.current.dateComponents([.hour, .minute], from: date)
+        reminderMinutes = (values.hour ?? 9) * 60 + (values.minute ?? 0)
+      }
+    )
+  }
+
+  private func updateReminder() {
+    Task {
+      do {
+        let enabled = try await QingxuDailyReminder.update(
+          enabled: dailyReminderEnabled,
+          minutesAfterMidnight: reminderMinutes
+        )
+        if dailyReminderEnabled, !enabled {
+          dailyReminderEnabled = false
+          reminderMessage = "通知权限未开启，请先在系统设置中允许清序发送通知。"
+        } else {
+          reminderMessage = dailyReminderEnabled ? "每日提醒已保存。" : "每日提醒已关闭。"
+        }
+      } catch {
+        dailyReminderEnabled = false
+        reminderMessage = "保存提醒失败：\(error.localizedDescription)"
+      }
+    }
+  }
+}
+#endif
+
+private struct CalendarPreferencesView: View {
+  @AppStorage(QingxuPreferenceKey.weekStartsMonday) private var weekStartsMonday = true
+  @AppStorage(QingxuPreferenceKey.showFestivals) private var showFestivals = true
+  @AppStorage(QingxuPreferenceKey.showTaskIndicators) private var showTaskIndicators = true
+
+  var body: some View {
+    ScrollView {
+      VStack(spacing: 22) {
+        SettingsGroup(title: "星期") {
+          PreferenceToggleRow(
+            symbol: "calendar", title: "星期一作为一周开始", detail: weekStartsMonday ? "当前从星期一开始" : "当前从星期日开始",
+            tint: QingxuPalette.accent, isOn: $weekStartsMonday
+          )
+        }
+        SettingsGroup(title: "日历内容") {
+          PreferenceToggleRow(
+            symbol: "sparkles", title: "显示节日", detail: "在日期下方显示常用节日",
+            tint: QingxuPalette.success, isOn: $showFestivals
+          )
+          SettingsDivider()
+          PreferenceToggleRow(
+            symbol: "circle.fill", title: "显示任务标记", detail: "有任务的日期显示小圆点",
+            tint: QingxuPalette.warning, isOn: $showTaskIndicators
+          )
+        }
+        Text("节日数据随应用提供，不需要连接第三方接口，也不会读取你的系统日历。")
+          .font(.footnote)
+          .foregroundStyle(QingxuPalette.quiet)
+          .frame(maxWidth: .infinity, alignment: .leading)
+          .padding(.horizontal, 7)
+      }
+      .padding(18)
+      .padding(.bottom, 80)
+    }
+    .qingxuScreen()
+    .navigationTitle("日期与日历")
+    #if os(iOS)
+    .navigationBarTitleDisplayMode(.inline)
+    #endif
+  }
+}
+
+#if os(iOS)
+private struct WidgetSettingsView: View {
+  var body: some View {
+    ScrollView {
+      VStack(spacing: 22) {
+        SettingsGroup(title: "主屏幕小组件") {
+          infoRow(symbol: "checklist", title: "今日任务", detail: "显示今日未完成数量和下一项任务", tint: QingxuPalette.accent)
+          SettingsDivider()
+          infoRow(symbol: "timer", title: "专注状态", detail: "显示准确倒计时，轻触回到番茄钟", tint: QingxuPalette.success)
+        }
+        SettingsGroup(title: "锁定屏幕与灵动岛") {
+          infoRow(symbol: "lock.rectangle", title: "锁屏小组件", detail: "圆形、矩形和单行三种样式", tint: QingxuPalette.accent)
+          SettingsDivider()
+          infoRow(symbol: "iphone.gen3", title: "灵动岛实时活动", detail: "退出应用后仍显示准确剩余时间", tint: QingxuPalette.warning)
+        }
+        Text("添加方法：长按主屏幕空白区域，点击左上角“+”，搜索“清序”。灵动岛会在番茄钟开始后自动显示。")
+          .font(.footnote)
+          .foregroundStyle(QingxuPalette.quiet)
+          .frame(maxWidth: .infinity, alignment: .leading)
+          .padding(.horizontal, 7)
+      }
+      .padding(18)
+      .padding(.bottom, 80)
+    }
+    .qingxuScreen()
+    .navigationTitle("小组件与灵动岛")
+    .navigationBarTitleDisplayMode(.inline)
+  }
+
+  private func infoRow(symbol: String, title: String, detail: String, tint: Color) -> some View {
+    HStack(spacing: 14) {
+      Image(systemName: symbol)
+        .foregroundStyle(QingxuPalette.onAccent)
+        .frame(width: 34, height: 34)
+        .background(tint, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+      VStack(alignment: .leading, spacing: 4) {
+        Text(title).font(.body.weight(.medium))
+        Text(detail).font(.caption).foregroundStyle(QingxuPalette.quiet)
+      }
+      Spacer()
+      Image(systemName: "checkmark.circle.fill").foregroundStyle(QingxuPalette.success)
+    }
+    .padding(.horizontal, 16)
+    .frame(minHeight: 72)
+  }
+}
+#endif
 
 struct SyncSettingsView: View {
   @EnvironmentObject private var store: AppStore

@@ -79,6 +79,12 @@ final class AppStore: ObservableObject {
     visibleTasks.filter { $0.status == .open }.sorted(by: taskOrder)
   }
 
+  /// The task screens keep completed items visible so completion feels
+  /// reversible. Open items stay first; completed items sink below them.
+  var displayedInboxTasks: [TaskItem] {
+    visibleTasks.sorted(by: displayTaskOrder)
+  }
+
   var todayTasks: [TaskItem] {
     tasks(on: estimatedNow)
   }
@@ -91,6 +97,15 @@ final class AppStore: ObservableObject {
         .compactMap { $0 }
         .contains { calendar.isDate($0, inSameDayAs: date) }
     }.sorted(by: taskOrder)
+  }
+
+  func displayedTasks(on date: Date) -> [TaskItem] {
+    let calendar = Calendar.autoupdatingCurrent
+    return visibleTasks.filter { task in
+      [task.startAt, task.deadlineAt]
+        .compactMap { $0 }
+        .contains { calendar.isDate($0, inSameDayAs: date) }
+    }.sorted(by: displayTaskOrder)
   }
 
   var completedTasks: [TaskItem] {
@@ -298,6 +313,16 @@ final class AppStore: ObservableObject {
     return left.order < right.order
   }
 
+  private func displayTaskOrder(_ left: TaskItem, _ right: TaskItem) -> Bool {
+    if left.status != right.status {
+      return left.status == .open
+    }
+    if left.status == .completed {
+      return (left.completedAt ?? left.updatedAt) > (right.completedAt ?? right.updatedAt)
+    }
+    return taskOrder(left, right)
+  }
+
   private func changed(taskID: String) {
     dirtyTaskIDs.insert(taskID)
     try? QingxuFiles.save(tasks, name: "tasks.json")
@@ -345,7 +370,7 @@ final class AppStore: ObservableObject {
     return Array(merged.values)
   }
 
-  private func scheduleSync(delay: Duration = .milliseconds(120)) {
+  private func scheduleSync(delay: Duration = .milliseconds(70)) {
     guard syncSettings.autoSync && syncSettings.isConfigured else { return }
     pendingSync?.cancel()
     pendingSync = Task { [weak self] in
@@ -438,7 +463,8 @@ final class AppStore: ObservableObject {
   private func refreshSystemSurfaces() {
     SystemFeatures.refresh(
       pomodoro: pomodoro,
-      todayTaskCount: todayTasks.count
+      todayTaskCount: todayTasks.count,
+      nextTodayTaskTitle: todayTasks.first?.title
     )
   }
 }
