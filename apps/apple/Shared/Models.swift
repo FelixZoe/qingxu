@@ -62,6 +62,14 @@ enum PomodoroStatus: String, Codable {
   case paused
 }
 
+enum PomodoroTimerDirection: String, Codable, CaseIterable, Identifiable {
+  case countdown
+  case countUp
+
+  var id: String { rawValue }
+  var title: String { self == .countdown ? "倒计时" : "正计时" }
+}
+
 struct PomodoroState: Codable, Equatable {
   var mode: PomodoroMode
   var status: PomodoroStatus
@@ -70,7 +78,10 @@ struct PomodoroState: Codable, Equatable {
   var focusMinutes: Int
   var shortBreakMinutes: Int
   var longBreakMinutes: Int
+  var longBreakEvery: Int
+  var timerDirection: PomodoroTimerDirection
   var endsAt: Date?
+  var startedAt: Date?
   var updatedAt: Date
 
   static func initial(now: Date = .distantPast) -> PomodoroState {
@@ -82,7 +93,10 @@ struct PomodoroState: Codable, Equatable {
       focusMinutes: 25,
       shortBreakMinutes: 5,
       longBreakMinutes: 15,
+      longBreakEvery: 4,
+      timerDirection: .countdown,
       endsAt: nil,
+      startedAt: nil,
       updatedAt: now
     )
   }
@@ -97,14 +111,18 @@ struct PomodoroState: Codable, Equatable {
   }
 
   func remaining(at now: Date) -> Int {
+    if timerDirection == .countUp {
+      guard status == .running, let startedAt else { return max(0, remainingSeconds) }
+      return max(0, remainingSeconds + Int(now.timeIntervalSince(startedAt)))
+    }
     guard status == .running, let endsAt else { return remainingSeconds }
     return max(0, Int(ceil(endsAt.timeIntervalSince(now))))
   }
 
   enum CodingKeys: String, CodingKey {
     case mode, status, remainingSeconds, completedFocusSessions
-    case focusMinutes, shortBreakMinutes, longBreakMinutes
-    case endsAt, updatedAt
+    case focusMinutes, shortBreakMinutes, longBreakMinutes, longBreakEvery
+    case timerDirection, endsAt, startedAt, updatedAt
   }
 
   init(
@@ -115,7 +133,10 @@ struct PomodoroState: Codable, Equatable {
     focusMinutes: Int,
     shortBreakMinutes: Int,
     longBreakMinutes: Int,
+    longBreakEvery: Int = 4,
+    timerDirection: PomodoroTimerDirection = .countdown,
     endsAt: Date?,
+    startedAt: Date? = nil,
     updatedAt: Date
   ) {
     self.mode = mode
@@ -125,7 +146,10 @@ struct PomodoroState: Codable, Equatable {
     self.focusMinutes = focusMinutes
     self.shortBreakMinutes = shortBreakMinutes
     self.longBreakMinutes = longBreakMinutes
+    self.longBreakEvery = longBreakEvery
+    self.timerDirection = timerDirection
     self.endsAt = endsAt
+    self.startedAt = startedAt
     self.updatedAt = updatedAt
   }
 
@@ -146,7 +170,13 @@ struct PomodoroState: Codable, Equatable {
       120,
       max(1, try container.decodeIfPresent(Int.self, forKey: .longBreakMinutes) ?? 15)
     )
+    longBreakEvery = min(12, max(2, try container.decodeIfPresent(Int.self, forKey: .longBreakEvery) ?? 4))
+    timerDirection = try container.decodeIfPresent(
+      PomodoroTimerDirection.self,
+      forKey: .timerDirection
+    ) ?? .countdown
     endsAt = try container.decodeIfPresent(Date.self, forKey: .endsAt)
+    startedAt = try container.decodeIfPresent(Date.self, forKey: .startedAt)
     updatedAt = try container.decodeIfPresent(Date.self, forKey: .updatedAt) ?? .distantPast
     let fallback = switch mode {
     case .focus: focusMinutes * 60
@@ -213,7 +243,7 @@ enum AppTab: String, CaseIterable, Identifiable, Hashable {
   var symbol: String {
     switch self {
     case .inbox: "tray"
-    case .today: "sun.max"
+    case .today: "calendar"
     case .pomodoro: "timer"
     case .rss: "dot.radiowaves.left.and.right"
     case .settings: "gearshape"

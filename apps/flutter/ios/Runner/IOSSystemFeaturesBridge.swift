@@ -36,15 +36,20 @@ final class IOSSystemFeaturesBridge {
   private func update(pomodoro: [String: Any], todayTaskCount: Int) {
     let mode = pomodoro["mode"] as? String ?? "focus"
     let status = pomodoro["status"] as? String ?? "idle"
+    let timerDirection = pomodoro["timerDirection"] as? String ?? "countdown"
     let remainingSeconds = pomodoro["remainingSeconds"] as? Int ?? 25 * 60
     let endsAt = (pomodoro["endsAt"] as? String).flatMap(ISO8601DateFormatter().date)
+    let startedAt = (pomodoro["startedAt"] as? String).flatMap(ISO8601DateFormatter().date)
+    let displayStartedAt = startedAt?.addingTimeInterval(TimeInterval(-remainingSeconds))
 
     if let defaults = UserDefaults(suiteName: Self.appGroup) {
       defaults.set(todayTaskCount, forKey: "todayTaskCount")
       defaults.set(mode, forKey: "pomodoroMode")
       defaults.set(status, forKey: "pomodoroStatus")
+      defaults.set(timerDirection, forKey: "pomodoroTimerDirection")
       defaults.set(remainingSeconds, forKey: "pomodoroRemainingSeconds")
       defaults.set(endsAt, forKey: "pomodoroEndsAt")
+      defaults.set(displayStartedAt, forKey: "pomodoroStartedAt")
     }
     WidgetCenter.shared.reloadAllTimelines()
 
@@ -52,7 +57,9 @@ final class IOSSystemFeaturesBridge {
     let state = QingxuPomodoroAttributes.ContentState(
       mode: mode,
       status: status,
+      timerDirection: timerDirection,
       endsAt: endsAt,
+      startedAt: displayStartedAt,
       remainingSeconds: remainingSeconds
     )
     Task { @MainActor in
@@ -64,7 +71,9 @@ final class IOSSystemFeaturesBridge {
   @MainActor
   private func updateLiveActivity(_ state: QingxuPomodoroAttributes.ContentState) async {
     let activities = Activity<QingxuPomodoroAttributes>.activities
-    let isActivelyRunning = state.status == "running" && (state.endsAt ?? .distantPast) > Date()
+    let isActivelyRunning = state.status == "running" && (
+      state.timerDirection == "countUp" || (state.endsAt ?? .distantPast) > Date()
+    )
     let content = ActivityContent(
       state: state,
       staleDate: isActivelyRunning ? state.endsAt : nil

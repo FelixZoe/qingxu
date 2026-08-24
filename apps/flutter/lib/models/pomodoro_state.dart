@@ -2,6 +2,8 @@ enum PomodoroMode { focus, shortBreak, longBreak }
 
 enum PomodoroStatus { idle, running, paused }
 
+enum PomodoroTimerDirection { countdown, countUp }
+
 class PomodoroState {
   const PomodoroState({
     required this.mode,
@@ -12,7 +14,10 @@ class PomodoroState {
     this.focusMinutes = defaultFocusMinutes,
     this.shortBreakMinutes = defaultShortBreakMinutes,
     this.longBreakMinutes = defaultLongBreakMinutes,
+    this.longBreakEvery = 4,
+    this.timerDirection = PomodoroTimerDirection.countdown,
     this.endsAt,
+    this.startedAt,
   });
 
   static const defaultFocusMinutes = 25;
@@ -52,12 +57,18 @@ class PomodoroState {
       defaultValue: defaultLongBreakMinutes,
       max: 120,
     );
+    final timerDirection = PomodoroTimerDirection.values.firstWhere(
+      (value) => value.name == json['timerDirection'],
+      orElse: () => PomodoroTimerDirection.countdown,
+    );
     return PomodoroState(
       mode: mode,
       status: status,
       focusMinutes: focusMinutes,
       shortBreakMinutes: shortBreakMinutes,
       longBreakMinutes: longBreakMinutes,
+      longBreakEvery: (json['longBreakEvery'] as num?)?.toInt().clamp(2, 12) ?? 4,
+      timerDirection: timerDirection,
       remainingSeconds:
           (json['remainingSeconds'] as num?)?.toInt().clamp(0, 24 * 3600) ??
           _durationFor(
@@ -72,6 +83,9 @@ class PomodoroState {
       endsAt: json['endsAt'] is String
           ? DateTime.tryParse(json['endsAt']! as String)?.toUtc()
           : null,
+      startedAt: json['startedAt'] is String
+          ? DateTime.tryParse(json['startedAt']! as String)?.toUtc()
+          : null,
       updatedAt:
           DateTime.tryParse(json['updatedAt'] as String? ?? '')?.toUtc() ??
           DateTime.fromMillisecondsSinceEpoch(0, isUtc: true),
@@ -85,7 +99,10 @@ class PomodoroState {
   final int focusMinutes;
   final int shortBreakMinutes;
   final int longBreakMinutes;
+  final int longBreakEvery;
+  final PomodoroTimerDirection timerDirection;
   final DateTime? endsAt;
+  final DateTime? startedAt;
   final DateTime updatedAt;
 
   static Duration durationFor(PomodoroMode mode) => switch (mode) {
@@ -117,6 +134,13 @@ class PomodoroState {
   }) => (value as num?)?.toInt().clamp(1, max) ?? defaultValue;
 
   int remainingAt(DateTime serverNow) {
+    if (timerDirection == PomodoroTimerDirection.countUp) {
+      if (status != PomodoroStatus.running || startedAt == null) {
+        return remainingSeconds;
+      }
+      return (remainingSeconds + serverNow.toUtc().difference(startedAt!).inSeconds)
+          .clamp(0, 24 * 3600);
+    }
     if (status != PomodoroStatus.running || endsAt == null) {
       return remainingSeconds;
     }
@@ -133,8 +157,12 @@ class PomodoroState {
     int? focusMinutes,
     int? shortBreakMinutes,
     int? longBreakMinutes,
+    int? longBreakEvery,
+    PomodoroTimerDirection? timerDirection,
     DateTime? endsAt,
     bool clearEndsAt = false,
+    DateTime? startedAt,
+    bool clearStartedAt = false,
     DateTime? updatedAt,
   }) => PomodoroState(
     mode: mode ?? this.mode,
@@ -145,7 +173,10 @@ class PomodoroState {
     focusMinutes: focusMinutes ?? this.focusMinutes,
     shortBreakMinutes: shortBreakMinutes ?? this.shortBreakMinutes,
     longBreakMinutes: longBreakMinutes ?? this.longBreakMinutes,
+    longBreakEvery: longBreakEvery ?? this.longBreakEvery,
+    timerDirection: timerDirection ?? this.timerDirection,
     endsAt: clearEndsAt ? null : endsAt ?? this.endsAt,
+    startedAt: clearStartedAt ? null : startedAt ?? this.startedAt,
     updatedAt: (updatedAt ?? this.updatedAt).toUtc(),
   );
 
@@ -157,7 +188,10 @@ class PomodoroState {
     'focusMinutes': focusMinutes,
     'shortBreakMinutes': shortBreakMinutes,
     'longBreakMinutes': longBreakMinutes,
+    'longBreakEvery': longBreakEvery,
+    'timerDirection': timerDirection.name,
     'endsAt': endsAt?.toUtc().toIso8601String(),
+    'startedAt': startedAt?.toUtc().toIso8601String(),
     'updatedAt': updatedAt.toUtc().toIso8601String(),
   };
 }

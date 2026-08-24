@@ -178,7 +178,19 @@ final class AppStore: ObservableObject {
     pomodoro.mode = mode
     pomodoro.status = .idle
     pomodoro.endsAt = nil
-    pomodoro.remainingSeconds = pomodoro.duration(for: mode)
+    pomodoro.startedAt = nil
+    pomodoro.remainingSeconds = pomodoro.timerDirection == .countUp ? 0 : pomodoro.duration(for: mode)
+    pomodoro.updatedAt = estimatedNow
+    pomodoroChanged()
+  }
+
+  func setPomodoroTimerDirection(_ direction: PomodoroTimerDirection) {
+    pomodoro.timerDirection = direction
+    pomodoro.mode = .focus
+    pomodoro.status = .idle
+    pomodoro.endsAt = nil
+    pomodoro.startedAt = nil
+    pomodoro.remainingSeconds = direction == .countUp ? 0 : pomodoro.duration(for: .focus)
     pomodoro.updatedAt = estimatedNow
     pomodoroChanged()
   }
@@ -188,10 +200,17 @@ final class AppStore: ObservableObject {
     if pomodoro.status == .running {
       pomodoro.remainingSeconds = pomodoro.remaining(at: now)
       pomodoro.endsAt = nil
+      pomodoro.startedAt = nil
       pomodoro.status = .paused
     } else {
-      let remaining = max(1, pomodoro.remainingSeconds)
-      pomodoro.endsAt = now.addingTimeInterval(TimeInterval(remaining))
+      if pomodoro.timerDirection == .countUp {
+        pomodoro.startedAt = now
+        pomodoro.endsAt = nil
+      } else {
+        let remaining = max(1, pomodoro.remainingSeconds)
+        pomodoro.endsAt = now.addingTimeInterval(TimeInterval(remaining))
+        pomodoro.startedAt = nil
+      }
       pomodoro.status = .running
     }
     pomodoro.updatedAt = now
@@ -201,17 +220,23 @@ final class AppStore: ObservableObject {
   func resetPomodoro() {
     pomodoro.status = .idle
     pomodoro.endsAt = nil
-    pomodoro.remainingSeconds = pomodoro.duration(for: pomodoro.mode)
+    pomodoro.startedAt = nil
+    pomodoro.remainingSeconds = pomodoro.timerDirection == .countUp
+      ? 0
+      : pomodoro.duration(for: pomodoro.mode)
     pomodoro.updatedAt = estimatedNow
     pomodoroChanged()
   }
 
-  func updateDurations(focus: Int, shortBreak: Int, longBreak: Int) {
+  func updateDurations(focus: Int, shortBreak: Int, longBreak: Int, longBreakEvery: Int) {
     pomodoro.focusMinutes = min(180, max(1, focus))
     pomodoro.shortBreakMinutes = min(60, max(1, shortBreak))
     pomodoro.longBreakMinutes = min(120, max(1, longBreak))
+    pomodoro.longBreakEvery = min(12, max(2, longBreakEvery))
     if pomodoro.status != .running {
-      pomodoro.remainingSeconds = pomodoro.duration(for: pomodoro.mode)
+      pomodoro.remainingSeconds = pomodoro.timerDirection == .countUp
+        ? 0
+        : pomodoro.duration(for: pomodoro.mode)
     }
     pomodoro.updatedAt = estimatedNow
     pomodoroChanged()
@@ -433,7 +458,9 @@ final class AppStore: ObservableObject {
 
   private func tick() {
     displayedRemainingSeconds = pomodoro.remaining(at: estimatedNow)
-    if pomodoro.status == .running && displayedRemainingSeconds == 0 {
+    if pomodoro.timerDirection == .countdown,
+       pomodoro.status == .running,
+       displayedRemainingSeconds == 0 {
       advancePomodoro()
     }
     let interval: TimeInterval = 5 * 60
@@ -449,13 +476,16 @@ final class AppStore: ObservableObject {
   private func advancePomodoro() {
     if pomodoro.mode == .focus {
       pomodoro.completedFocusSessions += 1
-      pomodoro.mode = pomodoro.completedFocusSessions.isMultiple(of: 4) ? .longBreak : .shortBreak
+      pomodoro.mode = pomodoro.completedFocusSessions.isMultiple(of: pomodoro.longBreakEvery)
+        ? .longBreak
+        : .shortBreak
     } else {
       pomodoro.mode = .focus
     }
-    pomodoro.status = .idle
-    pomodoro.endsAt = nil
+    pomodoro.status = .running
+    pomodoro.startedAt = nil
     pomodoro.remainingSeconds = pomodoro.duration(for: pomodoro.mode)
+    pomodoro.endsAt = estimatedNow.addingTimeInterval(TimeInterval(pomodoro.remainingSeconds))
     pomodoro.updatedAt = estimatedNow
     pomodoroChanged()
   }

@@ -10,7 +10,9 @@ private struct QingxuEntry: TimelineEntry {
   let nextTodayTaskTitle: String?
   let mode: String
   let status: String
+  let timerDirection: String
   let endsAt: Date?
+  let startedAt: Date?
   let remainingSeconds: Int
 }
 
@@ -22,7 +24,9 @@ private struct QingxuProvider: TimelineProvider {
       nextTodayTaskTitle: "整理今天的安排",
       mode: "focus",
       status: "idle",
+      timerDirection: "countdown",
       endsAt: nil,
+      startedAt: nil,
       remainingSeconds: 25 * 60
     )
   }
@@ -47,7 +51,9 @@ private struct QingxuProvider: TimelineProvider {
       nextTodayTaskTitle: defaults?.string(forKey: "nextTodayTaskTitle"),
       mode: defaults?.string(forKey: "pomodoroMode") ?? "focus",
       status: defaults?.string(forKey: "pomodoroStatus") ?? "idle",
+      timerDirection: defaults?.string(forKey: "pomodoroTimerDirection") ?? "countdown",
       endsAt: defaults?.object(forKey: "pomodoroEndsAt") as? Date,
+      startedAt: defaults?.object(forKey: "pomodoroStartedAt") as? Date,
       remainingSeconds: defaults?.integer(forKey: "pomodoroRemainingSeconds") ?? 25 * 60
     )
   }
@@ -186,7 +192,9 @@ private struct FocusWidgetView: View {
 
   @ViewBuilder
   private var timerText: some View {
-    if entry.status == "running", let endsAt = entry.endsAt, endsAt > Date() {
+    if entry.status == "running", entry.timerDirection == "countUp", let startedAt = entry.startedAt {
+      Text(timerInterval: startedAt...Date.distantFuture, countsDown: false)
+    } else if entry.status == "running", let endsAt = entry.endsAt, endsAt > Date() {
       Text(timerInterval: Date()...endsAt, countsDown: true)
     } else {
       Text(format(entry.remainingSeconds))
@@ -280,7 +288,9 @@ struct QingxuLiveActivity: Widget {
 
   @ViewBuilder
   private func liveTimer(_ state: QingxuPomodoroAttributes.ContentState) -> some View {
-    if state.status == "running", let endsAt = state.endsAt, endsAt > Date() {
+    if state.status == "running", state.timerDirection == "countUp", let startedAt = state.startedAt {
+      Text(timerInterval: startedAt...Date.distantFuture, countsDown: false)
+    } else if state.status == "running", let endsAt = state.endsAt, endsAt > Date() {
       Text(timerInterval: Date()...endsAt, countsDown: true)
     } else {
       Text(String(format: "%02d:%02d", state.remainingSeconds / 60, state.remainingSeconds % 60))

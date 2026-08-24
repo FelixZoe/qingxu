@@ -16,8 +16,13 @@ enum SystemFeatures {
     defaults?.set(nextTodayTaskTitle, forKey: "nextTodayTaskTitle")
     defaults?.set(pomodoro.mode.rawValue, forKey: "pomodoroMode")
     defaults?.set(pomodoro.status.rawValue, forKey: "pomodoroStatus")
+    defaults?.set(pomodoro.timerDirection.rawValue, forKey: "pomodoroTimerDirection")
     defaults?.set(pomodoro.remaining(at: .now), forKey: "pomodoroRemainingSeconds")
     defaults?.set(pomodoro.endsAt, forKey: "pomodoroEndsAt")
+    let countUpDisplayStart = pomodoro.startedAt?.addingTimeInterval(
+      TimeInterval(-pomodoro.remainingSeconds)
+    )
+    defaults?.set(countUpDisplayStart, forKey: "pomodoroStartedAt")
     WidgetCenter.shared.reloadAllTimelines()
     updateLiveActivity(pomodoro)
   }
@@ -28,7 +33,9 @@ enum SystemFeatures {
       state: .init(
         mode: pomodoro.mode.rawValue,
         status: pomodoro.status.rawValue,
+        timerDirection: pomodoro.timerDirection.rawValue,
         endsAt: pomodoro.endsAt,
+        startedAt: countUpDisplayStart,
         remainingSeconds: pomodoro.remaining(at: .now)
       ),
       staleDate: pomodoro.endsAt

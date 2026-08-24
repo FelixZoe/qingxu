@@ -1108,11 +1108,11 @@ private struct TodayExpandableCalendar: View {
     let revealedRows = 5 * progress
     let leadingCapacity = CGFloat(selectedRow)
     let trailingCapacity = CGFloat(5 - selectedRow)
-    var revealedLeadingRows = min(leadingCapacity, revealedRows / 2)
+    let baseLeadingRows = min(leadingCapacity, revealedRows / 2)
     let revealedTrailingRows = min(trailingCapacity, revealedRows / 2)
-    revealedLeadingRows += min(
-      leadingCapacity - revealedLeadingRows,
-      revealedRows - revealedLeadingRows - revealedTrailingRows
+    let revealedLeadingRows = baseLeadingRows + min(
+      leadingCapacity - baseLeadingRows,
+      revealedRows - baseLeadingRows - revealedTrailingRows
     )
     let gridOffset = -(CGFloat(selectedRow) - revealedLeadingRows) * rowHeight
     let visibleGridHeight = rowHeight * (1 + revealedRows)

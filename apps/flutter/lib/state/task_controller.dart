@@ -328,19 +328,27 @@ class TaskController extends ChangeNotifier {
           status: PomodoroStatus.paused,
           remainingSeconds: _pomodoro.remainingAt(now),
           clearEndsAt: true,
+          clearStartedAt: true,
           updatedAt: now,
         ),
       );
       return;
     }
-    final remaining = _pomodoro.remainingSeconds > 0
+    final remaining = _pomodoro.timerDirection == PomodoroTimerDirection.countUp
         ? _pomodoro.remainingSeconds
-        : _pomodoro.configuredDurationFor(_pomodoro.mode).inSeconds;
+        : (_pomodoro.remainingSeconds > 0
+              ? _pomodoro.remainingSeconds
+              : _pomodoro.configuredDurationFor(_pomodoro.mode).inSeconds);
     _setPomodoro(
       _pomodoro.copyWith(
         status: PomodoroStatus.running,
         remainingSeconds: remaining,
-        endsAt: now.add(Duration(seconds: remaining)),
+        endsAt: _pomodoro.timerDirection == PomodoroTimerDirection.countdown
+            ? now.add(Duration(seconds: remaining))
+            : null,
+        clearEndsAt: _pomodoro.timerDirection == PomodoroTimerDirection.countUp,
+        startedAt: _pomodoro.timerDirection == PomodoroTimerDirection.countUp ? now : null,
+        clearStartedAt: _pomodoro.timerDirection == PomodoroTimerDirection.countdown,
         updatedAt: now,
       ),
     );
@@ -351,10 +359,11 @@ class TaskController extends ChangeNotifier {
     _setPomodoro(
       _pomodoro.copyWith(
         status: PomodoroStatus.idle,
-        remainingSeconds: _pomodoro
-            .configuredDurationFor(_pomodoro.mode)
-            .inSeconds,
+        remainingSeconds: _pomodoro.timerDirection == PomodoroTimerDirection.countUp
+            ? 0
+            : _pomodoro.configuredDurationFor(_pomodoro.mode).inSeconds,
         clearEndsAt: true,
+        clearStartedAt: true,
         updatedAt: now,
       ),
     );
@@ -368,6 +377,24 @@ class TaskController extends ChangeNotifier {
         status: PomodoroStatus.idle,
         remainingSeconds: _pomodoro.configuredDurationFor(mode).inSeconds,
         clearEndsAt: true,
+        clearStartedAt: true,
+        updatedAt: now,
+      ),
+    );
+  }
+
+  void selectPomodoroTimerDirection(PomodoroTimerDirection direction) {
+    final now = estimatedServerNow;
+    _setPomodoro(
+      _pomodoro.copyWith(
+        mode: PomodoroMode.focus,
+        status: PomodoroStatus.idle,
+        timerDirection: direction,
+        remainingSeconds: direction == PomodoroTimerDirection.countUp
+            ? 0
+            : _pomodoro.configuredDurationFor(PomodoroMode.focus).inSeconds,
+        clearEndsAt: true,
+        clearStartedAt: true,
         updatedAt: now,
       ),
     );
@@ -379,6 +406,7 @@ class TaskController extends ChangeNotifier {
     required int focusMinutes,
     required int shortBreakMinutes,
     required int longBreakMinutes,
+    int? longBreakEvery,
   }) {
     final now = estimatedServerNow;
     final updated = _pomodoro.copyWith(
@@ -386,6 +414,7 @@ class TaskController extends ChangeNotifier {
       focusMinutes: focusMinutes.clamp(1, 180),
       shortBreakMinutes: shortBreakMinutes.clamp(1, 60),
       longBreakMinutes: longBreakMinutes.clamp(1, 120),
+      longBreakEvery: (longBreakEvery ?? _pomodoro.longBreakEvery).clamp(2, 12),
       clearEndsAt: true,
       updatedAt: now,
     );
@@ -398,6 +427,7 @@ class TaskController extends ChangeNotifier {
 
   bool advancePomodoroIfNeeded() {
     if (_pomodoro.status != PomodoroStatus.running ||
+        _pomodoro.timerDirection == PomodoroTimerDirection.countUp ||
         _pomodoro.remainingAt(estimatedServerNow) > 0) {
       return false;
     }
@@ -409,19 +439,22 @@ class TaskController extends ChangeNotifier {
     final now = estimatedServerNow;
     final completed = _pomodoro.completedFocusSessions + (countFocus ? 1 : 0);
     final nextMode = _pomodoro.mode == PomodoroMode.focus
-        ? (completed > 0 && completed % 4 == 0
+        ? (completed > 0 && completed % _pomodoro.longBreakEvery == 0
               ? PomodoroMode.longBreak
               : PomodoroMode.shortBreak)
         : PomodoroMode.focus;
     _setPomodoro(
       PomodoroState(
         mode: nextMode,
-        status: PomodoroStatus.idle,
+        status: PomodoroStatus.running,
         remainingSeconds: _pomodoro.configuredDurationFor(nextMode).inSeconds,
         completedFocusSessions: completed,
         focusMinutes: _pomodoro.focusMinutes,
         shortBreakMinutes: _pomodoro.shortBreakMinutes,
         longBreakMinutes: _pomodoro.longBreakMinutes,
+        longBreakEvery: _pomodoro.longBreakEvery,
+        timerDirection: _pomodoro.timerDirection,
+        endsAt: now.add(_pomodoro.configuredDurationFor(nextMode)),
         updatedAt: now,
       ),
     );

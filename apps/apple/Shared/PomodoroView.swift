@@ -18,18 +18,21 @@ struct PomodoroScreen: View {
 
   private var progress: Double {
     let total = max(1, store.pomodoro.duration(for: store.pomodoro.mode))
+    if store.pomodoro.timerDirection == .countUp {
+      return min(1, Double(store.displayedRemainingSeconds) / Double(total))
+    }
     return 1 - Double(store.displayedRemainingSeconds) / Double(total)
   }
 
   var body: some View {
     NavigationStack {
       VStack(spacing: 0) {
-        Picker("计时模式", selection: Binding(
-          get: { store.pomodoro.mode },
-          set: store.setPomodoroMode
+        Picker("计时方向", selection: Binding(
+          get: { store.pomodoro.timerDirection },
+          set: store.setPomodoroTimerDirection
         )) {
-          ForEach(PomodoroMode.allCases, id: \.self) { mode in
-            Text(mode.title).tag(mode)
+          ForEach(PomodoroTimerDirection.allCases) { direction in
+            Text(direction.title).tag(direction)
           }
         }
         .pickerStyle(.segmented)
@@ -51,7 +54,7 @@ struct PomodoroScreen: View {
             .rotationEffect(.degrees(-90))
             .animation(.linear(duration: 0.25), value: progress)
           VStack(spacing: 12) {
-            Text(selectedTask?.title ?? store.pomodoro.mode.title)
+            Text(timerTitle)
               .font(.subheadline.weight(.semibold))
               .foregroundStyle(QingxuPalette.quiet)
               .lineLimit(1)
@@ -145,6 +148,11 @@ struct PomodoroScreen: View {
   private func format(_ seconds: Int) -> String {
     String(format: "%02d:%02d", seconds / 60, seconds % 60)
   }
+
+  private var timerTitle: String {
+    if store.pomodoro.mode != .focus { return store.pomodoro.mode.title }
+    return selectedTask?.title ?? (store.pomodoro.timerDirection == .countUp ? "自由专注" : "专注")
+  }
 }
 
 private struct PomodoroTaskPicker: View {
@@ -215,11 +223,13 @@ private struct DurationSettingsSheet: View {
   @State private var focus: Int
   @State private var shortBreak: Int
   @State private var longBreak: Int
+  @State private var longBreakEvery: Int
 
   init() {
     _focus = State(initialValue: 25)
     _shortBreak = State(initialValue: 5)
     _longBreak = State(initialValue: 15)
+    _longBreakEvery = State(initialValue: 4)
   }
 
   var body: some View {
@@ -228,6 +238,7 @@ private struct DurationSettingsSheet: View {
         Stepper("专注：\(focus) 分钟", value: $focus, in: 1...180)
         Stepper("短休息：\(shortBreak) 分钟", value: $shortBreak, in: 1...60)
         Stepper("长休息：\(longBreak) 分钟", value: $longBreak, in: 1...120)
+        Stepper("每 \(longBreakEvery) 次专注后长休息", value: $longBreakEvery, in: 2...12)
       }
       .qingxuScreen()
       .navigationTitle("自定义时长")
@@ -238,7 +249,12 @@ private struct DurationSettingsSheet: View {
         ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() } }
         ToolbarItem(placement: .confirmationAction) {
           Button("保存") {
-            store.updateDurations(focus: focus, shortBreak: shortBreak, longBreak: longBreak)
+            store.updateDurations(
+              focus: focus,
+              shortBreak: shortBreak,
+              longBreak: longBreak,
+              longBreakEvery: longBreakEvery
+            )
             dismiss()
           }
         }
@@ -249,6 +265,7 @@ private struct DurationSettingsSheet: View {
       focus = store.pomodoro.focusMinutes
       shortBreak = store.pomodoro.shortBreakMinutes
       longBreak = store.pomodoro.longBreakMinutes
+      longBreakEvery = store.pomodoro.longBreakEvery
     }
   }
 }
