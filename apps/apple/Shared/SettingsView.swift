@@ -2,6 +2,9 @@ import SwiftUI
 
 struct SettingsScreen: View {
   @EnvironmentObject private var store: AppStore
+  #if os(iOS)
+  @EnvironmentObject private var updateChecker: AppUpdateChecker
+  #endif
   @AppStorage("qingxu.appearance") private var appearance = AppearanceMode.system.rawValue
 
   var body: some View {
@@ -21,6 +24,13 @@ struct SettingsScreen: View {
                 .foregroundStyle(.secondary)
             }
             Spacer()
+            #if os(iOS)
+            if updateChecker.availableRelease != nil {
+              Text("可更新")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(QingxuPalette.accent)
+            }
+            #endif
             Image(systemName: store.syncSettings.isConfigured ? "cloud.fill" : "iphone")
               .foregroundStyle(store.syncSettings.isConfigured ? QingxuPalette.success : QingxuPalette.quiet)
           }
@@ -49,6 +59,19 @@ struct SettingsScreen: View {
               tint: QingxuPalette.success
             )
           }
+          #if os(iOS)
+          NavigationLink {
+            AppUpdateSettingsView()
+              .environmentObject(updateChecker)
+          } label: {
+            SettingsRow(
+              symbol: "arrow.down.circle.fill",
+              title: "软件更新",
+              detail: updateDetail,
+              tint: QingxuPalette.accent
+            )
+          }
+          #endif
         }
 
         Section("数据") {
@@ -63,13 +86,122 @@ struct SettingsScreen: View {
       }
       .qingxuScreen()
       .navigationTitle("设置")
+      #if os(iOS)
+      .task { await updateChecker.check() }
+      #endif
     }
   }
 
   private var appVersion: String {
     Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "开发版"
   }
+
+  #if os(iOS)
+  private var updateDetail: String {
+    switch updateChecker.state {
+    case .checking: return "正在检查"
+    case .available(let release): return "v\(release.version)"
+    case .current: return "已是最新"
+    case .failed: return "检查失败"
+    case .idle: return "检查更新"
+    }
+  }
+  #endif
 }
+
+#if os(iOS)
+private struct AppUpdateSettingsView: View {
+  @EnvironmentObject private var updateChecker: AppUpdateChecker
+  @Environment(\.openURL) private var openURL
+
+  var body: some View {
+    Form {
+      Section("当前版本") {
+        LabeledContent("版本", value: "v\(updateChecker.currentVersion)")
+        LabeledContent("构建", value: updateChecker.currentBuild)
+      }
+
+      Section("更新状态") {
+        updateStatus
+        Button {
+          Task { await updateChecker.check(force: true) }
+        } label: {
+          if case .checking = updateChecker.state {
+            HStack(spacing: 10) {
+              ProgressView()
+              Text("正在检查…")
+            }
+          } else {
+            Label("检查更新", systemImage: "arrow.clockwise")
+          }
+        }
+        .disabled(isChecking)
+      }
+
+      if let release = updateChecker.availableRelease {
+        Section("v\(release.version)") {
+          if !release.body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            Text(release.body)
+              .font(.subheadline)
+              .foregroundStyle(.secondary)
+              .textSelection(.enabled)
+          }
+
+          if let asset = release.iOSAsset {
+            Button {
+              openURL(asset.browserDownloadURL)
+            } label: {
+              Label("下载新版 IPA", systemImage: "arrow.down.circle.fill")
+            }
+          }
+
+          Button {
+            openURL(release.htmlURL)
+          } label: {
+            Label("打开 GitHub Release", systemImage: "safari")
+          }
+        }
+      }
+
+      Section {
+        Text("覆盖安装必须保持 Bundle ID 为 one.darker.qingxu，并使用与当前安装版本相同的签名身份。满足这两个条件时，重新签名并安装新版 IPA 会保留任务、设置与同步配置。")
+          .font(.footnote)
+          .foregroundStyle(.secondary)
+      } header: {
+        Text("覆盖安装")
+      }
+    }
+    .qingxuScreen()
+    .navigationTitle("软件更新")
+    .navigationBarTitleDisplayMode(.inline)
+    .task { await updateChecker.check() }
+  }
+
+  @ViewBuilder
+  private var updateStatus: some View {
+    switch updateChecker.state {
+    case .idle:
+      Label("尚未检查", systemImage: "clock")
+    case .checking:
+      Label("正在连接 GitHub", systemImage: "network")
+    case .current:
+      Label("当前已经是最新版本", systemImage: "checkmark.circle.fill")
+        .foregroundStyle(QingxuPalette.success)
+    case .available(let release):
+      Label("发现新版本 v\(release.version)", systemImage: "arrow.down.circle.fill")
+        .foregroundStyle(QingxuPalette.accent)
+    case .failed(let message):
+      Label(message, systemImage: "exclamationmark.triangle.fill")
+        .foregroundStyle(QingxuPalette.danger)
+    }
+  }
+
+  private var isChecking: Bool {
+    if case .checking = updateChecker.state { return true }
+    return false
+  }
+}
+#endif
 
 private struct SettingsRow: View {
   let symbol: String

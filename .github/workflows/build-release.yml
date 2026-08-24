@@ -289,6 +289,13 @@ jobs:
           xcodegen version
       - name: Generate native Apple project
         run: xcodegen generate
+      - name: Verify stable iOS upgrade identity
+        run: |
+          set -euo pipefail
+          grep -q 'PRODUCT_BUNDLE_IDENTIFIER: one.darker.qingxu$' project.yml
+          grep -q 'PRODUCT_BUNDLE_IDENTIFIER: one.darker.qingxu.widgets$' project.yml
+          grep -q 'group.one.darker.qingxu' Configuration/QingxuiOS.entitlements
+          grep -q 'group.one.darker.qingxu' Configuration/QingxuWidgets.entitlements
       - name: Build unsigned native iOS app
         run: |
           set -euo pipefail

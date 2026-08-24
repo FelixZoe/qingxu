@@ -4,6 +4,7 @@ import UIKit
 @main
 struct QingxuiOSApp: App {
   @StateObject private var store = AppStore()
+  @StateObject private var updateChecker = AppUpdateChecker()
   @AppStorage("qingxu.appearance") private var appearance = AppearanceMode.system.rawValue
 
   init() {
@@ -20,6 +21,7 @@ struct QingxuiOSApp: App {
     WindowGroup {
       iOSRootView()
         .environmentObject(store)
+        .environmentObject(updateChecker)
         .preferredColorScheme(AppearanceMode(rawValue: appearance)?.colorScheme)
     }
   }
@@ -27,9 +29,12 @@ struct QingxuiOSApp: App {
 
 private struct iOSRootView: View {
   @EnvironmentObject private var store: AppStore
+  @EnvironmentObject private var updateChecker: AppUpdateChecker
+  @Environment(\.openURL) private var openURL
   @Environment(\.scenePhase) private var scenePhase
   @State private var selection = AppTab.inbox
   @State private var showingLaunchExperience = true
+  @State private var availableUpdate: QingxuRelease?
 
   var body: some View {
     ZStack {
@@ -58,6 +63,7 @@ private struct iOSRootView: View {
       if showingLaunchExperience {
         QingxuLaunchExperience {
           showingLaunchExperience = false
+          checkForUpdates()
         }
         .zIndex(10)
       }
@@ -79,5 +85,29 @@ private struct iOSRootView: View {
       default: selection = .inbox
       }
     }
+    .alert(item: $availableUpdate) { release in
+      Alert(
+        title: Text("发现新版本 v\(release.version)"),
+        message: Text(updateMessage(release)),
+        primaryButton: .default(Text("查看更新")) {
+          openURL(release.htmlURL)
+        },
+        secondaryButton: .cancel(Text("稍后"))
+      )
+    }
+  }
+
+  private func checkForUpdates() {
+    Task {
+      if let release = await updateChecker.check() {
+        availableUpdate = release
+      }
+    }
+  }
+
+  private func updateMessage(_ release: QingxuRelease) -> String {
+    let notes = release.body.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !notes.isEmpty else { return "新版本已经发布，可前往 GitHub 下载 IPA。" }
+    return String(notes.prefix(240))
   }
 }
