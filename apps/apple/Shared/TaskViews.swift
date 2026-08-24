@@ -220,68 +220,79 @@ struct TaskListScreen: View {
 
   #if os(iOS)
   private var todayFixedLayout: some View {
-    VStack(spacing: 0) {
-      TodayExpandableCalendar(
-        selection: $selectedDate,
-        expansion: $calendarExpansion,
-        showsFestivals: showFestivalLabels,
-        showsTaskIndicators: showTaskIndicators
-      )
-      .padding(.horizontal, 20)
-      .padding(.top, 4)
-      .background(QingxuPalette.background)
-      .contentShape(Rectangle())
-      .gesture(todayCalendarDrag)
-      .zIndex(1)
+    GeometryReader { geometry in
+      ZStack(alignment: .top) {
+        TodayExpandableCalendar(
+          selection: $selectedDate,
+          expansion: $calendarExpansion,
+          showsFestivals: showFestivalLabels,
+          showsTaskIndicators: showTaskIndicators
+        )
+        .padding(.horizontal, 20)
+        .padding(.top, TodayCalendarMetrics.topPadding)
+        .background(QingxuPalette.background)
+        .contentShape(Rectangle())
+        .gesture(todayCalendarDrag)
+        .zIndex(1)
 
-      List {
-        GeometryReader { geometry in
-          Color.clear.preference(
-            key: TodayTaskScrollOffsetKey.self,
-            value: geometry.frame(in: .named(TodayTaskScrollSpace.name)).minY
-          )
-        }
-        .frame(height: 0)
-        .listRowInsets(.init())
-        .listRowBackground(Color.clear)
-        .listRowSeparator(.hidden)
-
-        TodayTaskPanelHeader(title: selectedDateLabel)
-          .listRowInsets(.init(top: 8, leading: 20, bottom: 8, trailing: 20))
+        List {
+          GeometryReader { geometry in
+            Color.clear.preference(
+              key: TodayTaskScrollOffsetKey.self,
+              value: geometry.frame(in: .named(TodayTaskScrollSpace.name)).minY
+            )
+          }
+          .frame(height: 0)
+          .listRowInsets(.init())
           .listRowBackground(Color.clear)
           .listRowSeparator(.hidden)
 
-        taskRows
-
-        if tasks.isEmpty {
-          TodayEmptyState()
-            .frame(maxWidth: .infinity)
-            .padding(.top, 58)
+          TodayTaskPanelHeader(title: selectedDateLabel)
+            .listRowInsets(.init(top: 8, leading: 20, bottom: 8, trailing: 20))
             .listRowBackground(Color.clear)
             .listRowSeparator(.hidden)
 
-          Color.clear
-            .frame(height: 360)
-            .listRowBackground(Color.clear)
-            .listRowSeparator(.hidden)
+          taskRows
+
+          if tasks.isEmpty {
+            TodayEmptyState()
+              .frame(maxWidth: .infinity)
+              .padding(.top, 58)
+              .listRowBackground(Color.clear)
+              .listRowSeparator(.hidden)
+
+            Color.clear
+              .frame(height: 360)
+              .listRowBackground(Color.clear)
+              .listRowSeparator(.hidden)
+          }
         }
+        .listStyle(.plain)
+        .environment(\.defaultMinListRowHeight, 1)
+        .scrollContentBackground(.hidden)
+        .coordinateSpace(name: TodayTaskScrollSpace.name)
+        .onPreferenceChange(TodayTaskScrollOffsetKey.self) { offset in
+          if todayContentTopBaseline == nil { todayContentTopBaseline = offset }
+          let baseline = todayContentTopBaseline ?? offset
+          todayContentIsAtTop = offset >= baseline - 1
+        }
+        // Keep the UIKit-backed list at one stable size. Only this outer
+        // surface moves while the calendar changes height, avoiding a full
+        // list layout pass for every drag frame.
+        .frame(
+          height: max(1, geometry.size.height - TodayCalendarMetrics.collapsedHeight),
+          alignment: .top
+        )
+        .scrollDisabled(calendarExpansion > 0.001 || todayContentDragDirection != nil)
+        .simultaneousGesture(todayContentPullGesture)
+        .background(QingxuPalette.surface)
+        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .padding(.horizontal, 12)
+        .offset(y: TodayCalendarMetrics.collapsedHeight
+          + TodayCalendarMetrics.expansionDistance * calendarExpansion)
       }
-      .listStyle(.plain)
-      .environment(\.defaultMinListRowHeight, 1)
-      .scrollContentBackground(.hidden)
-      .coordinateSpace(name: TodayTaskScrollSpace.name)
-      .onPreferenceChange(TodayTaskScrollOffsetKey.self) { offset in
-        if todayContentTopBaseline == nil { todayContentTopBaseline = offset }
-        let baseline = todayContentTopBaseline ?? offset
-        todayContentIsAtTop = offset >= baseline - 1
-      }
-      // The calendar owns the vertical gesture while it is expanded. This
-      // keeps the task list still until the month has collapsed back to a week.
-      .scrollDisabled(calendarExpansion > 0.001 || todayContentDragDirection != nil)
-      .simultaneousGesture(todayContentPullGesture)
-      .background(QingxuPalette.surface)
-      .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
-      .padding(.horizontal, 12)
+      .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+      .clipped()
     }
   }
   #endif
@@ -883,6 +894,10 @@ private struct TaskQuickCaptureBar: View {
 
 private enum TodayCalendarMetrics {
   static let rowHeight: CGFloat = 52
+  static let weekdayHeight: CGFloat = 24
+  static let gridSpacing: CGFloat = 5
+  static let topPadding: CGFloat = 4
+  static let collapsedHeight = topPadding + weekdayHeight + gridSpacing + rowHeight
   static let expansionDistance = rowHeight * 5
 }
 
@@ -932,17 +947,18 @@ private struct TodayNavigationTitle: View {
   private let weekdays = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"]
 
   var body: some View {
-    VStack(spacing: 0) {
+    ZStack {
       Text(monthTitle)
         .font(.subheadline.weight(.semibold))
         .foregroundStyle(QingxuPalette.ink.opacity(0.48 + 0.52 * Double(expansion)))
+        .offset(y: -9 * (1 - expansion))
       Text(dayTitle)
         .font(.headline)
         .foregroundStyle(QingxuPalette.ink.opacity(1 - 0.34 * Double(expansion)))
         .opacity(1 - expansion)
-        .frame(height: max(0, 20 * (1 - expansion)))
-        .clipped()
+        .offset(y: 9 + 3 * expansion)
     }
+    .frame(height: 40)
     .accessibilityElement(children: .combine)
   }
 
@@ -1027,7 +1043,7 @@ private struct TodayExpandableCalendar: View {
             .frame(maxWidth: .infinity)
         }
       }
-      .frame(height: 24)
+      .frame(height: TodayCalendarMetrics.weekdayHeight)
 
       ZStack(alignment: .top) {
         TodayCalendarGrid(
