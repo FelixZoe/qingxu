@@ -47,7 +47,7 @@ enum QingxuFestivalCalendar {
 
     var chinese = Calendar(identifier: .chinese)
     chinese.timeZone = .autoupdatingCurrent
-    let lunar = chinese.dateComponents([.month, .day, .isLeapMonth], from: date)
+    let lunar = chinese.dateComponents(in: chinese.timeZone, from: date)
 
     if lunar.isLeapMonth != true,
        let month = lunar.month,
@@ -59,7 +59,7 @@ enum QingxuFestivalCalendar {
     guard let tomorrow = gregorian.date(byAdding: .day, value: 1, to: date) else {
       return nil
     }
-    let nextLunar = chinese.dateComponents([.month, .day, .isLeapMonth], from: tomorrow)
+    let nextLunar = chinese.dateComponents(in: chinese.timeZone, from: tomorrow)
     if nextLunar.isLeapMonth != true, nextLunar.month == 1, nextLunar.day == 1 {
       return "除夕"
     }
