@@ -251,6 +251,7 @@ struct TaskListScreen: View {
             .listRowInsets(.init(top: 8, leading: 20, bottom: 8, trailing: 20))
             .listRowBackground(Color.clear)
             .listRowSeparator(.hidden)
+            .background(TodayTaskScrollConfigurator())
 
           taskRows
 
@@ -914,6 +915,37 @@ private struct TodayTaskScrollOffsetKey: PreferenceKey {
   static var defaultValue: CGFloat = 0
   static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
     value = nextValue()
+  }
+}
+
+/// SwiftUI does not expose per-list bounce control on the iOS 16 deployment
+/// target. The marker lives inside the List and configures its enclosing
+/// UIKit scroll view so a top-edge pull belongs only to the calendar gesture.
+private struct TodayTaskScrollConfigurator: UIViewRepresentable {
+  func makeUIView(context: Context) -> UIView {
+    let marker = UIView(frame: .zero)
+    marker.isUserInteractionEnabled = false
+    configureEnclosingScrollView(from: marker)
+    return marker
+  }
+
+  func updateUIView(_ uiView: UIView, context: Context) {
+    configureEnclosingScrollView(from: uiView)
+  }
+
+  private func configureEnclosingScrollView(from marker: UIView) {
+    DispatchQueue.main.async { [weak marker] in
+      var ancestor = marker?.superview
+      while let view = ancestor {
+        if let scrollView = view as? UIScrollView {
+          scrollView.bounces = false
+          scrollView.alwaysBounceVertical = false
+          scrollView.isDirectionalLockEnabled = true
+          return
+        }
+        ancestor = view.superview
+      }
+    }
   }
 }
 
