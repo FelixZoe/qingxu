@@ -38,6 +38,9 @@ struct TaskListScreen: View {
   #if os(iOS)
   @State private var calendarExpansion: CGFloat = 0
   @State private var calendarDragStart: CGFloat?
+  @State private var todayContentTopBaseline: CGFloat?
+  @State private var todayContentIsAtTop = true
+  @State private var todayContentPullOrigin: CGFloat?
   #endif
 
   private var tasks: [TaskItem] {
@@ -194,7 +197,11 @@ struct TaskListScreen: View {
   @ViewBuilder
   private var taskRows: some View {
     ForEach(tasks) { task in
-      TaskRow(task: task) {
+      TaskRow(
+        task: task,
+        style: scope == .today ? .todayPanel : .card,
+        scheduleLabel: scope == .today ? selectedDateLabel : nil
+      ) {
         withAnimation(.easeInOut(duration: 0.2)) { store.toggleTask(task) }
       }
       .contentShape(Rectangle())
@@ -227,8 +234,19 @@ struct TaskListScreen: View {
       .zIndex(1)
 
       List {
-        TodayContentHandle()
-          .listRowInsets(.init(top: 8, leading: 20, bottom: 6, trailing: 20))
+        GeometryReader { geometry in
+          Color.clear.preference(
+            key: TodayTaskScrollOffsetKey.self,
+            value: geometry.frame(in: .named(TodayTaskScrollSpace.name)).minY
+          )
+        }
+        .frame(height: 0)
+        .listRowInsets(.init())
+        .listRowBackground(Color.clear)
+        .listRowSeparator(.hidden)
+
+        TodayTaskPanelHeader(title: selectedDateLabel)
+          .listRowInsets(.init(top: 8, leading: 20, bottom: 8, trailing: 20))
           .listRowBackground(Color.clear)
           .listRowSeparator(.hidden)
 
@@ -250,10 +268,26 @@ struct TaskListScreen: View {
       .listStyle(.plain)
       .environment(\.defaultMinListRowHeight, 1)
       .scrollContentBackground(.hidden)
-      .background(QingxuPalette.background)
+      .coordinateSpace(name: TodayTaskScrollSpace.name)
+      .onPreferenceChange(TodayTaskScrollOffsetKey.self) { offset in
+        if todayContentTopBaseline == nil { todayContentTopBaseline = offset }
+        let baseline = todayContentTopBaseline ?? offset
+        todayContentIsAtTop = offset >= baseline - 1
+      }
+      .simultaneousGesture(todayContentPullGesture)
+      .background(QingxuPalette.surface)
+      .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+      .padding(.horizontal, 12)
     }
   }
   #endif
+
+  private var selectedDateLabel: String {
+    let calendar = Calendar.autoupdatingCurrent
+    if calendar.isDateInToday(selectedDate) { return "今天" }
+    if calendar.isDateInTomorrow(selectedDate) { return "明天" }
+    return selectedDate.formatted(.dateTime.month().day())
+  }
 
   private var addButton: some View {
     Button {
@@ -425,6 +459,48 @@ struct TaskListScreen: View {
         }
       }
   }
+
+  private var todayContentPullGesture: some Gesture {
+    DragGesture(minimumDistance: 3)
+      .onChanged { value in
+        guard capture == nil,
+              value.translation.height > 0,
+              todayContentIsAtTop
+        else { return }
+
+        if todayContentPullOrigin == nil {
+          todayContentPullOrigin = value.translation.height
+          calendarDragStart = calendarExpansion
+        }
+
+        let origin = todayContentPullOrigin ?? value.translation.height
+        let start = calendarDragStart ?? calendarExpansion
+        let distance = max(0, value.translation.height - origin)
+        calendarExpansion = min(
+          1,
+          max(0, start + distance / TodayCalendarMetrics.expansionDistance)
+        )
+      }
+      .onEnded { value in
+        defer {
+          todayContentPullOrigin = nil
+          calendarDragStart = nil
+        }
+        guard let origin = todayContentPullOrigin,
+              let start = calendarDragStart
+        else { return }
+
+        let projectedDistance = max(0, value.predictedEndTranslation.height - origin)
+        let projected = start + projectedDistance / TodayCalendarMetrics.expansionDistance
+        let target: CGFloat = projected > 0.45 ? 1 : 0
+        withAnimation(.interactiveSpring(response: 0.34, dampingFraction: 0.9, blendDuration: 0.08)) {
+          calendarExpansion = target
+        }
+        if start < 0.5, target == 1 {
+          UISelectionFeedbackGenerator().selectionChanged()
+        }
+      }
+  }
   #endif
 
   private func undoBanner(for task: TaskItem) -> some View {
@@ -445,22 +521,45 @@ struct TaskListScreen: View {
   }
 }
 
+private enum TaskRowStyle {
+  case card
+  case todayPanel
+}
+
 private struct TaskRow: View {
   let task: TaskItem
+  let style: TaskRowStyle
+  let scheduleLabel: String?
   let toggle: () -> Void
 
   var body: some View {
     HStack(alignment: .top, spacing: 13) {
       Button(action: toggle) {
-        Image(systemName: task.status == .completed ? "checkmark.circle.fill" : "circle")
-          .font(.title3)
-          .foregroundStyle(task.status == .completed ? QingxuPalette.accent : QingxuPalette.quiet)
+        if style == .todayPanel {
+          ZStack {
+            RoundedRectangle(cornerRadius: 5, style: .continuous)
+              .stroke(
+                task.status == .completed ? QingxuPalette.accent : QingxuPalette.quiet.opacity(0.55),
+                lineWidth: 1.6
+              )
+              .frame(width: 23, height: 23)
+            if task.status == .completed {
+              Image(systemName: "checkmark")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(QingxuPalette.accent)
+            }
+          }
+        } else {
+          Image(systemName: task.status == .completed ? "checkmark.circle.fill" : "circle")
+            .font(.title3)
+            .foregroundStyle(task.status == .completed ? QingxuPalette.accent : QingxuPalette.quiet)
+        }
       }
       .buttonStyle(.plain)
 
       VStack(alignment: .leading, spacing: 4) {
         Text(task.title)
-          .font(.body.weight(.medium))
+          .font(style == .todayPanel ? .title3.weight(.regular) : .body.weight(.medium))
           .strikethrough(task.status == .completed)
         if !task.notes.isEmpty {
           Text(task.notes)
@@ -480,11 +579,20 @@ private struct TaskRow: View {
         Text(deadline, format: .dateTime.month().day())
           .font(.caption)
           .foregroundStyle(QingxuPalette.quiet)
+      } else if let scheduleLabel {
+        Text(scheduleLabel)
+          .font(.subheadline)
+          .foregroundStyle(QingxuPalette.accent)
       }
     }
-    .padding(.horizontal, 16)
-    .padding(.vertical, 13)
-    .background(QingxuPalette.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+    .padding(.horizontal, style == .todayPanel ? 4 : 16)
+    .padding(.vertical, style == .todayPanel ? 15 : 13)
+    .background {
+      if style == .card {
+        QingxuPalette.surface
+          .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+      }
+    }
   }
 }
 
@@ -766,13 +874,32 @@ private enum TodayCalendarMetrics {
   static let expansionDistance = rowHeight * 5
 }
 
-private struct TodayContentHandle: View {
+private enum TodayTaskScrollSpace {
+  static let name = "qingxu.today.task-scroll"
+}
+
+private struct TodayTaskScrollOffsetKey: PreferenceKey {
+  static var defaultValue: CGFloat = 0
+  static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+    value = nextValue()
+  }
+}
+
+private struct TodayTaskPanelHeader: View {
+  let title: String
+
   var body: some View {
-    Capsule()
-      .fill(QingxuPalette.separator.opacity(0.95))
-      .frame(width: 34, height: 4)
-      .frame(maxWidth: .infinity, minHeight: 14)
-      .accessibilityHidden(true)
+    VStack(alignment: .leading, spacing: 12) {
+      Capsule()
+        .fill(QingxuPalette.separator.opacity(0.95))
+        .frame(width: 34, height: 4)
+        .frame(maxWidth: .infinity)
+        .accessibilityHidden(true)
+
+      Text(title)
+        .font(.title2.weight(.bold))
+        .foregroundStyle(QingxuPalette.ink)
+    }
   }
 }
 
