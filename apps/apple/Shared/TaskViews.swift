@@ -927,11 +927,11 @@ private struct TodayNavigationTitle: View {
   var body: some View {
     VStack(spacing: 0) {
       Text(monthTitle)
-        .font(.subheadline.weight(expansion > 0.7 ? .semibold : .regular))
-        .foregroundStyle(expansion > 0.7 ? QingxuPalette.ink : QingxuPalette.quiet)
+        .font(.subheadline.weight(.semibold))
+        .foregroundStyle(QingxuPalette.ink.opacity(0.48 + 0.52 * expansion))
       Text(dayTitle)
         .font(.headline)
-        .foregroundStyle(QingxuPalette.ink)
+        .foregroundStyle(QingxuPalette.ink.opacity(1 - 0.34 * expansion))
         .opacity(1 - expansion)
         .frame(height: max(0, 20 * (1 - expansion)))
         .clipped()
@@ -987,14 +987,27 @@ private struct TodayExpandableCalendar: View {
     (gridDays.firstIndex { calendar.isDate($0, inSameDayAs: selection) } ?? 0) / 7
   }
 
-  /// Keep the selected week pinned to the lower reveal edge while the weeks
-  /// above it appear continuously. The final row below is revealed last.
+  private var revealedRows: CGFloat {
+    5 * progress
+  }
+
+  /// Reveal the month from both sides of the selected week. Near the first or
+  /// last week, unused space naturally spills to the side that still has rows.
   private var revealedLeadingRows: CGFloat {
-    min(CGFloat(selectedRow), 5 * progress)
+    let leadingCapacity = CGFloat(selectedRow)
+    let trailingCapacity = CGFloat(5 - selectedRow)
+    var leading = min(leadingCapacity, revealedRows / 2)
+    let trailing = min(trailingCapacity, revealedRows / 2)
+    leading += min(leadingCapacity - leading, revealedRows - leading - trailing)
+    return leading
   }
 
   private var gridOffset: CGFloat {
     -(CGFloat(selectedRow) - revealedLeadingRows) * rowHeight
+  }
+
+  private var visibleGridHeight: CGFloat {
+    rowHeight * (1 + revealedRows)
   }
 
   var body: some View {
@@ -1014,12 +1027,15 @@ private struct TodayExpandableCalendar: View {
           days: gridDays,
           selection: $selection,
           showsFestivals: showsFestivals,
-          showsTaskIndicators: showsTaskIndicators
+          showsTaskIndicators: showsTaskIndicators,
+          expansion: progress,
+          selectedRow: selectedRow,
+          revealedLeadingRows: revealedLeadingRows
         )
         .equatable()
         .offset(y: gridOffset)
       }
-      .frame(height: rowHeight * (1 + 5 * progress), alignment: .top)
+      .frame(height: visibleGridHeight, alignment: .top)
       .clipped()
     }
     .contentShape(Rectangle())
@@ -1032,6 +1048,9 @@ private struct TodayCalendarGrid: View, Equatable {
   @Binding var selection: Date
   let showsFestivals: Bool
   let showsTaskIndicators: Bool
+  let expansion: CGFloat
+  let selectedRow: Int
+  let revealedLeadingRows: CGFloat
 
   private let rowHeight = TodayCalendarMetrics.rowHeight
 
@@ -1047,6 +1066,9 @@ private struct TodayCalendarGrid: View, Equatable {
       && lhs.selection == rhs.selection
       && lhs.showsFestivals == rhs.showsFestivals
       && lhs.showsTaskIndicators == rhs.showsTaskIndicators
+      && lhs.expansion == rhs.expansion
+      && lhs.selectedRow == rhs.selectedRow
+      && lhs.revealedLeadingRows == rhs.revealedLeadingRows
   }
 
   var body: some View {
@@ -1056,8 +1078,12 @@ private struct TodayCalendarGrid: View, Equatable {
       columns: Array(repeating: GridItem(.flexible(), spacing: 0), count: 7),
       spacing: 0
     ) {
-      ForEach(days, id: \.self) { day in
-        dayCell(day, hasTasks: markedDays.contains(calendar.startOfDay(for: day)))
+      ForEach(Array(days.enumerated()), id: \.element) { index, day in
+        dayCell(
+          day,
+          hasTasks: markedDays.contains(calendar.startOfDay(for: day)),
+          visibility: rowVisibility(index / 7)
+        )
       }
     }
     .animation(.easeOut(duration: 0.16), value: selection)
@@ -1071,7 +1097,16 @@ private struct TodayCalendarGrid: View, Equatable {
       .map { calendar.startOfDay(for: $0) })
   }
 
-  private func dayCell(_ day: Date, hasTasks: Bool) -> some View {
+  private func rowVisibility(_ row: Int) -> CGFloat {
+    guard row != selectedRow else { return 1 }
+    let viewportStart = CGFloat(selectedRow) - revealedLeadingRows
+    let viewportEnd = viewportStart + 1 + expansion * 5
+    let visiblePart = min(CGFloat(row + 1), viewportEnd)
+      - max(CGFloat(row), viewportStart)
+    return min(1, max(0, visiblePart))
+  }
+
+  private func dayCell(_ day: Date, hasTasks: Bool, visibility: CGFloat) -> some View {
     let isSelected = calendar.isDate(day, inSameDayAs: selection)
     let isToday = calendar.isDateInToday(day)
     let isCurrentMonth = calendar.isDate(day, equalTo: selection, toGranularity: .month)
@@ -1110,6 +1145,8 @@ private struct TodayCalendarGrid: View, Equatable {
       .frame(height: rowHeight)
     }
     .buttonStyle(.plain)
+    .opacity(0.14 + 0.86 * visibility)
+    .scaleEffect(0.975 + 0.025 * visibility)
     .accessibilityLabel(day.formatted(date: .complete, time: .omitted))
   }
 
