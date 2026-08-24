@@ -4,11 +4,13 @@ struct SyncEnvelope: Encodable {
   let deviceId: String
   let tasks: [TaskItem]
   let pomodoro: PomodoroState?
+  let rss: RSSSyncState?
 }
 
 struct SyncResponse: Decodable {
   let tasks: [TaskItem]
   let pomodoro: PomodoroState?
+  let rss: RSSSyncState?
   let serverTime: Date
   let revision: UInt64?
 }
@@ -54,14 +56,15 @@ struct SyncClient {
   func sync(
     settings: SyncSettings,
     tasks: [TaskItem],
-    pomodoro: PomodoroState?
+    pomodoro: PomodoroState?,
+    rss: RSSSyncState? = nil
   ) async throws -> SyncResponse {
     try requireConfigured(settings)
     var request = try makeRequest(path: "/v1/sync", settings: settings, authenticated: true)
     request.httpMethod = "POST"
     request.setValue("application/json", forHTTPHeaderField: "Content-Type")
     request.httpBody = try QingxuCoding.encoder.encode(
-      SyncEnvelope(deviceId: settings.deviceName, tasks: tasks, pomodoro: pomodoro)
+      SyncEnvelope(deviceId: settings.deviceName, tasks: tasks, pomodoro: pomodoro, rss: rss)
     )
     let data = try await perform(request)
     do {

@@ -49,6 +49,10 @@ targets:
             CFBundleURLSchemes: [qingxu]
         NSSupportsLiveActivities: true
         NSSupportsLiveActivitiesFrequentUpdates: true
+        BGTaskSchedulerPermittedIdentifiers:
+          - one.darker.qingxu.rss.refresh
+        UIBackgroundModes:
+          - fetch
   QingxuWidgets:
     type: app-extension
     platform: iOS

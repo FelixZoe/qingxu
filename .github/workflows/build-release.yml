@@ -313,8 +313,12 @@ jobs:
       - name: Package unsigned IPA
         run: |
           set -euo pipefail
+          APP_PATH="build/DerivedData/Build/Products/Release-iphoneos/Qingxu.app"
+          test -d "$APP_PATH/PlugIns/QingxuWidgets.appex"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :NSSupportsLiveActivities' "$APP_PATH/Info.plist")" = "true"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :NSSupportsLiveActivities' "$APP_PATH/PlugIns/QingxuWidgets.appex/Info.plist")" = "true"
           mkdir -p build/ipa/Payload
-          cp -R build/DerivedData/Build/Products/Release-iphoneos/Qingxu.app build/ipa/Payload/Qingxu.app
+          cp -R "$APP_PATH" build/ipa/Payload/Qingxu.app
           cd build/ipa && zip -r "../../Qingxu-${APP_VERSION}-iOS-unsigned.ipa" Payload
       - uses: actions/upload-artifact@v7
         with:

@@ -110,11 +110,13 @@ type syncRequest struct {
 	DeviceID string            `json:"deviceId"`
 	Tasks    []json.RawMessage `json:"tasks"`
 	Pomodoro json.RawMessage   `json:"pomodoro,omitempty"`
+	RSS      json.RawMessage   `json:"rss,omitempty"`
 }
 
 type syncResponse struct {
 	Tasks      []json.RawMessage `json:"tasks"`
 	Pomodoro   json.RawMessage   `json:"pomodoro,omitempty"`
+	RSS        json.RawMessage   `json:"rss,omitempty"`
 	ServerTime string            `json:"serverTime"`
 	Revision   uint64            `json:"revision"`
 }
@@ -185,9 +187,22 @@ func (s *Server) sync(response http.ResponseWriter, request *http.Request) {
 		}
 		pomodoro = &parsed
 	}
+	var rss *store.RSS
+	if len(input.RSS) > 0 && string(input.RSS) != "null" {
+		parsed, err := store.ParseRSS(input.RSS)
+		if err != nil {
+			writeError(response, http.StatusBadRequest, "invalid_rss", err.Error())
+			return
+		}
+		if parsed.UpdatedAt.After(latestAllowedUpdate) {
+			writeError(response, http.StatusBadRequest, "future_updated_at", "rss.updatedAt is more than 5 minutes in the future")
+			return
+		}
+		rss = &parsed
+	}
 
 	previousRevision := s.store.Revision()
-	merged, mergedPomodoro, revision, err := s.store.MergeAll(tasks, pomodoro)
+	merged, mergedPomodoro, mergedRSS, revision, err := s.store.MergeAll(tasks, pomodoro, rss)
 	if err != nil {
 		log.Printf("persist sync data: %v", err)
 		if errors.Is(err, store.ErrCapacityExceeded) {
@@ -199,16 +214,18 @@ func (s *Server) sync(response http.ResponseWriter, request *http.Request) {
 	}
 	if revision > previousRevision {
 		log.Printf(
-			"sync change device=%q revision=%d tasks=%d pomodoro=%t",
+			"sync change device=%q revision=%d tasks=%d pomodoro=%t rss=%t",
 			input.DeviceID,
 			revision,
 			len(tasks),
 			pomodoro != nil,
+			rss != nil,
 		)
 	}
 	writeJSON(response, http.StatusOK, syncResponse{
 		Tasks:      merged,
 		Pomodoro:   mergedPomodoro,
+		RSS:        mergedRSS,
 		ServerTime: time.Now().UTC().Format(time.RFC3339Nano),
 		Revision:   revision,
 	})

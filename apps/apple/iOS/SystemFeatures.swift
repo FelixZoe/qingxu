@@ -9,6 +9,7 @@ enum SystemFeatures {
     subsystem: "one.darker.qingxu",
     category: "LiveActivity"
   )
+  private static let liveActivityStatusKey = "qingxu.liveActivity.status"
 
   static func refresh(pomodoro: PomodoroState, todayTaskCount: Int, nextTodayTaskTitle: String?) {
     let defaults = UserDefaults(suiteName: appGroup)
@@ -48,29 +49,73 @@ enum SystemFeatures {
   private static func updateLiveActivity(_ pomodoro: PomodoroState) {
     guard #available(iOS 16.2, *) else { return }
     Task(priority: .userInitiated) {
-      let activities = Activity<QingxuPomodoroAttributes>.activities
       if pomodoro.status == .running {
-        if let activity = activities.first {
-          await activity.update(content(pomodoro))
-          for duplicate in activities.dropFirst() {
-            await duplicate.end(content(pomodoro), dismissalPolicy: .immediate)
-          }
-        } else if ActivityAuthorizationInfo().areActivitiesEnabled {
-          do {
-            _ = try Activity.request(
-              attributes: QingxuPomodoroAttributes(title: "清序专注"),
-              content: content(pomodoro),
-              pushType: nil
-            )
-          } catch {
-            logger.error("Unable to start Live Activity: \(error.localizedDescription, privacy: .public)")
-          }
-        }
+        _ = await startOrUpdateLiveActivity(pomodoro)
       } else {
-        for activity in activities {
+        for activity in Activity<QingxuPomodoroAttributes>.activities {
           await activity.end(content(pomodoro), dismissalPolicy: .immediate)
         }
+        setLiveActivityStatus("番茄钟尚未开始")
       }
     }
+  }
+
+  @available(iOS 16.2, *)
+  private static func startOrUpdateLiveActivity(_ pomodoro: PomodoroState) async -> String {
+    let activities = Activity<QingxuPomodoroAttributes>.activities
+    if let activity = activities.first {
+      await activity.update(content(pomodoro))
+      for duplicate in activities.dropFirst() {
+        await duplicate.end(content(pomodoro), dismissalPolicy: .immediate)
+      }
+      let message = "实时活动正在运行"
+      setLiveActivityStatus(message)
+      return message
+    }
+
+    guard ActivityAuthorizationInfo().areActivitiesEnabled else {
+      let message = "系统未允许实时活动，请在“设置 > 清序 > 实时活动”中开启"
+      setLiveActivityStatus(message)
+      logger.notice("Live Activities are disabled by the system")
+      return message
+    }
+
+    do {
+      let activity = try Activity.request(
+        attributes: QingxuPomodoroAttributes(title: "清序专注"),
+        content: content(pomodoro),
+        pushType: nil
+      )
+      let message = "实时活动已启动（\(activity.id.prefix(8))）"
+      setLiveActivityStatus(message)
+      return message
+    } catch {
+      let message = "实时活动启动失败：\(error.localizedDescription)"
+      setLiveActivityStatus(message)
+      logger.error("Unable to start Live Activity: \(error.localizedDescription, privacy: .public)")
+      return message
+    }
+  }
+
+  static func restartLiveActivity(for pomodoro: PomodoroState) async -> String {
+    guard #available(iOS 16.2, *) else { return "需要 iOS 16.2 或更高版本" }
+    for activity in Activity<QingxuPomodoroAttributes>.activities {
+      await activity.end(content(pomodoro), dismissalPolicy: .immediate)
+    }
+    guard pomodoro.status == .running else {
+      let message = "请先启动番茄钟，再测试灵动岛"
+      setLiveActivityStatus(message)
+      return message
+    }
+    try? await Task.sleep(for: .milliseconds(250))
+    return await startOrUpdateLiveActivity(pomodoro)
+  }
+
+  static var liveActivityStatus: String {
+    UserDefaults.standard.string(forKey: liveActivityStatusKey) ?? "尚未检测"
+  }
+
+  private static func setLiveActivityStatus(_ value: String) {
+    UserDefaults.standard.set(value, forKey: liveActivityStatusKey)
   }
 }

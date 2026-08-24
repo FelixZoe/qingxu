@@ -1,8 +1,27 @@
 import ActivityKit
 import SwiftUI
+import UIKit
 import WidgetKit
 
 private let qingxuAppGroup = "group.one.darker.qingxu"
+
+private enum QingxuWidgetPalette {
+  static let background = Color(uiColor: UIColor { traits in
+    traits.userInterfaceStyle == .dark
+      ? UIColor(red: 0.043, green: 0.051, blue: 0.071, alpha: 1)
+      : UIColor(red: 0.969, green: 0.969, blue: 0.984, alpha: 1)
+  })
+  static let accent = Color(uiColor: UIColor { traits in
+    traits.userInterfaceStyle == .dark
+      ? UIColor(red: 0.659, green: 0.624, blue: 1, alpha: 1)
+      : UIColor(red: 0.396, green: 0.373, blue: 0.820, alpha: 1)
+  })
+  static let warm = Color(uiColor: UIColor { traits in
+    traits.userInterfaceStyle == .dark
+      ? UIColor(red: 1, green: 0.682, blue: 0.541, alpha: 1)
+      : UIColor(red: 0.929, green: 0.545, blue: 0.404, alpha: 1)
+  })
+}
 
 private struct QingxuEntry: TimelineEntry {
   let date: Date
@@ -69,7 +88,7 @@ private struct QingxuWidgetSurface<Content: View>: View {
   var body: some View {
     content
       .padding(16)
-      .qingxuWidgetBackground(Color(red: 0.98, green: 0.973, blue: 0.949))
+      .qingxuWidgetBackground(QingxuWidgetPalette.background)
   }
 }
 
@@ -113,7 +132,7 @@ private struct TodayWidgetView: View {
       VStack(alignment: .leading, spacing: 8) {
         HStack {
           Image(systemName: "sun.max.fill")
-            .foregroundStyle(Color(red: 0.325, green: 0.459, blue: 0.561))
+            .foregroundStyle(QingxuWidgetPalette.warm)
           Spacer()
           Text("清序")
             .font(.caption2.weight(.semibold))
@@ -177,7 +196,7 @@ private struct FocusWidgetView: View {
         VStack(alignment: .leading, spacing: 10) {
           Label(modeTitle, systemImage: "timer")
             .font(.caption.weight(.semibold))
-            .foregroundStyle(Color(red: 0.325, green: 0.459, blue: 0.561))
+            .foregroundStyle(QingxuWidgetPalette.accent)
           Spacer()
           timerText
             .font(.system(size: 32, weight: .bold, design: .rounded).monospacedDigit())
@@ -246,7 +265,7 @@ struct QingxuLiveActivity: Widget {
     ActivityConfiguration(for: QingxuPomodoroAttributes.self) { context in
       HStack(spacing: 12) {
         Image(systemName: "timer")
-          .foregroundStyle(Color(red: 0.28, green: 0.45, blue: 0.79))
+          .foregroundStyle(QingxuWidgetPalette.accent)
         VStack(alignment: .leading, spacing: 2) {
           Text(modeTitle(context.state.mode)).font(.caption.weight(.semibold))
           liveTimer(context.state)
@@ -273,7 +292,7 @@ struct QingxuLiveActivity: Widget {
         }
       } compactLeading: {
         Image(systemName: context.state.mode == "focus" ? "timer" : "cup.and.saucer.fill")
-          .foregroundStyle(Color(red: 0.51, green: 0.70, blue: 0.94))
+          .foregroundStyle(context.state.mode == "focus" ? QingxuWidgetPalette.accent : QingxuWidgetPalette.warm)
       } compactTrailing: {
         liveTimer(context.state)
           .font(.caption2.monospacedDigit())
@@ -282,7 +301,7 @@ struct QingxuLiveActivity: Widget {
         Image(systemName: context.state.mode == "focus" ? "timer" : "cup.and.saucer.fill")
       }
       .widgetURL(URL(string: "qingxu://pomodoro"))
-      .keylineTint(Color(red: 0.51, green: 0.70, blue: 0.94))
+      .keylineTint(QingxuWidgetPalette.accent)
     }
   }
 

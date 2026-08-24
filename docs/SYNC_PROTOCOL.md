@@ -65,11 +65,17 @@
     "longBreakMinutes": 15,
     "endsAt": "2026-08-22T10:25:00.000Z",
     "updatedAt": "2026-08-22T10:00:00.000Z"
+  },
+  "rss": {
+    "subscriptions": [],
+    "folders": [],
+    "articleStates": [],
+    "updatedAt": "2026-08-22T10:00:00.000Z"
   }
 }
 ```
 
-响应返回服务器合并后的完整任务集合、番茄钟单例状态与服务端时间：
+响应返回服务器合并后的完整任务集合、番茄钟单例状态、RSS 阅读状态与服务端时间：
 
 ```json
 {
@@ -83,6 +89,12 @@
     "shortBreakMinutes": 5,
     "longBreakMinutes": 15,
     "endsAt": "2026-08-22T10:25:00.000Z",
+    "updatedAt": "2026-08-22T10:00:00.000Z"
+  },
+  "rss": {
+    "subscriptions": [],
+    "folders": [],
+    "articleStates": [],
     "updatedAt": "2026-08-22T10:00:00.000Z"
   },
   "serverTime": "2026-08-22T10:00:01.123Z",
@@ -103,6 +115,8 @@
 7. 重复提交相同快照是幂等的。
 
 番茄钟是单例 LWW 文档，同样比较 `updatedAt`。运行状态用绝对 UTC `endsAt` 表示；`remainingSeconds` 是暂停或空闲时的权威值。`focusMinutes`、`shortBreakMinutes` 与 `longBreakMinutes` 保存三段自定义时长，旧客户端缺少这些字段时按 25/5/15 分钟处理。客户端根据响应中的 `serverTime` 估算时钟偏移，因此各端不会依赖各自设备时钟单独递减。
+
+RSS 也是单例 LWW 文档，保存订阅、来源分类以及每篇文章的已读、收藏和阅读进度状态。文章标题、摘要和正文不上传同步服务；不同设备会自行从各 RSS 来源抓取文章，再按稳定文章 ID 套用同步状态。旧客户端不发送 `rss` 时，服务端保留已有 RSS 状态。
 
 ## 实时变更通知
 

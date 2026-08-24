@@ -238,6 +238,40 @@ struct TaskListScreen: View {
     }
   }
 
+  @ViewBuilder
+  private var todayTaskRows: some View {
+    ForEach(tasks) { task in
+      TaskRow(task: task, style: .todayPanel, scheduleLabel: selectedDateLabel) {
+        let completing = task.status != .completed
+        withAnimation(.easeInOut(duration: 0.2)) { store.toggleTask(task) }
+        if completing {
+          QingxuFeedback.taskCompletion(
+            haptics: hapticsEnabled,
+            sound: completionSoundEnabled
+          )
+        } else {
+          QingxuFeedback.selection(enabled: hapticsEnabled)
+        }
+      }
+      .contentShape(Rectangle())
+      .onTapGesture { editor = TaskEditorRoute(task: task, scope: scope) }
+      .contextMenu {
+        Button { store.toggleTask(task) } label: {
+          Label(task.status == .completed ? "恢复任务" : "完成任务", systemImage: "checkmark.circle")
+        }
+        Button(role: .destructive) { pendingDelete = task } label: {
+          Label("删除", systemImage: "trash")
+        }
+      }
+
+      if task.id != tasks.last?.id {
+        Divider()
+          .overlay(QingxuPalette.separator.opacity(0.68))
+          .padding(.leading, 40)
+      }
+    }
+  }
+
   #if os(iOS)
   private var todayFixedLayout: some View {
     GeometryReader { geometry in
@@ -256,49 +290,39 @@ struct TaskListScreen: View {
         .gesture(todayCalendarDrag)
         .zIndex(1)
 
-        List {
-          TodayTaskPanelHeader(title: selectedDateLabel)
-            .listRowInsets(.init(top: 8, leading: 20, bottom: 8, trailing: 20))
-            .listRowBackground(Color.clear)
-            .listRowSeparator(.hidden)
-            .background(TodayTaskScrollConfigurator(expansion: $calendarExpansion))
+        ScrollView {
+          LazyVStack(spacing: 0) {
+            if tasks.isEmpty {
+              TodayEmptyState()
+                .frame(maxWidth: .infinity)
+                .padding(.top, 64)
+            } else {
+              VStack(alignment: .leading, spacing: 0) {
+                TodayTaskPanelHeader(title: selectedDateLabel)
+                todayTaskRows
+              }
+              .padding(.horizontal, 20)
+              .padding(.top, 18)
+              .padding(.bottom, 10)
+              .background(
+                QingxuPalette.surface,
+                in: RoundedRectangle(cornerRadius: 24, style: .continuous)
+              )
+              .padding(.horizontal, 24)
+            }
 
-          taskRows
-
-          if !tasks.isEmpty {
-            Color.clear
-              .frame(height: 104)
-              .listRowInsets(.init())
-              .listRowBackground(Color.clear)
-              .listRowSeparator(.hidden)
+            Color.clear.frame(height: tasks.isEmpty ? 360 : 118)
           }
-
-          if tasks.isEmpty {
-            TodayEmptyState()
-              .frame(maxWidth: .infinity)
-              .padding(.top, 58)
-              .listRowBackground(Color.clear)
-              .listRowSeparator(.hidden)
-
-            Color.clear
-              .frame(height: 360)
-              .listRowBackground(Color.clear)
-              .listRowSeparator(.hidden)
-          }
+          .frame(maxWidth: .infinity)
+          .background(TodayTaskScrollConfigurator(expansion: $calendarExpansion))
         }
-        .listStyle(.plain)
-        .environment(\.defaultMinListRowHeight, 1)
-        .scrollContentBackground(.hidden)
-        // Keep the UIKit-backed list at one stable size. Only this outer
-        // surface moves while the calendar changes height, avoiding a full
-        // list layout pass for every drag frame.
+        .scrollIndicators(.visible)
+        // The scroll view spans the screen so its indicator stays on the
+        // outside edge; only the task surface itself is inset.
         .frame(
           height: max(1, geometry.size.height - TodayCalendarMetrics.collapsedHeight),
           alignment: .top
         )
-        .background(QingxuPalette.surface)
-        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
-        .padding(.horizontal, 12)
         .offset(y: TodayCalendarMetrics.collapsedHeight
           + TodayCalendarMetrics.expansionDistance * calendarExpansion)
       }
@@ -557,7 +581,9 @@ private struct TaskRow: View {
 
       VStack(alignment: .leading, spacing: 4) {
         Text(task.title)
-          .font(style == .todayPanel ? .title3.weight(.regular) : .body.weight(.medium))
+          .font(style == .todayPanel
+            ? .system(size: 19, weight: .regular, design: .rounded)
+            : .body.weight(.medium))
           .strikethrough(task.status == .completed)
           .foregroundStyle(task.status == .completed ? QingxuPalette.quiet : QingxuPalette.ink)
         if !task.notes.isEmpty {
@@ -580,12 +606,12 @@ private struct TaskRow: View {
           .foregroundStyle(QingxuPalette.quiet)
       } else if let scheduleLabel {
         Text(scheduleLabel)
-          .font(.subheadline)
+          .font(.system(size: 15, weight: .medium, design: .rounded))
           .foregroundStyle(QingxuPalette.accent)
       }
     }
-    .padding(.horizontal, style == .todayPanel ? 4 : 16)
-    .padding(.vertical, style == .todayPanel ? 15 : 13)
+    .padding(.horizontal, style == .todayPanel ? 0 : 16)
+    .padding(.vertical, style == .todayPanel ? 14 : 13)
     .opacity(task.status == .completed ? 0.72 : 1)
     .background {
       if style == .card {
@@ -917,8 +943,9 @@ private struct TodayTaskScrollConfigurator: UIViewRepresentable {
       var ancestor = marker?.superview
       while let view = ancestor {
         if let scrollView = view as? UIScrollView {
-          scrollView.bounces = false
-          scrollView.alwaysBounceVertical = false
+          scrollView.bounces = true
+          scrollView.alwaysBounceVertical = true
+          scrollView.showsVerticalScrollIndicator = true
           scrollView.isDirectionalLockEnabled = true
           coordinator?.attach(to: scrollView)
           return
@@ -1012,21 +1039,12 @@ private struct TodayTaskPanelHeader: View {
   let title: String
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 12) {
-      Capsule()
-        .fill(QingxuPalette.separator.opacity(0.95))
-        .frame(width: 34, height: 4)
-        .frame(maxWidth: .infinity)
-        .accessibilityHidden(true)
-
-      Text(title)
-        .font(.title2.weight(.bold))
-        .foregroundStyle(QingxuPalette.ink)
-        .fixedSize(horizontal: false, vertical: true)
-        .padding(.bottom, 2)
-    }
-    .padding(.top, 4)
-    .frame(minHeight: 64, alignment: .topLeading)
+    Text(title)
+      .font(.system(size: 21, weight: .semibold, design: .rounded))
+      .foregroundStyle(QingxuPalette.quiet)
+      .fixedSize(horizontal: false, vertical: true)
+      .padding(.bottom, 14)
+      .frame(maxWidth: .infinity, alignment: .leading)
   }
 }
 

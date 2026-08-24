@@ -228,6 +228,12 @@ final class AppStore: ObservableObject {
     pomodoroChanged()
   }
 
+  #if os(iOS)
+  func restartLiveActivity() async -> String {
+    await SystemFeatures.restartLiveActivity(for: pomodoro)
+  }
+  #endif
+
   func updateDurations(focus: Int, shortBreak: Int, longBreak: Int, longBreakEvery: Int) {
     pomodoro.focusMinutes = min(180, max(1, focus))
     pomodoro.shortBreakMinutes = min(60, max(1, shortBreak))
@@ -295,7 +301,8 @@ final class AppStore: ObservableObject {
       let response = try await client.sync(
         settings: syncSettings,
         tasks: outgoingTasks,
-        pomodoro: outgoingPomodoro
+        pomodoro: outgoingPomodoro,
+        rss: nil
       )
       let localTasksBeforeMerge = Dictionary(uniqueKeysWithValues: tasks.map { ($0.id, $0) })
       let localPomodoroBeforeMerge = pomodoro

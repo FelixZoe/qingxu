@@ -306,11 +306,7 @@ private struct SettingsDestinationRow: View {
 
   var body: some View {
     HStack(spacing: 14) {
-      Image(systemName: symbol)
-        .font(.system(size: 15, weight: .semibold))
-        .foregroundStyle(QingxuPalette.onAccent)
-        .frame(width: 34, height: 34)
-        .background(tint, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+      SettingsRowGlyph(symbol: symbol)
 
       VStack(alignment: .leading, spacing: 3) {
         Text(title)
@@ -359,11 +355,7 @@ private struct PreferenceToggleRow: View {
 
   var body: some View {
     HStack(spacing: 14) {
-      Image(systemName: symbol)
-        .font(.system(size: 15, weight: .semibold))
-        .foregroundStyle(QingxuPalette.onAccent)
-        .frame(width: 34, height: 34)
-        .background(tint, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+      SettingsRowGlyph(symbol: symbol)
       VStack(alignment: .leading, spacing: 3) {
         Text(title).font(.body.weight(.medium)).foregroundStyle(QingxuPalette.ink)
         Text(detail).font(.caption).foregroundStyle(QingxuPalette.quiet)
@@ -376,7 +368,50 @@ private struct PreferenceToggleRow: View {
   }
 }
 
+private struct SettingsRowGlyph: View {
+  let symbol: String
+
+  var body: some View {
+    Group {
+      #if os(iOS)
+      if let asset = assetName {
+        Image(asset)
+          .resizable()
+          .renderingMode(.template)
+          .scaledToFit()
+      } else {
+        Image(systemName: symbol)
+          .resizable()
+          .scaledToFit()
+      }
+      #else
+      Image(systemName: symbol)
+        .resizable()
+        .scaledToFit()
+      #endif
+    }
+    .foregroundStyle(QingxuPalette.ink)
+    .frame(width: 22, height: 22)
+    .frame(width: 36, height: 36)
+  }
+
+  private var assetName: String? {
+    switch symbol {
+    case "square.grid.2x2.fill": "SettingsModules"
+    case "paintpalette.fill": "SettingsAppearance"
+    case "bell.badge.fill": "SettingsNotifications"
+    case "calendar": "SettingsCalendar"
+    case "arrow.triangle.2.circlepath": "SettingsSync"
+    case "rectangle.3.group.fill": "SettingsWidgets"
+    case "arrow.down.circle.fill": "SettingsUpdate"
+    case "chevron.left.forwardslash.chevron.right": "SettingsCode"
+    default: nil
+    }
+  }
+}
+
 private struct FeatureModulesSettingsView: View {
+  @AppStorage(QingxuPreferenceKey.inboxModule) private var inboxEnabled = true
   @AppStorage(QingxuPreferenceKey.pomodoroModule) private var pomodoroEnabled = true
   @AppStorage(QingxuPreferenceKey.rssModule) private var rssEnabled = true
 
@@ -384,14 +419,17 @@ private struct FeatureModulesSettingsView: View {
     ScrollView {
       VStack(spacing: 22) {
         SettingsGroup(title: "固定模块") {
-          moduleRow(symbol: "tray.fill", title: "收集箱", detail: "快速记录任务和想法", tint: QingxuPalette.accent)
-          SettingsDivider()
           moduleRow(symbol: "calendar", title: "今天", detail: "日历与当天任务", tint: QingxuPalette.success)
           SettingsDivider()
           moduleRow(symbol: "gearshape.fill", title: "设置", detail: "管理应用与同步", tint: QingxuPalette.quiet)
         }
 
         SettingsGroup(title: "可选模块") {
+          PreferenceToggleRow(
+            symbol: "tray.fill", title: "收集箱", detail: "快速记录未安排的任务和想法",
+            tint: QingxuPalette.accent, isOn: $inboxEnabled
+          )
+          SettingsDivider()
           PreferenceToggleRow(
             symbol: "timer", title: "番茄钟", detail: "专注计时与实时同步",
             tint: QingxuPalette.warning, isOn: $pomodoroEnabled
@@ -421,10 +459,7 @@ private struct FeatureModulesSettingsView: View {
 
   private func moduleRow(symbol: String, title: String, detail: String, tint: Color) -> some View {
     HStack(spacing: 14) {
-      Image(systemName: symbol)
-        .foregroundStyle(QingxuPalette.onAccent)
-        .frame(width: 34, height: 34)
-        .background(tint, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+      SettingsRowGlyph(symbol: symbol)
       VStack(alignment: .leading, spacing: 3) {
         Text(title).font(.body.weight(.medium))
         Text(detail).font(.caption).foregroundStyle(QingxuPalette.quiet)
@@ -473,7 +508,7 @@ struct AppearanceSettingsView: View {
             paletteDot(QingxuPalette.success)
             paletteDot(QingxuPalette.warning)
             Spacer()
-            Text("奶油白 · 晨光蓝 · 嫩芽绿")
+            Text("云雾白 · 柔雾紫 · 杏桃橙")
               .font(.caption)
               .foregroundStyle(QingxuPalette.quiet)
           }
@@ -660,6 +695,10 @@ private struct CalendarPreferencesView: View {
 
 #if os(iOS)
 private struct WidgetSettingsView: View {
+  @EnvironmentObject private var store: AppStore
+  @State private var liveActivityMessage = SystemFeatures.liveActivityStatus
+  @State private var testingLiveActivity = false
+
   var body: some View {
     ScrollView {
       VStack(spacing: 22) {
@@ -672,6 +711,30 @@ private struct WidgetSettingsView: View {
           infoRow(symbol: "lock.rectangle", title: "锁屏小组件", detail: "圆形、矩形和单行三种样式", tint: QingxuPalette.accent)
           SettingsDivider()
           infoRow(symbol: "iphone.gen3", title: "灵动岛实时活动", detail: "退出应用后仍显示准确剩余时间", tint: QingxuPalette.warning)
+
+          SettingsDivider()
+          Button {
+            Task { await testLiveActivity() }
+          } label: {
+            HStack {
+              VStack(alignment: .leading, spacing: 4) {
+                Text(testingLiveActivity ? "正在检测…" : "检测并重新启动实时活动")
+                  .font(.body.weight(.medium))
+                  .foregroundStyle(QingxuPalette.ink)
+                Text(liveActivityMessage)
+                  .font(.caption)
+                  .foregroundStyle(QingxuPalette.quiet)
+                  .multilineTextAlignment(.leading)
+              }
+              Spacer()
+              Image(systemName: "arrow.clockwise")
+                .foregroundStyle(QingxuPalette.accent)
+            }
+            .padding(.horizontal, 16)
+            .frame(minHeight: 72)
+          }
+          .buttonStyle(.plain)
+          .disabled(testingLiveActivity)
         }
         Text("添加方法：长按主屏幕空白区域，点击左上角“+”，搜索“清序”。灵动岛会在番茄钟开始后自动显示。")
           .font(.footnote)
@@ -689,10 +752,7 @@ private struct WidgetSettingsView: View {
 
   private func infoRow(symbol: String, title: String, detail: String, tint: Color) -> some View {
     HStack(spacing: 14) {
-      Image(systemName: symbol)
-        .foregroundStyle(QingxuPalette.onAccent)
-        .frame(width: 34, height: 34)
-        .background(tint, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+      SettingsRowGlyph(symbol: symbol)
       VStack(alignment: .leading, spacing: 4) {
         Text(title).font(.body.weight(.medium))
         Text(detail).font(.caption).foregroundStyle(QingxuPalette.quiet)
@@ -702,6 +762,13 @@ private struct WidgetSettingsView: View {
     }
     .padding(.horizontal, 16)
     .frame(minHeight: 72)
+  }
+
+  @MainActor
+  private func testLiveActivity() async {
+    testingLiveActivity = true
+    liveActivityMessage = await store.restartLiveActivity()
+    testingLiveActivity = false
   }
 }
 #endif

@@ -132,7 +132,7 @@ func TestPomodoroMergePersistsNewestState(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, merged, _, err := taskStore.MergeAll(nil, &first)
+	_, merged, _, _, err := taskStore.MergeAll(nil, &first, nil)
 	if err != nil || !strings.Contains(string(merged), `"status":"running"`) {
 		t.Fatalf("MergeAll(first) = %s, %v", merged, err)
 	}
@@ -141,7 +141,7 @@ func TestPomodoroMergePersistsNewestState(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, merged, _, err = taskStore.MergeAll(nil, &stale)
+	_, merged, _, _, err = taskStore.MergeAll(nil, &stale, nil)
 	if err != nil || !strings.Contains(string(merged), `"status":"running"`) {
 		t.Fatalf("stale pomodoro won: %s, %v", merged, err)
 	}
@@ -150,9 +150,43 @@ func TestPomodoroMergePersistsNewestState(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, merged, _, err = reopened.MergeAll(nil, nil)
+	_, merged, _, _, err = reopened.MergeAll(nil, nil, nil)
 	if err != nil || !strings.Contains(string(merged), `"status":"running"`) {
 		t.Fatalf("persisted pomodoro lost: %s, %v", merged, err)
+	}
+}
+
+func TestRSSMergePersistsNewestState(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "store.json")
+	taskStore, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := ParseRSS(json.RawMessage(`{"subscriptions":[],"folders":[],"articleStates":[],"updatedAt":"2026-08-25T01:00:00Z"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _, merged, _, err := taskStore.MergeAll(nil, nil, &first)
+	if err != nil || !strings.Contains(string(merged), `"2026-08-25T01:00:00Z"`) {
+		t.Fatalf("MergeAll(first RSS) = %s, %v", merged, err)
+	}
+
+	stale, err := ParseRSS(json.RawMessage(`{"subscriptions":[],"folders":[],"articleStates":[],"updatedAt":"2026-08-25T00:59:00Z"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _, merged, _, err = taskStore.MergeAll(nil, nil, &stale)
+	if err != nil || !strings.Contains(string(merged), `"2026-08-25T01:00:00Z"`) {
+		t.Fatalf("stale RSS won: %s, %v", merged, err)
+	}
+
+	reopened, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _, merged, _, err = reopened.MergeAll(nil, nil, nil)
+	if err != nil || !strings.Contains(string(merged), `"2026-08-25T01:00:00Z"`) {
+		t.Fatalf("persisted RSS lost: %s, %v", merged, err)
 	}
 }
 

@@ -3,7 +3,16 @@ import Foundation
 import SwiftUI
 #if os(iOS)
 import SafariServices
+import UniformTypeIdentifiers
+import UserNotifications
 #endif
+
+struct RSSFolder: Codable, Identifiable, Hashable {
+  var id: String
+  var title: String
+  var createdAt: Date
+  var updatedAt: Date
+}
 
 struct RSSSubscription: Codable, Identifiable, Hashable {
   var id: String
@@ -12,6 +21,12 @@ struct RSSSubscription: Codable, Identifiable, Hashable {
   var siteURL: String?
   var createdAt: Date
   var lastFetchedAt: Date?
+  var folderID: String?
+  var iconURL: String?
+  var notificationsEnabled: Bool?
+  var notificationKeywords: [String]?
+  var lastError: String?
+  var updatedAt: Date?
 }
 
 struct RSSArticle: Codable, Identifiable, Hashable {
@@ -25,6 +40,13 @@ struct RSSArticle: Codable, Identifiable, Hashable {
   var publishedAt: Date?
   var fetchedAt: Date
   var isRead: Bool
+  var content: String?
+  var starredAt: Date?
+  var readAt: Date?
+  var readingProgress: Double?
+  var cachedAt: Date?
+
+  var isStarred: Bool { starredAt != nil }
 }
 
 private struct RSSDocument {
@@ -41,6 +63,39 @@ private struct RSSParsedItem {
   var link: String
   var author: String?
   var publishedAt: Date?
+  var content: String
+}
+
+enum RSSArticleFilter: String, CaseIterable, Identifiable {
+  case unread
+  case all
+  case starred
+
+  var id: String { rawValue }
+
+  var title: String {
+    switch self {
+    case .unread: "未读"
+    case .all: "全部"
+    case .starred: "收藏"
+    }
+  }
+}
+
+struct RSSArticleSyncState: Codable, Hashable {
+  var id: String
+  var isRead: Bool
+  var starredAt: Date?
+  var readAt: Date?
+  var readingProgress: Double?
+  var updatedAt: Date
+}
+
+struct RSSSyncState: Codable, Equatable {
+  var subscriptions: [RSSSubscription]
+  var folders: [RSSFolder]
+  var articleStates: [RSSArticleSyncState]
+  var updatedAt: Date
 }
 
 enum RSSStorePhase: Equatable {
@@ -69,9 +124,14 @@ enum RSSFeatureError: LocalizedError {
 final class RSSStore: ObservableObject {
   @Published private(set) var subscriptions: [RSSSubscription]
   @Published private(set) var articles: [RSSArticle]
+  @Published private(set) var folders: [RSSFolder]
   @Published private(set) var phase: RSSStorePhase = .idle
 
   private let client = RSSClient()
+  private let syncClient = SyncClient()
+  private var syncStateUpdatedAt = Date.distantPast
+  private var syncedArticleStates: [String: RSSArticleSyncState] = [:]
+  private var pendingCloudSync: Task<Void, Never>?
 
   init() {
     subscriptions = QingxuFiles.load(
@@ -79,9 +139,23 @@ final class RSSStore: ObservableObject {
       name: "rss-subscriptions.json"
     ) ?? []
     articles = QingxuFiles.load([RSSArticle].self, name: "rss-articles.json") ?? []
+    folders = QingxuFiles.load([RSSFolder].self, name: "rss-folders.json") ?? []
+    if let snapshot = QingxuFiles.load(RSSSyncState.self, name: "rss-sync-state.json") {
+      syncStateUpdatedAt = snapshot.updatedAt
+      syncedArticleStates = Dictionary(uniqueKeysWithValues: snapshot.articleStates.map { ($0.id, $0) })
+      if subscriptions.isEmpty { subscriptions = snapshot.subscriptions }
+      if folders.isEmpty { folders = snapshot.folders }
+      applySyncedArticleStates()
+    }
   }
 
+  deinit { pendingCloudSync?.cancel() }
+
   var unreadCount: Int { articles.lazy.filter { !$0.isRead }.count }
+
+  var cacheSizeBytes: Int {
+    (try? QingxuCoding.encoder.encode(articles).count) ?? 0
+  }
 
   func unreadCount(for feedID: String?) -> Int {
     articles.lazy.filter { article in
@@ -117,12 +191,19 @@ final class RSSStore: ObservableObject {
         feedURL: document.feedURL.absoluteString,
         siteURL: document.siteURL,
         createdAt: now,
-        lastFetchedAt: now
+        lastFetchedAt: now,
+        folderID: nil,
+        iconURL: document.siteURL.flatMap { RSSStore.faviconURL(for: $0) },
+        notificationsEnabled: false,
+        notificationKeywords: [],
+        lastError: nil,
+        updatedAt: now
       )
       subscriptions.append(subscription)
       subscriptions.sort { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
-      merge(document.items, into: subscription, fetchedAt: now)
+      _ = merge(document.items, into: subscription, fetchedAt: now)
       persist()
+      cloudStateChanged()
       phase = .idle
     } catch {
       phase = .failed(error.localizedDescription)
@@ -140,18 +221,25 @@ final class RSSStore: ObservableObject {
       do {
         let document = try await client.loadFeed(from: url)
         let now = Date()
-        merge(document.items, into: subscription, fetchedAt: now)
+        let newArticles = merge(document.items, into: subscription, fetchedAt: now)
+        #if os(iOS)
+        scheduleNewArticleNotification(newArticles, for: subscription)
+        #endif
         if let index = subscriptions.firstIndex(where: { $0.id == subscription.id }) {
           subscriptions[index].title = document.title
           subscriptions[index].siteURL = document.siteURL
           subscriptions[index].feedURL = document.feedURL.absoluteString
           subscriptions[index].lastFetchedAt = now
+          subscriptions[index].lastError = nil
         }
       } catch is CancellationError {
         phase = .idle
         return
       } catch {
         failures += 1
+        if let index = subscriptions.firstIndex(where: { $0.id == subscription.id }) {
+          subscriptions[index].lastError = error.localizedDescription
+        }
       }
     }
 
@@ -162,33 +250,222 @@ final class RSSStore: ObservableObject {
 
   func markRead(_ article: RSSArticle) {
     guard let index = articles.firstIndex(where: { $0.id == article.id }) else { return }
+    guard !articles[index].isRead else { return }
     articles[index].isRead = true
+    articles[index].readAt = .now
     persist()
+    cloudStateChanged()
+  }
+
+  func toggleRead(_ article: RSSArticle) {
+    guard let index = articles.firstIndex(where: { $0.id == article.id }) else { return }
+    articles[index].isRead.toggle()
+    articles[index].readAt = articles[index].isRead ? .now : nil
+    persist()
+    cloudStateChanged()
+  }
+
+  func toggleStarred(_ article: RSSArticle) {
+    guard let index = articles.firstIndex(where: { $0.id == article.id }) else { return }
+    articles[index].starredAt = articles[index].starredAt == nil ? .now : nil
+    persist()
+    cloudStateChanged()
+  }
+
+  func setReadingProgress(_ progress: Double, articleID: String) {
+    guard let index = articles.firstIndex(where: { $0.id == articleID }) else { return }
+    articles[index].readingProgress = min(1, max(0, progress))
+    persist()
+    cloudStateChanged()
   }
 
   func markAllRead(feedID: String? = nil) {
     for index in articles.indices where feedID == nil || articles[index].feedID == feedID {
       articles[index].isRead = true
+      articles[index].readAt = articles[index].readAt ?? .now
     }
     persist()
+    cloudStateChanged()
   }
 
   func delete(_ subscription: RSSSubscription) {
     subscriptions.removeAll { $0.id == subscription.id }
     articles.removeAll { $0.feedID == subscription.id }
     persist()
+    cloudStateChanged()
   }
 
+  func clearReadCache() {
+    articles.removeAll { $0.isRead && !$0.isStarred }
+    persist()
+    cloudStateChanged()
+  }
+
+  func createFolder(title: String) {
+    let clean = title.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !clean.isEmpty,
+          !folders.contains(where: { $0.title.localizedCaseInsensitiveCompare(clean) == .orderedSame })
+    else { return }
+    let now = Date()
+    folders.append(RSSFolder(id: UUID().uuidString, title: clean, createdAt: now, updatedAt: now))
+    folders.sort { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
+    persist()
+    cloudStateChanged()
+  }
+
+  func deleteFolder(_ folder: RSSFolder) {
+    folders.removeAll { $0.id == folder.id }
+    for index in subscriptions.indices where subscriptions[index].folderID == folder.id {
+      subscriptions[index].folderID = nil
+      subscriptions[index].updatedAt = .now
+    }
+    persist()
+    cloudStateChanged()
+  }
+
+  func move(_ subscription: RSSSubscription, to folderID: String?) {
+    guard let index = subscriptions.firstIndex(where: { $0.id == subscription.id }) else { return }
+    subscriptions[index].folderID = folderID
+    subscriptions[index].updatedAt = .now
+    persist()
+    cloudStateChanged()
+  }
+
+  func updateNotificationSettings(
+    for subscription: RSSSubscription,
+    enabled: Bool,
+    keywords: [String]
+  ) async -> Bool {
+    guard let index = subscriptions.firstIndex(where: { $0.id == subscription.id }) else { return false }
+    #if os(iOS)
+    if enabled {
+      let center = UNUserNotificationCenter.current()
+      let settings = await center.notificationSettings()
+      var allowed = settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional
+      if settings.authorizationStatus == .notDetermined {
+        allowed = (try? await center.requestAuthorization(options: [.alert, .sound, .badge])) ?? false
+      }
+      guard allowed else { return false }
+    }
+    #else
+    guard !enabled else { return false }
+    #endif
+    subscriptions[index].notificationsEnabled = enabled
+    subscriptions[index].notificationKeywords = keywords
+    subscriptions[index].updatedAt = .now
+    persist()
+    cloudStateChanged()
+    return true
+  }
+
+  func filteredArticles(
+    filter: RSSArticleFilter,
+    query: String,
+    feedID: String?,
+    folderID: String?
+  ) -> [RSSArticle] {
+    let cleanQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+    let folderFeedIDs = folderID.map { id in
+      Set(subscriptions.lazy.filter { $0.folderID == id }.map(\.id))
+    }
+    let matches = articles.filter { article in
+      if let feedID, article.feedID != feedID { return false }
+      if let folderFeedIDs, !folderFeedIDs.contains(article.feedID) { return false }
+      switch filter {
+      case .unread where article.isRead: return false
+      case .starred where !article.isStarred: return false
+      default: break
+      }
+      guard !cleanQuery.isEmpty else { return true }
+      return [article.title, article.summary, article.feedTitle, article.author ?? ""]
+        .contains { $0.localizedCaseInsensitiveContains(cleanQuery) }
+    }
+    var seen = Set<String>()
+    return matches.filter { article in
+      let key = article.link.isEmpty ? article.title.lowercased() : article.link.lowercased()
+      return seen.insert(key).inserted
+    }
+  }
+
+  func exportOPML() -> String {
+    let outlines = subscriptions.map { subscription in
+      let title = xmlEscaped(subscription.title)
+      let feedURL = xmlEscaped(subscription.feedURL)
+      let siteURL = subscription.siteURL.map(xmlEscaped) ?? ""
+      return "    <outline type=\"rss\" text=\"\(title)\" title=\"\(title)\" xmlUrl=\"\(feedURL)\" htmlUrl=\"\(siteURL)\"/>"
+    }.joined(separator: "\n")
+    return """
+    <?xml version="1.0" encoding="UTF-8"?>
+    <opml version="2.0">
+      <head><title>清序 RSS 订阅</title></head>
+      <body>
+    \(outlines)
+      </body>
+    </opml>
+    """
+  }
+
+  func importOPML(_ data: Data) async -> Int {
+    guard let text = String(data: data, encoding: .utf8),
+          let regex = try? NSRegularExpression(
+            pattern: #"xmlUrl\s*=\s*[\"']([^\"']+)[\"']"#,
+            options: [.caseInsensitive]
+          )
+    else { return 0 }
+    let range = NSRange(text.startIndex..., in: text)
+    let addresses = regex.matches(in: text, range: range).compactMap { match -> String? in
+      guard let valueRange = Range(match.range(at: 1), in: text) else { return nil }
+      return String(text[valueRange])
+        .replacingOccurrences(of: "&amp;", with: "&")
+        .replacingOccurrences(of: "&quot;", with: "\"")
+    }
+    var imported = 0
+    for address in addresses where !subscriptions.contains(where: { $0.feedURL == address }) {
+      do {
+        try await addSubscription(address)
+        imported += 1
+      } catch { continue }
+    }
+    return imported
+  }
+
+  @discardableResult
+  func syncNow() async -> Bool {
+    var settings = QingxuFiles.load(SyncSettings.self, name: "sync.json") ?? SyncSettings()
+    settings.token = SecureSyncToken.read()
+    guard settings.autoSync, settings.isConfigured else { return false }
+    do {
+      let outgoing: RSSSyncState? = syncStateUpdatedAt == .distantPast && subscriptions.isEmpty
+        ? nil
+        : makeSyncState()
+      let response = try await syncClient.sync(
+        settings: settings,
+        tasks: [],
+        pomodoro: nil,
+        rss: outgoing
+      )
+      if let remote = response.rss, remote.updatedAt > syncStateUpdatedAt {
+        applyRemoteSyncState(remote)
+      }
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  @discardableResult
   private func merge(
     _ incoming: [RSSParsedItem],
     into subscription: RSSSubscription,
     fetchedAt: Date
-  ) {
+  ) -> [RSSArticle] {
     var existing = Dictionary(uniqueKeysWithValues: articles.map { ($0.id, $0) })
+    var inserted: [RSSArticle] = []
     for item in incoming {
       let stableID = "\(subscription.id):\(item.id)"
       let old = existing[stableID]
-      existing[stableID] = RSSArticle(
+      let syncedState = syncedArticleStates[stableID]
+      let article = RSSArticle(
         id: stableID,
         feedID: subscription.id,
         feedTitle: subscription.title,
@@ -198,24 +475,145 @@ final class RSSStore: ObservableObject {
         author: item.author,
         publishedAt: item.publishedAt,
         fetchedAt: old?.fetchedAt ?? fetchedAt,
-        isRead: old?.isRead ?? false
+        isRead: syncedState?.isRead ?? old?.isRead ?? false,
+        content: item.content,
+        starredAt: syncedState?.starredAt ?? old?.starredAt,
+        readAt: syncedState?.readAt ?? old?.readAt,
+        readingProgress: syncedState?.readingProgress ?? old?.readingProgress,
+        cachedAt: fetchedAt
       )
+      existing[stableID] = article
+      if old == nil { inserted.append(article) }
     }
     articles = Array(existing.values)
     sortAndTrimArticles()
+    return inserted
   }
 
   private func sortAndTrimArticles() {
     articles.sort {
       ($0.publishedAt ?? $0.fetchedAt) > ($1.publishedAt ?? $1.fetchedAt)
     }
-    if articles.count > 500 { articles.removeLast(articles.count - 500) }
+    if articles.count > 1_500 {
+      let protected = articles.filter { $0.isStarred }
+      let recent = articles.filter { !$0.isStarred }.prefix(max(0, 1_500 - protected.count))
+      articles = (protected + Array(recent)).sorted {
+        ($0.publishedAt ?? $0.fetchedAt) > ($1.publishedAt ?? $1.fetchedAt)
+      }
+    }
   }
 
   private func persist() {
     try? QingxuFiles.save(subscriptions, name: "rss-subscriptions.json")
     try? QingxuFiles.save(articles, name: "rss-articles.json")
+    try? QingxuFiles.save(folders, name: "rss-folders.json")
   }
+
+  private func cloudStateChanged() {
+    syncStateUpdatedAt = .now
+    let snapshot = makeSyncState()
+    syncedArticleStates = Dictionary(uniqueKeysWithValues: snapshot.articleStates.map { ($0.id, $0) })
+    try? QingxuFiles.save(snapshot, name: "rss-sync-state.json")
+    pendingCloudSync?.cancel()
+    pendingCloudSync = Task { [weak self] in
+      try? await Task.sleep(for: .milliseconds(180))
+      guard !Task.isCancelled else { return }
+      await self?.syncNow()
+    }
+  }
+
+  private func makeSyncState() -> RSSSyncState {
+    let now = syncStateUpdatedAt == .distantPast ? Date() : syncStateUpdatedAt
+    let states = articles.map { article in
+      let previous = syncedArticleStates[article.id]
+      let stateChanged = previous?.isRead != article.isRead
+        || previous?.starredAt != article.starredAt
+        || previous?.readAt != article.readAt
+        || previous?.readingProgress != article.readingProgress
+      return RSSArticleSyncState(
+        id: article.id,
+        isRead: article.isRead,
+        starredAt: article.starredAt,
+        readAt: article.readAt,
+        readingProgress: article.readingProgress,
+        updatedAt: stateChanged ? now : (previous?.updatedAt ?? now)
+      )
+    }
+    return RSSSyncState(
+      subscriptions: subscriptions,
+      folders: folders,
+      articleStates: states,
+      updatedAt: now
+    )
+  }
+
+  private func applyRemoteSyncState(_ remote: RSSSyncState) {
+    subscriptions = remote.subscriptions
+    folders = remote.folders
+    for state in remote.articleStates {
+      if let current = syncedArticleStates[state.id], current.updatedAt > state.updatedAt { continue }
+      syncedArticleStates[state.id] = state
+    }
+    syncStateUpdatedAt = remote.updatedAt
+    applySyncedArticleStates()
+    persist()
+    try? QingxuFiles.save(makeSyncState(), name: "rss-sync-state.json")
+  }
+
+  private func applySyncedArticleStates() {
+    for index in articles.indices {
+      guard let state = syncedArticleStates[articles[index].id] else { continue }
+      articles[index].isRead = state.isRead
+      articles[index].starredAt = state.starredAt
+      articles[index].readAt = state.readAt
+      articles[index].readingProgress = state.readingProgress
+    }
+  }
+
+  private static func faviconURL(for site: String) -> String? {
+    guard var components = URLComponents(string: site) else { return nil }
+    components.path = "/favicon.ico"
+    components.query = nil
+    components.fragment = nil
+    return components.url?.absoluteString
+  }
+
+  private func xmlEscaped(_ value: String) -> String {
+    value
+      .replacingOccurrences(of: "&", with: "&amp;")
+      .replacingOccurrences(of: "\"", with: "&quot;")
+      .replacingOccurrences(of: "<", with: "&lt;")
+      .replacingOccurrences(of: ">", with: "&gt;")
+  }
+
+  #if os(iOS)
+  private func scheduleNewArticleNotification(
+    _ newArticles: [RSSArticle],
+    for subscription: RSSSubscription
+  ) {
+    guard subscription.notificationsEnabled == true, !newArticles.isEmpty else { return }
+    let keywords = subscription.notificationKeywords ?? []
+    let matching = keywords.isEmpty ? newArticles : newArticles.filter { article in
+      keywords.contains { keyword in
+        article.title.localizedCaseInsensitiveContains(keyword)
+          || article.summary.localizedCaseInsensitiveContains(keyword)
+      }
+    }
+    guard let newest = matching.first else { return }
+
+    let content = UNMutableNotificationContent()
+    content.title = subscription.title
+    content.body = matching.count == 1 ? newest.title : "有 \(matching.count) 篇新文章，最新：\(newest.title)"
+    content.sound = .default
+    content.userInfo = ["url": newest.link]
+    let request = UNNotificationRequest(
+      identifier: "rss.\(subscription.id).\(Int(Date().timeIntervalSince1970))",
+      content: content,
+      trigger: nil
+    )
+    UNUserNotificationCenter.current().add(request)
+  }
+  #endif
 }
 
 private struct RSSClient {
@@ -293,6 +691,7 @@ private final class RSSXMLFeedParser: NSObject, XMLParserDelegate {
     var link = ""
     var author = ""
     var date = ""
+    var content = ""
   }
 
   private let sourceURL: URL
@@ -374,7 +773,12 @@ private final class RSSXMLFeedParser: NSObject, XMLParserDelegate {
       case "link": if currentItem?.link.isEmpty == true { currentItem?.link = value }
       case "guid", "id": currentItem?.id = value
       case "description", "summary", "content", "content:encoded":
-        if !value.isEmpty { currentItem?.summary = value }
+        if !value.isEmpty {
+          currentItem?.summary = value
+          if name == "content" || name == "content:encoded" || currentItem?.content.isEmpty == true {
+            currentItem?.content = value
+          }
+        }
       case "author", "dc:creator", "name":
         if !value.isEmpty { currentItem?.author = value }
       case "pubdate", "published", "updated", "dc:date":
@@ -402,7 +806,8 @@ private final class RSSXMLFeedParser: NSObject, XMLParserDelegate {
       summary: cleanText(draft.summary),
       link: resolvedLink,
       author: draft.author.isEmpty ? nil : cleanText(draft.author),
-      publishedAt: RSSDateParser.parse(draft.date)
+      publishedAt: RSSDateParser.parse(draft.date),
+      content: cleanText(draft.content.isEmpty ? draft.summary : draft.content)
     ))
   }
 
@@ -445,7 +850,7 @@ private enum RSSDateParser {
   }
 }
 
-#if os(iOS)
+#if os(iOS) && QINGXU_LEGACY_RSS_UI
 private enum RSSRoute: String, Identifiable {
   case addSubscription
 
