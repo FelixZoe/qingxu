@@ -8,18 +8,13 @@ private let qingxuAppGroup = "group.one.darker.qingxu"
 private enum QingxuWidgetPalette {
   static let background = Color(uiColor: UIColor { traits in
     traits.userInterfaceStyle == .dark
-      ? UIColor(red: 0.043, green: 0.051, blue: 0.071, alpha: 1)
-      : UIColor(red: 0.969, green: 0.969, blue: 0.984, alpha: 1)
+      ? UIColor(red: 0.043, green: 0.043, blue: 0.047, alpha: 1)
+      : UIColor(red: 0.969, green: 0.969, blue: 0.961, alpha: 1)
   })
   static let accent = Color(uiColor: UIColor { traits in
     traits.userInterfaceStyle == .dark
-      ? UIColor(red: 0.659, green: 0.624, blue: 1, alpha: 1)
-      : UIColor(red: 0.396, green: 0.373, blue: 0.820, alpha: 1)
-  })
-  static let warm = Color(uiColor: UIColor { traits in
-    traits.userInterfaceStyle == .dark
-      ? UIColor(red: 1, green: 0.682, blue: 0.541, alpha: 1)
-      : UIColor(red: 0.929, green: 0.545, blue: 0.404, alpha: 1)
+      ? UIColor(red: 0.945, green: 0.945, blue: 0.933, alpha: 1)
+      : UIColor(red: 0.125, green: 0.129, blue: 0.141, alpha: 1)
   })
 }
 
@@ -132,7 +127,7 @@ private struct TodayWidgetView: View {
       VStack(alignment: .leading, spacing: 8) {
         HStack {
           Image(systemName: "sun.max.fill")
-            .foregroundStyle(QingxuWidgetPalette.warm)
+            .foregroundStyle(QingxuWidgetPalette.accent)
           Spacer()
           Text("清序")
             .font(.caption2.weight(.semibold))
@@ -292,7 +287,7 @@ struct QingxuLiveActivity: Widget {
         }
       } compactLeading: {
         Image(systemName: context.state.mode == "focus" ? "timer" : "cup.and.saucer.fill")
-          .foregroundStyle(context.state.mode == "focus" ? QingxuWidgetPalette.accent : QingxuWidgetPalette.warm)
+          .foregroundStyle(QingxuWidgetPalette.accent)
       } compactTrailing: {
         liveTimer(context.state)
           .font(.caption2.monospacedDigit())

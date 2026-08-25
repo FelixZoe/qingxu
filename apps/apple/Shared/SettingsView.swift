@@ -508,7 +508,7 @@ struct AppearanceSettingsView: View {
             paletteDot(QingxuPalette.success)
             paletteDot(QingxuPalette.warning)
             Spacer()
-            Text("云雾白 · 柔雾紫 · 杏桃橙")
+            Text("纸白 · 石墨 · 炭黑")
               .font(.caption)
               .foregroundStyle(QingxuPalette.quiet)
           }
