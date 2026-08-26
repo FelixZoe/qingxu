@@ -109,12 +109,12 @@ struct TaskListScreen: View {
         }
       }
       #endif
-      .overlay(alignment: .bottom) {
+      .overlay(alignment: .bottomLeading) {
         if let recentlyDeleted {
-          undoBanner(for: recentlyDeleted)
-            .padding(.horizontal, 20)
-            .padding(.bottom, 14)
-            .transition(.move(edge: .bottom).combined(with: .opacity))
+          undoButton(for: recentlyDeleted)
+            .padding(.leading, 20)
+            .padding(.bottom, 18)
+            .transition(.scale(scale: 0.86, anchor: .bottomLeading).combined(with: .opacity))
         }
       }
       .sheet(item: $editor) { route in
@@ -492,22 +492,22 @@ struct TaskListScreen: View {
 
   #endif
 
-  private func undoBanner(for task: TaskItem) -> some View {
-    HStack {
-      Text("任务已删除").font(.subheadline)
-      Spacer()
-      Button("撤销") {
-        undoDismissTask?.cancel()
-        withAnimation(.easeInOut(duration: 0.2)) {
-          store.restoreTask(task)
-          recentlyDeleted = nil
-        }
+  private func undoButton(for task: TaskItem) -> some View {
+    Button {
+      undoDismissTask?.cancel()
+      withAnimation(.easeInOut(duration: 0.2)) {
+        store.restoreTask(task)
+        recentlyDeleted = nil
       }
-      .fontWeight(.semibold)
+    } label: {
+      Image(systemName: "arrow.uturn.backward")
+        .font(.system(size: 20, weight: .semibold))
+        .foregroundStyle(QingxuPalette.onAccent)
+        .frame(width: 54, height: 54)
+        .background(QingxuPalette.actionGradient, in: Circle())
     }
-    .padding(.horizontal, 16)
-    .frame(height: 48)
-    .background(.regularMaterial, in: Capsule())
+    .buttonStyle(.plain)
+    .accessibilityLabel("撤销删除")
   }
 
   private func deleteImmediately(_ task: TaskItem) {
@@ -633,7 +633,12 @@ private struct TaskSwipeContainer<Content: View>: View {
   @ViewBuilder let content: () -> Content
 
   @State private var offset: CGFloat = 0
+  @State private var dragStartOffset: CGFloat?
   private let actionWidth: CGFloat = 142
+
+  private var actionProgress: CGFloat {
+    min(1, max(0, -offset / actionWidth))
+  }
 
   var body: some View {
     ZStack(alignment: .trailing) {
@@ -648,23 +653,34 @@ private struct TaskSwipeContainer<Content: View>: View {
         }
       }
       .padding(.horizontal, 6)
+      .frame(width: actionWidth, alignment: .trailing)
+      .opacity(actionProgress)
+      .allowsHitTesting(actionProgress > 0.96)
 
       content()
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(QingxuPalette.surface)
         .offset(x: offset)
     }
-    .clipped()
+    .background(QingxuPalette.surface)
+    .contentShape(Rectangle())
+    .clipShape(Rectangle())
     .simultaneousGesture(
       DragGesture(minimumDistance: 12)
         .onChanged { value in
           guard abs(value.translation.width) > abs(value.translation.height) else { return }
-          let start = offset == 0 ? 0 : -actionWidth
+          if dragStartOffset == nil { dragStartOffset = offset }
+          let start = dragStartOffset ?? offset
           offset = min(0, max(-actionWidth, start + value.translation.width))
         }
         .onEnded { value in
-          guard abs(value.translation.width) > abs(value.translation.height) else { return }
-          let projected = offset + value.predictedEndTranslation.width * 0.18
+          guard abs(value.translation.width) > abs(value.translation.height) else {
+            dragStartOffset = nil
+            return
+          }
+          let start = dragStartOffset ?? offset
+          let projected = min(0, max(-actionWidth, start + value.predictedEndTranslation.width))
+          dragStartOffset = nil
           withAnimation(.spring(response: 0.26, dampingFraction: 0.9)) {
             offset = projected < -actionWidth * 0.42 ? -actionWidth : 0
           }
@@ -694,6 +710,7 @@ private struct TaskSwipeContainer<Content: View>: View {
   }
 
   private func close() {
+    dragStartOffset = nil
     withAnimation(.easeOut(duration: 0.16)) { offset = 0 }
   }
 }
@@ -1229,7 +1246,9 @@ private struct TodayTaskScrollConfigurator: UIViewRepresentable {
       var ancestor = marker?.superview
       while let view = ancestor {
         if let scrollView = view as? UIScrollView {
-          scrollView.bounces = true
+          // Calendar owns the pull-down interaction at the top. Disabling
+          // UIKit's rubber-band keeps the task surface from moving first.
+          scrollView.bounces = false
           scrollView.alwaysBounceVertical = true
           scrollView.showsVerticalScrollIndicator = true
           scrollView.isDirectionalLockEnabled = true
@@ -1269,20 +1288,25 @@ private struct TodayTaskScrollConfigurator: UIViewRepresentable {
 
       switch recognizer.state {
       case .began:
-        let top = -scrollView.adjustedContentInset.top
-        let atTop = scrollView.contentOffset.y <= top + 1
-        let verticalVelocity = recognizer.velocity(in: scrollView).y
-        if verticalVelocity > 0, atTop, expansion.wrappedValue < 0.999 {
-          direction = .expand
-        } else if verticalVelocity < 0, expansion.wrappedValue > 0.001 {
-          direction = .collapse
-        } else {
-          direction = nil
-        }
+        direction = nil
         startExpansion = expansion.wrappedValue
         startTranslation = translation
 
       case .changed:
+        if direction == nil {
+          let top = -scrollView.adjustedContentInset.top
+          let atTop = scrollView.contentOffset.y <= top + 1
+          let delta = translation - startTranslation
+          if delta > 2, atTop, expansion.wrappedValue < 0.999 {
+            direction = .expand
+            startExpansion = expansion.wrappedValue
+            startTranslation = translation
+          } else if delta < -2, expansion.wrappedValue > 0.001 {
+            direction = .collapse
+            startExpansion = expansion.wrappedValue
+            startTranslation = translation
+          }
+        }
         guard let direction else { return }
         keepListAtTop(scrollView)
         let delta = translation - startTranslation
@@ -1357,13 +1381,19 @@ private struct TodayNavigationTitle: View {
   }
 
   private var monthTitle: String {
-    "\(calendar.component(.month, from: date))月"
+    let names = ["一月", "二月", "三月", "四月", "五月", "六月", "七月", "八月", "九月", "十月", "十一月", "十二月"]
+    let month = calendar.component(.month, from: date)
+    return names.indices.contains(month - 1) ? names[month - 1] : "\(month)月"
   }
 
   private var dayTitle: String {
-    let month = calendar.component(.month, from: date)
-    let day = calendar.component(.day, from: date)
-    return "\(month)月\(day)日"
+    if calendar.isDateInToday(date) { return "今天" }
+    if calendar.isDateInYesterday(date) { return "昨天" }
+    if calendar.isDateInTomorrow(date) { return "明天" }
+    let formatter = DateFormatter()
+    formatter.locale = Locale(identifier: "zh_CN")
+    formatter.dateFormat = "EEE"
+    return formatter.string(from: date)
   }
 }
 

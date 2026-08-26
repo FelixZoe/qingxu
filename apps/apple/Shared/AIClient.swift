@@ -99,7 +99,7 @@ struct QingxuAIClient {
     switch aiSettings.mode {
     case .selfHosted:
       return try await performSelfHosted(body, settings: settings)
-    case .compatible:
+    case .openAI, .deepSeek, .compatible:
       return try await performCompatible(body, settings: aiSettings)
     }
   }

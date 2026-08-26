@@ -1,4 +1,5 @@
 #if os(iOS)
+import Foundation
 import SwiftUI
 import UniformTypeIdentifiers
 import WebKit
@@ -597,8 +598,9 @@ private struct RSSReaderView: View {
   @State private var isLoadingPage = true
   @State private var reloadID = UUID()
   @State private var isTranslating = false
-  @State private var translatedTitle: String?
-  @State private var translatedBody: String?
+  @State private var translationRequestID: UUID?
+  @State private var translationSourceSegments: [String] = []
+  @State private var translatedSegments: [String]?
   @State private var showsOriginal = false
   @State private var translationUnavailable = false
   @State private var aiSummary: String?
@@ -624,15 +626,24 @@ private struct RSSReaderView: View {
       if let url = articleURL {
         RSSWebArticleView(
           url: url,
-          translatedTitle: showsOriginal ? nil : translatedTitle,
-          translatedBody: showsOriginal ? nil : translatedBody,
           reloadID: reloadID,
+          translationRequestID: translationRequestID,
+          translatedSegments: translatedSegments,
+          showsOriginal: showsOriginal,
           onLoadingChange: { isLoadingPage = $0 },
           onContent: { title, text in
-            guard translatedBody == nil || showsOriginal else { return }
             pageTitle = title
             pageText = text
             setReadingProgress(1, article.id)
+          },
+          onTranslationSource: { segments in
+            guard isTranslating else { return }
+            guard !segments.isEmpty else {
+              isTranslating = false
+              translationUnavailable = true
+              return
+            }
+            translationSourceSegments = segments
           }
         )
       } else {
@@ -686,16 +697,18 @@ private struct RSSReaderView: View {
           .disabled(isSummarizing)
 
           Button {
-            if translatedBody != nil {
+            if translatedSegments != nil {
               withAnimation(.easeInOut(duration: 0.16)) { showsOriginal.toggle() }
             } else if #available(iOS 18.0, *) {
+              translationSourceSegments = []
+              translationRequestID = UUID()
               isTranslating = true
             } else {
               translationUnavailable = true
             }
           } label: {
             Label(
-              translatedBody != nil && !showsOriginal ? "显示原文" : "翻译为简体中文",
+              translationMenuTitle,
               systemImage: "character.bubble"
             )
           }
@@ -704,6 +717,11 @@ private struct RSSReaderView: View {
           if let url = articleURL {
             Divider()
             Button {
+              translationRequestID = nil
+              translationSourceSegments = []
+              translatedSegments = nil
+              showsOriginal = false
+              isTranslating = false
               reloadID = UUID()
             } label: {
               Label("刷新网页", systemImage: "arrow.clockwise")
@@ -753,7 +771,7 @@ private struct RSSReaderView: View {
     .alert("系统翻译不可用", isPresented: $translationUnavailable) {
       Button("好", role: .cancel) {}
     } message: {
-      Text("原生中英互译需要 iOS 18 或更高版本。")
+      Text("当前网页没有可翻译正文，或系统翻译暂不可用。原生翻译需要 iOS 18 或更高版本。")
     }
     .alert("AI 暂时不可用", isPresented: Binding(
       get: { aiError != nil },
@@ -777,21 +795,28 @@ private struct RSSReaderView: View {
     return content.isEmpty ? article.summary : content
   }
 
+  private var translationMenuTitle: String {
+    guard translatedSegments != nil else { return "翻译为简体中文" }
+    return showsOriginal ? "显示译文" : "显示原文"
+  }
+
   @ViewBuilder
   private var translationWorker: some View {
     #if canImport(Translation)
     if #available(iOS 18.0, *) {
-      RSSInlineTranslationWorker(title: pageTitle.isEmpty ? article.title : pageTitle, text: readerText) { title, body in
-        translatedTitle = title
-        translatedBody = body
-        showsOriginal = false
-        isTranslating = false
-      } onFailure: {
-        isTranslating = false
-        translationUnavailable = true
+      if isTranslating, !translationSourceSegments.isEmpty {
+        RSSInlineTranslationWorker(segments: translationSourceSegments) { segments in
+          translatedSegments = segments
+          showsOriginal = false
+          isTranslating = false
+        } onFailure: {
+          isTranslating = false
+          translationUnavailable = true
+        }
+        .frame(width: 1, height: 1)
+        .opacity(0.001)
+        .id(translationRequestID)
       }
-      .frame(width: 1, height: 1)
-      .opacity(0.001)
     }
     #endif
   }
@@ -817,11 +842,13 @@ private struct RSSReaderView: View {
 
 private struct RSSWebArticleView: UIViewRepresentable {
   let url: URL
-  let translatedTitle: String?
-  let translatedBody: String?
   let reloadID: UUID
+  let translationRequestID: UUID?
+  let translatedSegments: [String]?
+  let showsOriginal: Bool
   let onLoadingChange: (Bool) -> Void
   let onContent: (String, String) -> Void
+  let onTranslationSource: ([String]) -> Void
 
   func makeCoordinator() -> Coordinator { Coordinator(parent: self) }
 
@@ -844,32 +871,32 @@ private struct RSSWebArticleView: UIViewRepresentable {
   func updateUIView(_ webView: WKWebView, context: Context) {
     context.coordinator.parent = self
     context.coordinator.loadIfNeeded(in: webView, force: false)
+    context.coordinator.requestTranslationSegmentsIfNeeded(from: webView)
+    context.coordinator.applyTranslationIfNeeded(in: webView)
   }
 
   final class Coordinator: NSObject, WKNavigationDelegate {
     var parent: RSSWebArticleView
     private var loadedSource = ""
     private var loadedReloadID: UUID?
+    private var handledTranslationRequestID: UUID?
+    private var translationRequestInFlight: UUID?
+    private var appliedTranslationKey = ""
 
     init(parent: RSSWebArticleView) {
       self.parent = parent
     }
 
     func loadIfNeeded(in webView: WKWebView, force: Bool) {
-      let translationKey = parent.translatedBody.map { String($0.hashValue) } ?? "original"
-      let source = "\(parent.url.absoluteString)|\(translationKey)"
+      let source = parent.url.absoluteString
       guard force || source != loadedSource || loadedReloadID != parent.reloadID else { return }
       loadedSource = source
       loadedReloadID = parent.reloadID
+      handledTranslationRequestID = nil
+      translationRequestInFlight = nil
+      appliedTranslationKey = ""
       DispatchQueue.main.async { self.parent.onLoadingChange(true) }
-      if let body = parent.translatedBody, !body.isEmpty {
-        webView.loadHTMLString(
-          translatedDocument(title: parent.translatedTitle ?? "译文", body: body),
-          baseURL: parent.url
-        )
-      } else {
-        webView.load(URLRequest(url: parent.url, cachePolicy: .useProtocolCachePolicy, timeoutInterval: 30))
-      }
+      webView.load(URLRequest(url: parent.url, cachePolicy: .useProtocolCachePolicy, timeoutInterval: 30))
     }
 
     func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation?) {
@@ -879,9 +906,12 @@ private struct RSSWebArticleView: UIViewRepresentable {
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation?) {
       parent.onLoadingChange(false)
       captureContent(from: webView)
+      requestTranslationSegmentsIfNeeded(from: webView)
+      applyTranslationIfNeeded(in: webView)
       DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self, weak webView] in
         guard let self, let webView else { return }
         self.captureContent(from: webView)
+        self.requestTranslationSegmentsIfNeeded(from: webView)
       }
     }
 
@@ -939,35 +969,84 @@ private struct RSSWebArticleView: UIViewRepresentable {
       }
     }
 
-    private func translatedDocument(title: String, body: String) -> String {
-      let paragraphs = body
-        .components(separatedBy: "\n\n")
-        .map { "<p>\(htmlEscaped($0).replacingOccurrences(of: "\n", with: "<br>"))</p>" }
-        .joined(separator: "\n")
-      return """
-      <!doctype html>
-      <html lang="zh-Hans">
-      <head>
-        <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-        <style>
-          :root { color-scheme: light dark; }
-          body { margin: 0 auto; max-width: 760px; padding: 28px 22px 80px;
-            font: 17px/1.75 -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif; }
-          h1 { font-size: 28px; line-height: 1.25; margin: 0 0 26px; letter-spacing: -0.02em; }
-          p { margin: 0 0 1.05em; }
-        </style>
-      </head>
-      <body><h1>\(htmlEscaped(title))</h1>\(paragraphs)</body>
-      </html>
+    func requestTranslationSegmentsIfNeeded(from webView: WKWebView) {
+      guard let requestID = parent.translationRequestID,
+            requestID != handledTranslationRequestID,
+            requestID != translationRequestInFlight,
+            !webView.isLoading
+      else { return }
+
+      translationRequestInFlight = requestID
+      let script = """
+      (() => {
+        if (!document.body) return [];
+        const rejected = new Set(['SCRIPT', 'STYLE', 'NOSCRIPT', 'TEXTAREA', 'CODE', 'PRE', 'SVG']);
+        const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {
+          acceptNode(node) {
+            const element = node.parentElement;
+            const text = (node.nodeValue || '').trim();
+            if (!element || text.length < 2 || rejected.has(element.tagName)) return NodeFilter.FILTER_REJECT;
+            if (element.closest('[aria-hidden="true"]')) return NodeFilter.FILTER_REJECT;
+            const style = getComputedStyle(element);
+            if (style.display === 'none' || style.visibility === 'hidden') return NodeFilter.FILTER_REJECT;
+            return NodeFilter.FILTER_ACCEPT;
+          }
+        });
+        const nodes = [];
+        while (walker.nextNode() && nodes.length < 220) nodes.push(walker.currentNode);
+        window.__qingxuTranslationNodes = nodes;
+        window.__qingxuOriginalTexts = nodes.map(node => node.nodeValue || '');
+        window.__qingxuTranslationWhitespace = window.__qingxuOriginalTexts.map(raw => ({
+          leading: (raw.match(/^\\s*/) || [''])[0],
+          trailing: (raw.match(/\\s*$/) || [''])[0]
+        }));
+        return window.__qingxuOriginalTexts.map(raw => raw.trim());
+      })()
       """
+      webView.evaluateJavaScript(script) { [weak self] result, _ in
+        guard let self else { return }
+        self.translationRequestInFlight = nil
+        guard requestID == self.parent.translationRequestID else { return }
+        let segments = (result as? [String]) ?? []
+        self.handledTranslationRequestID = requestID
+        DispatchQueue.main.async { self.parent.onTranslationSource(segments) }
+      }
     }
 
-    private func htmlEscaped(_ value: String) -> String {
-      value
-        .replacingOccurrences(of: "&", with: "&amp;")
-        .replacingOccurrences(of: "<", with: "&lt;")
-        .replacingOccurrences(of: ">", with: "&gt;")
-        .replacingOccurrences(of: "\"", with: "&quot;")
+    func applyTranslationIfNeeded(in webView: WKWebView) {
+      guard let translatedSegments = parent.translatedSegments,
+            let data = try? JSONSerialization.data(withJSONObject: translatedSegments),
+            let json = String(data: data, encoding: .utf8)
+      else { return }
+
+      let key = "\(parent.showsOriginal)|\(translatedSegments.joined(separator: "\u{1f}").hashValue)"
+      guard key != appliedTranslationKey else { return }
+      appliedTranslationKey = key
+
+      let script: String
+      if parent.showsOriginal {
+        script = """
+        (() => {
+          const nodes = window.__qingxuTranslationNodes || [];
+          const originals = window.__qingxuOriginalTexts || [];
+          nodes.forEach((node, index) => { if (originals[index] != null) node.nodeValue = originals[index]; });
+        })()
+        """
+      } else {
+        script = """
+        (() => {
+          const translated = \(json);
+          const nodes = window.__qingxuTranslationNodes || [];
+          const whitespace = window.__qingxuTranslationWhitespace || [];
+          nodes.forEach((node, index) => {
+            if (translated[index] == null) return;
+            const spacing = whitespace[index] || { leading: '', trailing: '' };
+            node.nodeValue = spacing.leading + translated[index] + spacing.trailing;
+          });
+        })()
+        """
+      }
+      webView.evaluateJavaScript(script)
     }
   }
 }
@@ -975,21 +1054,24 @@ private struct RSSWebArticleView: UIViewRepresentable {
 #if canImport(Translation)
 @available(iOS 18.0, *)
 private struct RSSInlineTranslationWorker: View {
-  let title: String
-  let text: String
-  let onComplete: (String, String) -> Void
+  let segments: [String]
+  let onComplete: ([String]) -> Void
   let onFailure: () -> Void
 
   var body: some View {
     Color.clear
       .translationTask(source: nil, target: Locale.Language(identifier: "zh-Hans")) { session in
         do {
-          let translatedTitle = try await session.translate(title).targetText
-          var parts: [String] = []
-          for chunk in text.translationChunks(maximumLength: 1_800) {
-            parts.append(try await session.translate(chunk).targetText)
+          var translatedSegments: [String] = []
+          translatedSegments.reserveCapacity(segments.count)
+          for segment in segments {
+            var translatedParts: [String] = []
+            for chunk in segment.translationChunks(maximumLength: 1_800) {
+              translatedParts.append(try await session.translate(chunk).targetText)
+            }
+            translatedSegments.append(translatedParts.joined())
           }
-          await MainActor.run { onComplete(translatedTitle, parts.joined(separator: "\n\n")) }
+          await MainActor.run { onComplete(translatedSegments) }
         } catch {
           await MainActor.run { onFailure() }
         }

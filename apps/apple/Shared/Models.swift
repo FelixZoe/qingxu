@@ -223,14 +223,34 @@ struct SyncSettings: Codable, Equatable {
 
 enum AIConnectionMode: String, Codable, CaseIterable, Identifiable {
   case selfHosted
+  case openAI
+  case deepSeek
   case compatible
 
   var id: String { rawValue }
 
   var title: String {
     switch self {
-    case .selfHosted: "自托管代理"
-    case .compatible: "兼容接口"
+    case .selfHosted: "清序自托管"
+    case .openAI: "OpenAI"
+    case .deepSeek: "DeepSeek"
+    case .compatible: "自定义服务"
+    }
+  }
+
+  var presetBaseURL: String? {
+    switch self {
+    case .openAI: "https://api.openai.com/v1/chat/completions"
+    case .deepSeek: "https://api.deepseek.com/chat/completions"
+    case .selfHosted, .compatible: nil
+    }
+  }
+
+  var presetModel: String? {
+    switch self {
+    case .openAI: "gpt-4.1-mini"
+    case .deepSeek: "deepseek-chat"
+    case .selfHosted, .compatible: nil
     }
   }
 }
@@ -259,7 +279,7 @@ struct AISettings: Codable, Equatable {
       return syncSettings.validationMessage == nil
         ? nil
         : "请先配置可用的自托管同步服务器"
-    case .compatible:
+    case .openAI, .deepSeek, .compatible:
       guard let url = URL(string: normalizedBaseURL), url.host != nil else {
         return "AI 接口地址格式不正确"
       }

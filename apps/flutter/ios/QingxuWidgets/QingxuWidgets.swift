@@ -276,35 +276,30 @@ struct QingxuLiveActivity: Widget {
       .widgetURL(URL(string: "qingxu://pomodoro"))
     } dynamicIsland: { context in
       DynamicIsland {
-        DynamicIslandExpandedRegion(.leading) {
-          Image(systemName: context.state.mode == "focus" ? "timer" : "cup.and.saucer.fill")
-            .font(.system(size: 15, weight: .semibold))
-            .foregroundStyle(QingxuWidgetPalette.accent)
-            .frame(width: 24, height: 24)
-        }
         DynamicIslandExpandedRegion(.center) {
-          liveTimer(context.state)
-            .font(.title3.weight(.semibold).monospacedDigit())
-            .lineLimit(1)
-            .minimumScaleFactor(0.82)
-            .frame(minWidth: 76)
-        }
-        DynamicIslandExpandedRegion(.trailing) {
-          Text(modeTitle(context.state.mode))
-            .font(.caption.weight(.medium))
-            .lineLimit(1)
-            .foregroundStyle(.secondary)
+          HStack(spacing: 6) {
+            Image(systemName: context.state.mode == "focus" ? "timer" : "cup.and.saucer.fill")
+              .font(.system(size: 13, weight: .semibold))
+              .foregroundStyle(QingxuWidgetPalette.accent)
+            Text(modeTitle(context.state.mode))
+              .font(.system(size: 13, weight: .semibold))
+          }
+          .lineLimit(1)
+          .frame(maxWidth: .infinity)
         }
         DynamicIslandExpandedRegion(.bottom) {
-          HStack(spacing: 8) {
-            Circle()
-              .fill(QingxuWidgetPalette.accent)
-              .frame(width: 6, height: 6)
+          VStack(spacing: 5) {
+            liveTimer(context.state)
+              .font(.system(size: 28, weight: .semibold, design: .rounded).monospacedDigit())
+              .lineLimit(1)
+              .minimumScaleFactor(0.72)
             Text(context.state.status == "running" ? "专注进行中" : "计时已暂停")
-              .font(.caption)
+              .font(.system(size: 12, weight: .medium))
               .foregroundStyle(.secondary)
-            Spacer()
+              .lineLimit(1)
           }
+          .frame(maxWidth: .infinity)
+          .padding(.horizontal, 12)
           .padding(.top, 2)
         }
       } compactLeading: {

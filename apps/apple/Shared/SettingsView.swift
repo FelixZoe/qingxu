@@ -131,8 +131,8 @@ struct SettingsScreen: View {
       return "未配置"
     }
     switch store.aiSettings.mode {
-    case .selfHosted: return "自托管代理"
-    case .compatible: return store.aiSettings.model
+    case .selfHosted, .openAI, .deepSeek: return store.aiSettings.mode.title
+    case .compatible: return "自定义服务"
     }
   }
 }
@@ -764,12 +764,12 @@ struct AISettingsView: View {
             Text(mode.title).tag(mode)
           }
         }
-        .pickerStyle(.segmented)
+        .pickerStyle(.menu)
       }
 
       switch draft.mode {
       case .selfHosted:
-        Section("自托管代理") {
+        Section("清序自托管") {
           LabeledContent("服务器", value: store.syncSettings.normalizedServerURL)
           LabeledContent(
             "状态",
@@ -779,8 +779,16 @@ struct AISettingsView: View {
             SyncSettingsView().environmentObject(store)
           }
         }
+      case .openAI, .deepSeek:
+        Section(draft.mode.title) {
+          SecureField("API 密钥", text: $draft.apiKey)
+            #if os(iOS)
+            .textInputAutocapitalization(.never)
+            #endif
+          LabeledContent("模型", value: draft.model)
+        }
       case .compatible:
-        Section("OpenAI 兼容接口") {
+        Section("自定义兼容服务") {
           TextField("接口地址", text: $draft.baseURL)
             #if os(iOS)
             .textInputAutocapitalization(.never)
@@ -795,18 +803,6 @@ struct AISettingsView: View {
             .textInputAutocapitalization(.never)
             #endif
         }
-      }
-
-      Section("RSS 摘要提示词") {
-        TextField(
-          "自定义摘要要求（可选）",
-          text: $draft.summaryPrompt,
-          axis: .vertical
-        )
-        .lineLimit(3...7)
-        Text("留空时使用内置提示词：输出一句话结论、3 个关键点和一个可执行建议，总计不超过 260 字。")
-          .font(.footnote)
-          .foregroundStyle(QingxuPalette.quiet)
       }
 
       Section {
@@ -846,7 +842,7 @@ struct AISettingsView: View {
       }
 
       Section {
-        Text("兼容接口的 API 密钥只保存在本机系统钥匙串中，不写入配置文件，也不会参与多端同步。自托管模式由你的服务器保管模型密钥。")
+        Text("API 密钥只保存在本机系统钥匙串中，不写入配置文件，也不会参与多端同步。模型和摘要提示词已按服务商内置；选择自定义服务时才需要填写接口与模型。")
           .font(.footnote)
           .foregroundStyle(QingxuPalette.quiet)
       }
@@ -857,6 +853,9 @@ struct AISettingsView: View {
     .navigationBarTitleDisplayMode(.inline)
     #endif
     .onAppear { draft = store.aiSettings }
+    .onChange(of: draft.mode) { mode in
+      applyPreset(for: mode)
+    }
   }
 
   @MainActor
@@ -874,10 +873,21 @@ struct AISettingsView: View {
 
   private func save() {
     do {
+      draft.summaryPrompt = ""
       try store.saveAISettings(draft)
       message = "设置已保存。"
     } catch {
       message = "保存失败：\(error.localizedDescription)"
     }
+  }
+
+  private func applyPreset(for mode: AIConnectionMode) {
+    guard let baseURL = mode.presetBaseURL,
+          let model = mode.presetModel
+    else { return }
+    draft.baseURL = baseURL
+    draft.model = model
+    draft.summaryPrompt = ""
+    message = nil
   }
 }
