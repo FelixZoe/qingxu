@@ -1,0 +1,256 @@
+name: Private Signed iOS
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version override (leave empty to use pubspec.yaml)
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: qingxu-private-ios-signing
+  cancel-in-progress: false
+
+jobs:
+  build-and-sign:
+    name: Build encrypted signed IPA
+    runs-on: macos-latest
+    timeout-minutes: 45
+    environment: ios-signing
+    defaults:
+      run:
+        working-directory: apps/apple
+    env:
+      MAIN_BUNDLE_ID: one.darker.qingxu
+      WIDGET_BUNDLE_ID: one.darker.qingxu.widgets
+      APP_GROUP_ID: group.one.darker.qingxu
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install build tools before loading secrets
+        run: |
+          set -euo pipefail
+          brew install xcodegen sevenzip
+          xcodebuild -version
+          xcodegen version
+          7zz --help >/dev/null
+
+      - name: Resolve version and generate project
+        env:
+          REQUESTED_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+
+          app_version="$REQUESTED_VERSION"
+          if [[ -z "$app_version" ]]; then
+            app_version="$(sed -nE 's/^version:[[:space:]]*([0-9]+\.[0-9]+\.[0-9]+).*/\1/p' ../flutter/pubspec.yaml)"
+          fi
+          if [[ ! "$app_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Version must use x.y.z format: $app_version" >&2
+            exit 1
+          fi
+
+          grep -q 'PRODUCT_BUNDLE_IDENTIFIER: one.darker.qingxu$' project.yml
+          grep -q 'PRODUCT_BUNDLE_IDENTIFIER: one.darker.qingxu.widgets$' project.yml
+          grep -q 'group.one.darker.qingxu' Configuration/QingxuiOS.entitlements
+          grep -q 'group.one.darker.qingxu' Configuration/QingxuWidgets.entitlements
+          xcodegen generate
+
+          {
+            echo "APP_VERSION=$app_version"
+            echo "BUILD_NUMBER=$GITHUB_RUN_NUMBER"
+          } >> "$GITHUB_ENV"
+
+      - name: Import and validate private signing assets
+        env:
+          CERTIFICATE_BASE64: ${{ secrets.IOS_CERTIFICATE_P12_BASE64 }}
+          CERTIFICATE_PASSWORD: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
+          MAIN_PROFILE_BASE64: ${{ secrets.IOS_MAIN_PROFILE_BASE64 }}
+          WIDGET_PROFILE_BASE64: ${{ secrets.IOS_WIDGET_PROFILE_BASE64 }}
+        run: |
+          set -euo pipefail
+          set +x
+
+          for required_name in CERTIFICATE_BASE64 CERTIFICATE_PASSWORD MAIN_PROFILE_BASE64 WIDGET_PROFILE_BASE64; do
+            if [[ -z "${!required_name:-}" ]]; then
+              echo "Missing GitHub environment secret: $required_name" >&2
+              exit 1
+            fi
+          done
+
+          certificate_path="$RUNNER_TEMP/qingxu-signing.p12"
+          main_profile_path="$RUNNER_TEMP/qingxu-main.mobileprovision"
+          widget_profile_path="$RUNNER_TEMP/qingxu-widget.mobileprovision"
+          keychain_path="$RUNNER_TEMP/qingxu-signing.keychain-db"
+          keychain_password="$(openssl rand -hex 32)"
+
+          printf '%s' "$CERTIFICATE_BASE64" | /usr/bin/base64 -D > "$certificate_path"
+          printf '%s' "$MAIN_PROFILE_BASE64" | /usr/bin/base64 -D > "$main_profile_path"
+          printf '%s' "$WIDGET_PROFILE_BASE64" | /usr/bin/base64 -D > "$widget_profile_path"
+
+          main_plist="$RUNNER_TEMP/qingxu-main-profile.plist"
+          widget_plist="$RUNNER_TEMP/qingxu-widget-profile.plist"
+          security cms -D -i "$main_profile_path" > "$main_plist"
+          security cms -D -i "$widget_profile_path" > "$widget_plist"
+
+          main_uuid="$(/usr/libexec/PlistBuddy -c 'Print :UUID' "$main_plist")"
+          widget_uuid="$(/usr/libexec/PlistBuddy -c 'Print :UUID' "$widget_plist")"
+          main_name="$(/usr/libexec/PlistBuddy -c 'Print :Name' "$main_plist")"
+          widget_name="$(/usr/libexec/PlistBuddy -c 'Print :Name' "$widget_plist")"
+          main_team="$(/usr/libexec/PlistBuddy -c 'Print :TeamIdentifier:0' "$main_plist")"
+          widget_team="$(/usr/libexec/PlistBuddy -c 'Print :TeamIdentifier:0' "$widget_plist")"
+          main_app_id="$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:application-identifier' "$main_plist")"
+          widget_app_id="$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:application-identifier' "$widget_plist")"
+
+          if [[ "$main_team" != "$widget_team" ]]; then
+            echo "Main app and widget profiles use different Apple teams." >&2
+            exit 1
+          fi
+          if [[ "$main_app_id" != "$main_team.$MAIN_BUNDLE_ID" ]]; then
+            echo "Main profile App ID does not match $MAIN_BUNDLE_ID." >&2
+            exit 1
+          fi
+          if [[ "$widget_app_id" != "$main_team.$WIDGET_BUNDLE_ID" ]]; then
+            echo "Widget profile App ID does not match $WIDGET_BUNDLE_ID." >&2
+            exit 1
+          fi
+          if ! /usr/libexec/PlistBuddy -c 'Print :Entitlements:com.apple.security.application-groups' "$main_plist" | grep -Fq "$APP_GROUP_ID"; then
+            echo "Main profile does not authorize App Group $APP_GROUP_ID." >&2
+            exit 1
+          fi
+          if ! /usr/libexec/PlistBuddy -c 'Print :Entitlements:com.apple.security.application-groups' "$widget_plist" | grep -Fq "$APP_GROUP_ID"; then
+            echo "Widget profile does not authorize App Group $APP_GROUP_ID." >&2
+            exit 1
+          fi
+
+          security create-keychain -p "$keychain_password" "$keychain_path"
+          security set-keychain-settings -lut 21600 "$keychain_path"
+          security unlock-keychain -p "$keychain_password" "$keychain_path"
+          security import "$certificate_path" -P "$CERTIFICATE_PASSWORD" -A -f pkcs12 -k "$keychain_path"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_password" "$keychain_path"
+          security list-keychains -d user -s "$keychain_path"
+
+          signing_identity="$(security find-identity -v -p codesigning "$keychain_path" | awk '/[[:xdigit:]]{40}/ { print $2; exit }')"
+          if [[ -z "$signing_identity" ]]; then
+            echo "No usable code-signing identity was imported from the P12." >&2
+            exit 1
+          fi
+
+          profiles_dir="$HOME/Library/MobileDevice/Provisioning Profiles"
+          mkdir -p "$profiles_dir"
+          cp "$main_profile_path" "$profiles_dir/$main_uuid.mobileprovision"
+          cp "$widget_profile_path" "$profiles_dir/$widget_uuid.mobileprovision"
+
+          {
+            echo "IOS_DEVELOPMENT_TEAM=$main_team"
+            echo "IOS_MAIN_PROFILE_SPECIFIER=$main_name"
+            echo "IOS_WIDGET_PROFILE_SPECIFIER=$widget_name"
+            echo "IOS_SIGNING_IDENTITY=$signing_identity"
+            echo "IOS_KEYCHAIN_PATH=$keychain_path"
+            echo "IOS_MAIN_PROFILE_UUID=$main_uuid"
+            echo "IOS_WIDGET_PROFILE_UUID=$widget_uuid"
+          } >> "$GITHUB_ENV"
+
+      - name: Archive signed app and widget extension
+        run: |
+          set -euo pipefail
+
+          archive_path="$RUNNER_TEMP/Qingxu.xcarchive"
+          xcodebuild \
+            -project QingxuApple.xcodeproj \
+            -scheme QingxuiOS \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$archive_path" \
+            IOS_DEVELOPMENT_TEAM="$IOS_DEVELOPMENT_TEAM" \
+            IOS_MAIN_PROFILE_SPECIFIER="$IOS_MAIN_PROFILE_SPECIFIER" \
+            IOS_WIDGET_PROFILE_SPECIFIER="$IOS_WIDGET_PROFILE_SPECIFIER" \
+            CODE_SIGN_IDENTITY="$IOS_SIGNING_IDENTITY" \
+            OTHER_CODE_SIGN_FLAGS="--keychain $IOS_KEYCHAIN_PATH" \
+            MARKETING_VERSION="$APP_VERSION" \
+            CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
+            archive
+
+          app_path="$archive_path/Products/Applications/Qingxu.app"
+          widget_path="$app_path/PlugIns/QingxuWidgets.appex"
+          test -d "$app_path"
+          test -d "$widget_path"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app_path/Info.plist")" = "$MAIN_BUNDLE_ID"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$widget_path/Info.plist")" = "$WIDGET_BUNDLE_ID"
+          test -f "$app_path/embedded.mobileprovision"
+          test -f "$widget_path/embedded.mobileprovision"
+          codesign --verify --deep --strict --verbose=2 "$app_path"
+
+          signed_main_plist="$RUNNER_TEMP/signed-main-profile.plist"
+          signed_widget_plist="$RUNNER_TEMP/signed-widget-profile.plist"
+          security cms -D -i "$app_path/embedded.mobileprovision" > "$signed_main_plist"
+          security cms -D -i "$widget_path/embedded.mobileprovision" > "$signed_widget_plist"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:application-identifier' "$signed_main_plist")" = "$IOS_DEVELOPMENT_TEAM.$MAIN_BUNDLE_ID"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:application-identifier' "$signed_widget_plist")" = "$IOS_DEVELOPMENT_TEAM.$WIDGET_BUNDLE_ID"
+
+          package_dir="$RUNNER_TEMP/qingxu-private-package"
+          mkdir -p "$package_dir/Payload"
+          ditto "$app_path" "$package_dir/Payload/Qingxu.app"
+          (cd "$package_dir" && /usr/bin/zip -qry "$RUNNER_TEMP/Qingxu-${APP_VERSION}-iOS-signed.ipa" Payload)
+
+      - name: Encrypt signed IPA for private artifact storage
+        id: encrypt
+        env:
+          ARCHIVE_PASSWORD: ${{ secrets.IOS_SIGNED_ARCHIVE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          set +x
+          if [[ ${#ARCHIVE_PASSWORD} -lt 16 ]]; then
+            echo "IOS_SIGNED_ARCHIVE_PASSWORD must contain at least 16 characters." >&2
+            exit 1
+          fi
+
+          output_dir="$RUNNER_TEMP/qingxu-encrypted-output"
+          mkdir -p "$output_dir"
+          7zz a \
+            -t7z \
+            -mhe=on \
+            -mx=9 \
+            -p"$ARCHIVE_PASSWORD" \
+            "$output_dir/Qingxu-${APP_VERSION}-iOS-signed-private.7z" \
+            "$RUNNER_TEMP/Qingxu-${APP_VERSION}-iOS-signed.ipa" >/dev/null
+          rm -f "$RUNNER_TEMP/Qingxu-${APP_VERSION}-iOS-signed.ipa"
+          echo "artifact_path=$output_dir/Qingxu-${APP_VERSION}-iOS-signed-private.7z" >> "$GITHUB_OUTPUT"
+
+      - name: Upload encrypted private build
+        uses: actions/upload-artifact@v7
+        with:
+          name: qingxu-ios-signed-encrypted
+          path: ${{ steps.encrypt.outputs.artifact_path }}
+          retention-days: 1
+          if-no-files-found: error
+
+      - name: Remove temporary signing material
+        if: always()
+        run: |
+          set +e
+          if [[ -n "${IOS_KEYCHAIN_PATH:-}" ]]; then
+            security delete-keychain "$IOS_KEYCHAIN_PATH"
+          fi
+          if [[ -n "${IOS_MAIN_PROFILE_UUID:-}" ]]; then
+            rm -f "$HOME/Library/MobileDevice/Provisioning Profiles/$IOS_MAIN_PROFILE_UUID.mobileprovision"
+          fi
+          if [[ -n "${IOS_WIDGET_PROFILE_UUID:-}" ]]; then
+            rm -f "$HOME/Library/MobileDevice/Provisioning Profiles/$IOS_WIDGET_PROFILE_UUID.mobileprovision"
+          fi
+          rm -rf \
+            "$RUNNER_TEMP/Qingxu.xcarchive" \
+            "$RUNNER_TEMP/qingxu-private-package" \
+            "$RUNNER_TEMP/qingxu-encrypted-output" \
+            "$RUNNER_TEMP/qingxu-signing.p12" \
+            "$RUNNER_TEMP/qingxu-main.mobileprovision" \
+            "$RUNNER_TEMP/qingxu-widget.mobileprovision" \
+            "$RUNNER_TEMP/qingxu-main-profile.plist" \
+            "$RUNNER_TEMP/qingxu-widget-profile.plist" \
+            "$RUNNER_TEMP/signed-main-profile.plist" \
+            "$RUNNER_TEMP/signed-widget-profile.plist"

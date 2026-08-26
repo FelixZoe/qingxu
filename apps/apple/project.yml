@@ -32,6 +32,9 @@ targets:
         INFOPLIST_KEY_CFBundleDisplayName: 清序
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         CODE_SIGN_ENTITLEMENTS: Configuration/QingxuiOS.entitlements
+        CODE_SIGN_STYLE: Manual
+        DEVELOPMENT_TEAM: "$(IOS_DEVELOPMENT_TEAM)"
+        PROVISIONING_PROFILE_SPECIFIER: "$(IOS_MAIN_PROFILE_SPECIFIER)"
         SUPPORTS_MACCATALYST: NO
         TARGETED_DEVICE_FAMILY: "1,2"
     info:
@@ -64,6 +67,9 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: one.darker.qingxu.widgets
         PRODUCT_NAME: QingxuWidgets
         CODE_SIGN_ENTITLEMENTS: Configuration/QingxuWidgets.entitlements
+        CODE_SIGN_STYLE: Manual
+        DEVELOPMENT_TEAM: "$(IOS_DEVELOPMENT_TEAM)"
+        PROVISIONING_PROFILE_SPECIFIER: "$(IOS_WIDGET_PROFILE_SPECIFIER)"
         SKIP_INSTALL: YES
         TARGETED_DEVICE_FAMILY: "1,2"
     info:

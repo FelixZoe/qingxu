@@ -42,6 +42,8 @@
 
 iOS 的灵动岛和锁屏实时活动位于 `QingxuWidgets.appex`。自签时必须递归签名主应用和该扩展，并为两者保留一致的 App Group `group.one.darker.qingxu`；只签主应用或让签名工具删除扩展权限，会导致应用能安装但番茄钟无法触发灵动岛。覆盖安装还必须保持 Bundle ID 与签名身份不变。
 
+需要在公开源码仓库中私密生成签名 IPA 时，使用独立的 `Private Signed iOS` 手动工作流。证书和两份描述文件保存在 GitHub Environment Secrets，输出只提供 AES-256 加密包且不会发布到 Release。配置方法见 [iOS 私密云端签名](docs/IOS_PRIVATE_SIGNING.md)。
+
 ## 3 分钟部署自己的同步服务
 
 服务器需要 Docker Compose v2 和一个已启用 HTTPS 的域名。
@@ -119,4 +121,4 @@ go test ./...
 go vet ./...
 ```
 
-更多资料：[产品范围](docs/PRODUCT.md) · [架构](docs/ARCHITECTURE.md) · [同步协议](docs/SYNC_PROTOCOL.md) · [部署](docs/DEPLOYMENT.md)
+更多资料：[产品范围](docs/PRODUCT.md) · [架构](docs/ARCHITECTURE.md) · [同步协议](docs/SYNC_PROTOCOL.md) · [部署](docs/DEPLOYMENT.md) · [iOS 私密云端签名](docs/IOS_PRIVATE_SIGNING.md)
