@@ -22,6 +22,11 @@ private struct TaskCaptureRoute: Identifiable {
   let scheduledAt: Date?
 }
 
+private struct TaskMoveRoute: Identifiable {
+  let task: TaskItem
+  var id: String { task.id }
+}
+
 struct TaskListScreen: View {
   @EnvironmentObject private var store: AppStore
   @Environment(\.openURL) private var openURL
@@ -30,8 +35,10 @@ struct TaskListScreen: View {
   @State private var searchText = ""
   @State private var editor: TaskEditorRoute?
   @State private var capture: TaskCaptureRoute?
-  @State private var pendingDelete: TaskItem?
+  @State private var moveRoute: TaskMoveRoute?
   @State private var recentlyDeleted: TaskItem?
+  @State private var undoDismissTask: Task<Void, Never>?
+  @State private var showingAIPlanner = false
   @State private var selectedDate = Date.now
   @AppStorage(QingxuPreferenceKey.showFestivals) private var showFestivalLabels = true
   @AppStorage(QingxuPreferenceKey.showTaskIndicators) private var showTaskIndicators = true
@@ -83,14 +90,14 @@ struct TaskListScreen: View {
         ToolbarItem(placement: .primaryAction) { addButton }
         #else
         if scope == .today {
-          ToolbarItem(placement: .navigationBarLeading) {
-            todayNavigationMenu
-          }
           ToolbarItem(placement: .principal) {
             TodayNavigationTitle(date: selectedDate, expansion: calendarExpansion)
           }
           ToolbarItem(placement: .navigationBarTrailing) {
-            todayDisplayControls
+            todayCalendarButton
+          }
+          ToolbarItem(placement: .navigationBarTrailing) {
+            todayMoreMenu
           }
         }
         #endif
@@ -117,24 +124,23 @@ struct TaskListScreen: View {
         TaskEditorSheet(task: route.task, scope: route.scope)
           .environmentObject(store)
       }
-      .confirmationDialog(
-        "删除“\(pendingDelete?.title ?? "任务")”？",
-        isPresented: Binding(
-          get: { pendingDelete != nil },
-          set: { if !$0 { pendingDelete = nil } }
-        ),
-        titleVisibility: .visible
-      ) {
-        Button("删除", role: .destructive) {
-          guard let task = pendingDelete else { return }
-          withAnimation(.easeInOut(duration: 0.2)) {
-            store.deleteTask(task)
-            recentlyDeleted = task
-          }
-          pendingDelete = nil
+      #if os(iOS)
+      .sheet(item: $moveRoute) { route in
+        TaskMoveSheet(task: route.task) { date in
+          moveTask(route.task, to: date)
         }
-        Button("取消", role: .cancel) { pendingDelete = nil }
+        .presentationDetents([.height(350)])
+        .presentationDragIndicator(.visible)
       }
+      .sheet(isPresented: $showingAIPlanner) {
+        AITaskPlannerSheet(tasks: store.displayedInboxTasks) { suggestions in
+          addAISuggestions(suggestions)
+        }
+        .environmentObject(store)
+        .presentationDetents([.large])
+        .presentationDragIndicator(.visible)
+      }
+      #endif
       #if os(iOS)
       .overlay {
         if capture != nil {
@@ -160,6 +166,7 @@ struct TaskListScreen: View {
       }
       .animation(.easeOut(duration: 0.22), value: capture?.id)
       #endif
+      .onDisappear { undoDismissTask?.cancel() }
     }
   }
 
@@ -228,9 +235,13 @@ struct TaskListScreen: View {
       .contentShape(Rectangle())
       .onTapGesture { editor = TaskEditorRoute(task: task, scope: scope) }
       .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-        Button(role: .destructive) { pendingDelete = task } label: {
+        Button(role: .destructive) { deleteImmediately(task) } label: {
           Label("删除", systemImage: "trash")
         }
+        Button { moveRoute = TaskMoveRoute(task: task) } label: {
+          Label("迁移", systemImage: "calendar")
+        }
+        .tint(QingxuPalette.quiet)
       }
       .listRowInsets(.init(top: 5, leading: 20, bottom: 5, trailing: 20))
       .listRowBackground(Color.clear)
@@ -242,33 +253,41 @@ struct TaskListScreen: View {
   @ViewBuilder
   private var todayTaskRows: some View {
     ForEach(tasks) { task in
-      TaskRow(task: task, style: .todayPanel, scheduleLabel: selectedDateLabel) {
-        let completing = task.status != .completed
-        withAnimation(.easeInOut(duration: 0.2)) { store.toggleTask(task) }
-        if completing {
-          QingxuFeedback.taskCompletion(
-            haptics: hapticsEnabled,
-            sound: completionSoundEnabled
-          )
-        } else {
-          QingxuFeedback.selection(enabled: hapticsEnabled)
+      TaskSwipeContainer(
+        move: { moveRoute = TaskMoveRoute(task: task) },
+        delete: { deleteImmediately(task) }
+      ) {
+        TaskRow(task: task, style: .todayPanel, scheduleLabel: selectedDateLabel) {
+          let completing = task.status != .completed
+          withAnimation(.easeInOut(duration: 0.2)) { store.toggleTask(task) }
+          if completing {
+            QingxuFeedback.taskCompletion(
+              haptics: hapticsEnabled,
+              sound: completionSoundEnabled
+            )
+          } else {
+            QingxuFeedback.selection(enabled: hapticsEnabled)
+          }
         }
-      }
-      .contentShape(Rectangle())
-      .onTapGesture { editor = TaskEditorRoute(task: task, scope: scope) }
-      .contextMenu {
-        Button { store.toggleTask(task) } label: {
-          Label(task.status == .completed ? "恢复任务" : "完成任务", systemImage: "checkmark.circle")
-        }
-        Button(role: .destructive) { pendingDelete = task } label: {
-          Label("删除", systemImage: "trash")
+        .contentShape(Rectangle())
+        .onTapGesture { editor = TaskEditorRoute(task: task, scope: scope) }
+        .contextMenu {
+          Button { store.toggleTask(task) } label: {
+            Label(task.status == .completed ? "恢复任务" : "完成任务", systemImage: "checkmark.circle")
+          }
+          Button { moveRoute = TaskMoveRoute(task: task) } label: {
+            Label("迁移任务", systemImage: "calendar")
+          }
+          Button(role: .destructive) { deleteImmediately(task) } label: {
+            Label("删除", systemImage: "trash")
+          }
         }
       }
 
       if task.id != tasks.last?.id {
         Divider()
           .overlay(QingxuPalette.separator.opacity(0.68))
-          .padding(.leading, 40)
+          .padding(.leading, 36)
       }
     }
   }
@@ -371,109 +390,69 @@ struct TaskListScreen: View {
     }
     .buttonStyle(.plain)
     .accessibilityLabel("新增任务")
-    .qingxuFloatingSurface()
   }
 
   #if os(iOS)
-  private var todayNavigationMenu: some View {
-    Menu {
-      Button { openAppTab("inbox") } label: {
-        Label("收集箱", systemImage: "tray")
-      }
-      Button { openAppTab("today") } label: {
-        Label("今天", systemImage: "calendar")
-      }
-      Button { openAppTab("pomodoro") } label: {
-        Label("番茄钟", systemImage: "timer")
-      }
-      Button { openAppTab("rss") } label: {
-        Label("RSS", systemImage: "dot.radiowaves.left.and.right")
-      }
-      Divider()
-      Button { openAppTab("settings") } label: {
-        Label("设置", systemImage: "gearshape")
-      }
+  private var todayCalendarButton: some View {
+    Button {
+      setCalendarExpanded(calendarExpansion < 0.5)
     } label: {
-      Image(systemName: "sidebar.left")
-        .font(.system(size: 17, weight: .medium))
-        .frame(width: 40, height: 40)
-        .background(QingxuPalette.surface, in: Circle())
-        .overlay(Circle().stroke(QingxuPalette.separator.opacity(0.7), lineWidth: 0.5))
-    }
-    .accessibilityLabel("打开导航")
-  }
-
-  private var todayDisplayControls: some View {
-    HStack(spacing: 0) {
-      Button {
-        setCalendarExpanded(calendarExpansion < 0.5)
-      } label: {
-        Image(systemName: calendarExpansion < 0.5
-          ? "calendar.day.timeline.left"
-          : "calendar")
-          .font(.system(size: 16, weight: .medium))
-          .frame(width: 42, height: 40)
-      }
-      .accessibilityLabel(calendarExpansion < 0.5 ? "显示整月" : "显示当前周")
-
-      Rectangle()
-        .fill(QingxuPalette.separator.opacity(0.72))
-        .frame(width: 0.5, height: 18)
-
-      Menu {
-        Menu {
-          Button {
-            setCalendarExpanded(false)
-          } label: {
-            Label("当前周", systemImage: calendarExpansion < 0.5 ? "checkmark" : "calendar")
-          }
-          Button {
-            setCalendarExpanded(true)
-          } label: {
-            Label("整月", systemImage: calendarExpansion >= 0.5 ? "checkmark" : "calendar")
-          }
-        } label: {
-          Label("显示范围", systemImage: "line.3.horizontal.decrease")
-        }
-
-        Menu {
-          Toggle(isOn: $showFestivalLabels) {
-            Label("节日", systemImage: "leaf")
-          }
-          Toggle(isOn: $showTaskIndicators) {
-            Label("任务标记", systemImage: "circlebadge")
-          }
-        } label: {
-          Label("显示设置", systemImage: "slider.horizontal.3")
-        }
-
-        Button {
-          capture = TaskCaptureRoute(scope: .today, scheduledAt: selectedDate)
-        } label: {
-          Label("安排任务", systemImage: "calendar.badge.plus")
-        }
-
-        Button { openAppTab("rss") } label: {
-          Label("RSS 订阅", systemImage: "dot.radiowaves.left.and.right")
-        }
-
-        Divider()
-
-        Button {
-          withAnimation(.easeInOut(duration: 0.28)) { selectedDate = .now }
-        } label: {
-          Label("回到今天", systemImage: "calendar.badge.clock")
-        }
-      } label: {
-        Image(systemName: "ellipsis")
-          .font(.system(size: 16, weight: .semibold))
-          .frame(width: 42, height: 40)
-      }
-      .accessibilityLabel("更多日历操作")
+      Image(systemName: calendarExpansion < 0.5
+        ? "calendar.day.timeline.left"
+        : "calendar")
     }
     .foregroundStyle(QingxuPalette.ink)
-    .background(QingxuPalette.surface, in: Capsule())
-    .overlay(Capsule().stroke(QingxuPalette.separator.opacity(0.7), lineWidth: 0.5))
+    .accessibilityLabel(calendarExpansion < 0.5 ? "显示整月" : "显示当前周")
+  }
+
+  private var todayMoreMenu: some View {
+    Menu {
+      Menu {
+        Button { setCalendarExpanded(false) } label: {
+          Label("当前周", systemImage: calendarExpansion < 0.5 ? "checkmark" : "calendar")
+        }
+        Button { setCalendarExpanded(true) } label: {
+          Label("整月", systemImage: calendarExpansion >= 0.5 ? "checkmark" : "calendar")
+        }
+      } label: {
+        Label("显示范围", systemImage: "line.3.horizontal.decrease")
+      }
+
+      Menu {
+        Toggle(isOn: $showFestivalLabels) {
+          Label("节日", systemImage: "leaf")
+        }
+        Toggle(isOn: $showTaskIndicators) {
+          Label("任务标记", systemImage: "circlebadge")
+        }
+      } label: {
+        Label("显示设置", systemImage: "slider.horizontal.3")
+      }
+
+      Button {
+        capture = TaskCaptureRoute(scope: .today, scheduledAt: selectedDate)
+      } label: {
+        Label("安排任务", systemImage: "calendar.badge.plus")
+      }
+      Button { showingAIPlanner = true } label: {
+        Label("AI 智能安排", systemImage: "sparkles")
+      }
+      Button { openAppTab("rss") } label: {
+        Label("RSS 订阅", systemImage: "dot.radiowaves.left.and.right")
+      }
+
+      Divider()
+
+      Button {
+        withAnimation(.easeInOut(duration: 0.28)) { selectedDate = .now }
+      } label: {
+        Label("回到今天", systemImage: "calendar.badge.clock")
+      }
+    } label: {
+      Image(systemName: "ellipsis")
+    }
+    .foregroundStyle(QingxuPalette.ink)
+    .accessibilityLabel("更多日历操作")
   }
 
   private func setCalendarExpanded(_ expanded: Bool) {
@@ -532,6 +511,7 @@ struct TaskListScreen: View {
       Text("任务已删除").font(.subheadline)
       Spacer()
       Button("撤销") {
+        undoDismissTask?.cancel()
         withAnimation(.easeInOut(duration: 0.2)) {
           store.restoreTask(task)
           recentlyDeleted = nil
@@ -542,6 +522,39 @@ struct TaskListScreen: View {
     .padding(.horizontal, 16)
     .frame(height: 48)
     .background(.regularMaterial, in: Capsule())
+  }
+
+  private func deleteImmediately(_ task: TaskItem) {
+    undoDismissTask?.cancel()
+    withAnimation(.easeInOut(duration: 0.18)) {
+      store.deleteTask(task)
+      recentlyDeleted = task
+    }
+    undoDismissTask = Task { @MainActor in
+      try? await Task.sleep(for: .seconds(4))
+      guard !Task.isCancelled, recentlyDeleted?.id == task.id else { return }
+      withAnimation(.easeOut(duration: 0.18)) { recentlyDeleted = nil }
+    }
+  }
+
+  private func moveTask(_ task: TaskItem, to date: Date?) {
+    var updated = task
+    updated.startAt = date.map { Calendar.autoupdatingCurrent.startOfDay(for: $0) }
+    store.updateTask(updated)
+    moveRoute = nil
+  }
+
+  private func addAISuggestions(_ suggestions: [QingxuAISuggestion]) {
+    let calendar = Calendar.autoupdatingCurrent
+    for suggestion in suggestions {
+      guard var task = store.addTask(title: suggestion.title, forToday: false) else { continue }
+      task.startAt = calendar.date(
+        byAdding: .day,
+        value: max(0, min(14, suggestion.dayOffset)),
+        to: calendar.startOfDay(for: .now)
+      )
+      store.updateTask(task)
+    }
   }
 }
 
@@ -583,10 +596,8 @@ private struct TaskRow: View {
 
       VStack(alignment: .leading, spacing: 4) {
         Text(task.title)
-          .font(style == .todayPanel
-            ? .system(size: 19, weight: .regular, design: .rounded)
-            : .body.weight(.medium))
-          .strikethrough(task.status == .completed)
+          .font(task.status == .completed ? QingxuType.rowTitleCompleted : QingxuType.rowTitle)
+          .strikethrough(task.status == .completed, color: QingxuPalette.quiet)
           .foregroundStyle(task.status == .completed ? QingxuPalette.quiet : QingxuPalette.ink)
         if !task.notes.isEmpty {
           Text(task.notes)
@@ -608,8 +619,8 @@ private struct TaskRow: View {
           .foregroundStyle(QingxuPalette.quiet)
       } else if let scheduleLabel {
         Text(scheduleLabel)
-          .font(.system(size: 15, weight: .medium, design: .rounded))
-          .foregroundStyle(QingxuPalette.accent)
+          .font(QingxuType.metadata.weight(.medium))
+          .foregroundStyle(QingxuPalette.quiet)
       }
     }
     .padding(.horizontal, style == .todayPanel ? 0 : 16)
@@ -628,6 +639,292 @@ private struct TaskRow: View {
     return "\(calendar.component(.month, from: date))月\(calendar.component(.day, from: date))日"
   }
 }
+
+#if os(iOS)
+private struct TaskSwipeContainer<Content: View>: View {
+  let move: () -> Void
+  let delete: () -> Void
+  @ViewBuilder let content: () -> Content
+
+  @State private var offset: CGFloat = 0
+  private let actionWidth: CGFloat = 142
+
+  var body: some View {
+    ZStack(alignment: .trailing) {
+      HStack(spacing: 8) {
+        actionButton(title: "迁移", symbol: "calendar", prominent: false) {
+          close()
+          move()
+        }
+        actionButton(title: "删除", symbol: "trash", prominent: true) {
+          close()
+          delete()
+        }
+      }
+      .padding(.horizontal, 6)
+
+      content()
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(QingxuPalette.surface)
+        .offset(x: offset)
+    }
+    .clipped()
+    .simultaneousGesture(
+      DragGesture(minimumDistance: 12)
+        .onChanged { value in
+          guard abs(value.translation.width) > abs(value.translation.height) else { return }
+          let start = offset == 0 ? 0 : -actionWidth
+          offset = min(0, max(-actionWidth, start + value.translation.width))
+        }
+        .onEnded { value in
+          guard abs(value.translation.width) > abs(value.translation.height) else { return }
+          let projected = offset + value.predictedEndTranslation.width * 0.18
+          withAnimation(.spring(response: 0.26, dampingFraction: 0.9)) {
+            offset = projected < -actionWidth * 0.42 ? -actionWidth : 0
+          }
+        }
+    )
+  }
+
+  private func actionButton(
+    title: String,
+    symbol: String,
+    prominent: Bool,
+    action: @escaping () -> Void
+  ) -> some View {
+    Button(action: action) {
+      VStack(spacing: 4) {
+        Image(systemName: symbol).font(.system(size: 17, weight: .semibold))
+        Text(title).font(.caption2.weight(.medium))
+      }
+      .foregroundStyle(prominent ? QingxuPalette.onAccent : QingxuPalette.ink)
+      .frame(width: 61, height: 56)
+      .background(
+        prominent ? QingxuPalette.accent : QingxuPalette.secondaryBackground,
+        in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+      )
+    }
+    .buttonStyle(.plain)
+  }
+
+  private func close() {
+    withAnimation(.easeOut(duration: 0.16)) { offset = 0 }
+  }
+}
+
+private struct TaskMoveSheet: View {
+  @Environment(\.dismiss) private var dismiss
+  let task: TaskItem
+  let onMove: (Date?) -> Void
+  @State private var customDate = Date.now
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 20) {
+      VStack(alignment: .leading, spacing: 5) {
+        Text("迁移任务")
+          .font(.title2.weight(.semibold))
+        Text(task.title)
+          .font(.subheadline)
+          .foregroundStyle(QingxuPalette.quiet)
+          .lineLimit(1)
+      }
+
+      HStack(spacing: 10) {
+        choice("今天", symbol: "calendar", date: .now)
+        choice("明天", symbol: "sunrise", date: tomorrow)
+        choice("下周一", symbol: "calendar.badge.clock", date: nextMonday)
+      }
+
+      HStack(spacing: 12) {
+        Label("选择日期", systemImage: "calendar.badge.plus")
+          .font(.subheadline.weight(.medium))
+        Spacer()
+        DatePicker("选择日期", selection: $customDate, displayedComponents: .date)
+          .labelsHidden()
+          .onChange(of: customDate) { date in onMove(date); dismiss() }
+      }
+      .padding(.horizontal, 14)
+      .frame(height: 52)
+      .background(QingxuPalette.secondaryBackground, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+
+      Button {
+        onMove(nil)
+        dismiss()
+      } label: {
+        Label("清除日期，移回收集箱", systemImage: "tray")
+          .font(.subheadline.weight(.medium))
+          .frame(maxWidth: .infinity, alignment: .leading)
+          .frame(height: 46)
+      }
+      .buttonStyle(.plain)
+      .foregroundStyle(QingxuPalette.quiet)
+    }
+    .padding(22)
+    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    .background(QingxuPalette.surface)
+  }
+
+  private func choice(_ title: String, symbol: String, date: Date) -> some View {
+    Button {
+      onMove(date)
+      dismiss()
+    } label: {
+      VStack(spacing: 7) {
+        Image(systemName: symbol).font(.system(size: 20, weight: .medium))
+        Text(title).font(.caption.weight(.medium))
+      }
+      .foregroundStyle(QingxuPalette.ink)
+      .frame(maxWidth: .infinity)
+      .frame(height: 74)
+      .background(QingxuPalette.secondaryBackground, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+    }
+    .buttonStyle(.plain)
+  }
+
+  private var tomorrow: Date {
+    Calendar.autoupdatingCurrent.date(byAdding: .day, value: 1, to: .now) ?? .now
+  }
+
+  private var nextMonday: Date {
+    Calendar.autoupdatingCurrent.nextDate(
+      after: .now,
+      matching: DateComponents(weekday: 2),
+      matchingPolicy: .nextTime
+    ) ?? tomorrow
+  }
+}
+
+private struct AITaskPlannerSheet: View {
+  @EnvironmentObject private var store: AppStore
+  @Environment(\.dismiss) private var dismiss
+  let tasks: [TaskItem]
+  let onApply: ([QingxuAISuggestion]) -> Void
+
+  @State private var goal = ""
+  @State private var plan: QingxuAITaskPlan?
+  @State private var selected = Set<String>()
+  @State private var isLoading = false
+  @State private var errorMessage: String?
+
+  var body: some View {
+    NavigationStack {
+      ScrollView {
+        VStack(alignment: .leading, spacing: 22) {
+          VStack(alignment: .leading, spacing: 8) {
+            Text("你接下来想完成什么？")
+              .font(QingxuType.sectionTitle)
+            TextField("例如：本周完成课程项目", text: $goal, axis: .vertical)
+              .font(QingxuType.body)
+              .padding(14)
+              .background(
+                QingxuPalette.secondaryBackground,
+                in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+              )
+          }
+
+          Button {
+            Task { await generate() }
+          } label: {
+            HStack(spacing: 8) {
+              if isLoading { ProgressView().tint(QingxuPalette.onAccent) }
+              Image(systemName: "sparkles")
+              Text(isLoading ? "正在整理" : "生成轻量计划")
+            }
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(QingxuPalette.onAccent)
+            .frame(maxWidth: .infinity)
+            .frame(height: 48)
+            .background(QingxuPalette.accent, in: Capsule())
+          }
+          .buttonStyle(.plain)
+          .disabled(isLoading || (goal.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && tasks.isEmpty))
+
+          if let plan {
+            VStack(alignment: .leading, spacing: 14) {
+              Text(plan.summary)
+                .font(QingxuType.body)
+                .foregroundStyle(QingxuPalette.quiet)
+
+              ForEach(plan.suggestions) { suggestion in
+                Button {
+                  if selected.contains(suggestion.id) {
+                    selected.remove(suggestion.id)
+                  } else {
+                    selected.insert(suggestion.id)
+                  }
+                } label: {
+                  HStack(spacing: 12) {
+                    Image(systemName: selected.contains(suggestion.id) ? "checkmark.circle.fill" : "circle")
+                    VStack(alignment: .leading, spacing: 3) {
+                      Text(suggestion.title)
+                        .font(QingxuType.rowTitle)
+                        .foregroundStyle(QingxuPalette.ink)
+                      Text(suggestion.dayOffset == 0 ? "今天" : "\(suggestion.dayOffset) 天后")
+                        .font(QingxuType.metadata)
+                        .foregroundStyle(QingxuPalette.quiet)
+                    }
+                    Spacer()
+                  }
+                  .padding(.vertical, 9)
+                }
+                .buttonStyle(.plain)
+
+                if suggestion.id != plan.suggestions.last?.id {
+                  Divider().overlay(QingxuPalette.separator)
+                }
+              }
+            }
+            .padding(18)
+            .background(QingxuPalette.surface, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+          }
+        }
+        .padding(20)
+      }
+      .qingxuScreen()
+      .navigationTitle("智能安排")
+      .navigationBarTitleDisplayMode(.inline)
+      .toolbar {
+        ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() } }
+        ToolbarItem(placement: .confirmationAction) {
+          Button("添加") {
+            let choices = plan?.suggestions.filter { selected.contains($0.id) } ?? []
+            onApply(choices)
+            dismiss()
+          }
+          .disabled(selected.isEmpty)
+          .fontWeight(.semibold)
+        }
+      }
+      .alert("AI 暂时不可用", isPresented: Binding(
+        get: { errorMessage != nil },
+        set: { if !$0 { errorMessage = nil } }
+      )) {
+        Button("好", role: .cancel) { errorMessage = nil }
+      } message: {
+        Text(errorMessage ?? "")
+      }
+    }
+  }
+
+  @MainActor
+  private func generate() async {
+    guard !isLoading else { return }
+    isLoading = true
+    defer { isLoading = false }
+    do {
+      let result = try await QingxuAIClient().plan(
+        goal: goal.trimmingCharacters(in: .whitespacesAndNewlines),
+        tasks: tasks,
+        settings: store.syncSettings
+      )
+      plan = result
+      selected = Set(result.suggestions.map(\.id))
+    } catch {
+      errorMessage = error.localizedDescription
+    }
+  }
+}
+#endif
 
 #if os(iOS)
 private extension View {

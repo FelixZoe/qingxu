@@ -25,50 +25,50 @@ enum AppearanceMode: String, CaseIterable, Identifiable {
 }
 
 enum QingxuPalette {
-  /// 单色纸墨：只依靠明度、留白和层级建立重点，不使用彩色装饰。
+  /// 温润纸墨：只依靠明度、留白和字重建立重点，不使用彩色装饰。
   static let background = Color.adaptive(
-    lightHex: 0xF7F7F5,
-    darkHex: 0x0B0B0C
+    lightHex: 0xF5F4F0,
+    darkHex: 0x0D0E0F
   )
   static let secondaryBackground = Color.adaptive(
-    lightHex: 0xF0F0EE,
-    darkHex: 0x141416
+    lightHex: 0xECEAE5,
+    darkHex: 0x141517
   )
   static let surface = Color.adaptive(
-    lightHex: 0xFFFFFF,
-    darkHex: 0x1A1A1D
+    lightHex: 0xFEFDFC,
+    darkHex: 0x191A1C
   )
   static let elevatedSurface = Color.adaptive(
-    lightHex: 0xFBFBFA,
-    darkHex: 0x222226
+    lightHex: 0xFAF9F6,
+    darkHex: 0x202124
   )
   static let accent = Color.adaptive(
-    lightHex: 0x202124,
-    darkHex: 0xF1F1EE
+    lightHex: 0x252629,
+    darkHex: 0xF2F1ED
   )
   static let onAccent = Color.adaptive(
     lightHex: 0xFFFFFF,
     darkHex: 0x101011
   )
   static let selected = Color.adaptive(
-    lightHex: 0xE9E9E6,
-    darkHex: 0x2B2B30
+    lightHex: 0xE5E3DE,
+    darkHex: 0x2A2B2E
   )
   static let ink = Color.adaptive(
     lightHex: 0x1E1F22,
     darkHex: 0xF4F4F2
   )
   static let quiet = Color.adaptive(
-    lightHex: 0x6F7175,
-    darkHex: 0xB0B0B3
+    lightHex: 0x696B70,
+    darkHex: 0xB6B6B2
   )
   static let faint = Color.adaptive(
-    lightHex: 0xA0A1A4,
-    darkHex: 0x747478
+    lightHex: 0x96989C,
+    darkHex: 0x7C7D80
   )
   static let separator = Color.adaptive(
-    lightHex: 0xE3E3E0,
-    darkHex: 0x303034
+    lightHex: 0xDCDAD5,
+    darkHex: 0x303135
   )
   static let success = Color.adaptive(
     lightHex: 0x3F4247,
@@ -88,7 +88,7 @@ enum QingxuPalette {
   )
 
   static let canvasGradient = LinearGradient(
-    colors: [background, background, selected.opacity(0.22)],
+    colors: [background, background],
     startPoint: .topLeading,
     endPoint: .bottomTrailing
   )
@@ -98,6 +98,15 @@ enum QingxuPalette {
     startPoint: .topLeading,
     endPoint: .bottomTrailing
   )
+}
+
+enum QingxuType {
+  static let screenTitle = Font.system(size: 34, weight: .bold)
+  static let sectionTitle = Font.system(size: 20, weight: .semibold)
+  static let rowTitle = Font.system(size: 18, weight: .medium)
+  static let rowTitleCompleted = Font.system(size: 18, weight: .regular)
+  static let body = Font.system(size: 16, weight: .regular)
+  static let metadata = Font.system(size: 13, weight: .regular)
 }
 
 extension Color {

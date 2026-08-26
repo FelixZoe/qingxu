@@ -264,7 +264,9 @@ struct QingxuLiveActivity: Widget {
         VStack(alignment: .leading, spacing: 2) {
           Text(modeTitle(context.state.mode)).font(.caption.weight(.semibold))
           liveTimer(context.state)
-            .font(.title2.bold().monospacedDigit())
+            .font(.title3.weight(.semibold).monospacedDigit())
+            .lineLimit(1)
+            .minimumScaleFactor(0.72)
         }
         Spacer()
       }
@@ -275,15 +277,27 @@ struct QingxuLiveActivity: Widget {
     } dynamicIsland: { context in
       DynamicIsland {
         DynamicIslandExpandedRegion(.leading) {
-          Label("清序", systemImage: "timer")
-            .font(.caption.weight(.semibold))
+          Label(modeTitle(context.state.mode), systemImage: "timer")
+            .font(.caption.weight(.medium))
+            .lineLimit(1)
         }
         DynamicIslandExpandedRegion(.trailing) {
-          Text(modeTitle(context.state.mode)).font(.caption2)
+          liveTimer(context.state)
+            .font(.headline.weight(.semibold).monospacedDigit())
+            .lineLimit(1)
+            .minimumScaleFactor(0.7)
         }
         DynamicIslandExpandedRegion(.bottom) {
-          liveTimer(context.state)
-            .font(.title.bold().monospacedDigit())
+          HStack(spacing: 8) {
+            Circle()
+              .fill(QingxuWidgetPalette.accent)
+              .frame(width: 6, height: 6)
+            Text(context.state.status == "running" ? "专注进行中" : "计时已暂停")
+              .font(.caption)
+              .foregroundStyle(.secondary)
+            Spacer()
+          }
+          .padding(.top, 2)
         }
       } compactLeading: {
         Image(systemName: context.state.mode == "focus" ? "timer" : "cup.and.saucer.fill")
@@ -291,7 +305,8 @@ struct QingxuLiveActivity: Widget {
       } compactTrailing: {
         liveTimer(context.state)
           .font(.caption2.monospacedDigit())
-          .frame(maxWidth: 52)
+          .lineLimit(1)
+          .minimumScaleFactor(0.72)
       } minimal: {
         Image(systemName: context.state.mode == "focus" ? "timer" : "cup.and.saucer.fill")
       }

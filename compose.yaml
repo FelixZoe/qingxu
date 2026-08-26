@@ -7,6 +7,9 @@ services:
     environment:
       SYNC_TOKEN: ${SYNC_TOKEN:?请在 .env 中配置 64 位十六进制 SYNC_TOKEN}
       SYNC_MAX_BODY_BYTES: ${SYNC_MAX_BODY_BYTES:-2097152}
+      AI_BASE_URL: ${AI_BASE_URL:-https://api.openai.com/v1/chat/completions}
+      AI_API_KEY: ${AI_API_KEY:-}
+      AI_MODEL: ${AI_MODEL:-gpt-4.1-mini}
       GOMEMLIMIT: ${GOMEMLIMIT:-48MiB}
     ports:
       - "${SYNC_LISTEN:-127.0.0.1:8080}:8080"

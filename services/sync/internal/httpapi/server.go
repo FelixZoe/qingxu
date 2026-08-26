@@ -29,6 +29,9 @@ type Config struct {
 	Token          string
 	AllowedOrigins []string
 	MaxBodyBytes   int64
+	AIBaseURL      string
+	AIAPIKey       string
+	AIModel        string
 }
 
 type Server struct {
@@ -37,6 +40,7 @@ type Server struct {
 	origins      map[string]struct{}
 	allowAny     bool
 	maxBodyBytes int64
+	ai           *aiService
 }
 
 func New(config Config, taskStore *store.Store) (*Server, error) {
@@ -56,6 +60,7 @@ func New(config Config, taskStore *store.Store) (*Server, error) {
 		tokenHash:    sha256.Sum256([]byte(token)),
 		origins:      make(map[string]struct{}),
 		maxBodyBytes: config.MaxBodyBytes,
+		ai:           newAIService(config.AIBaseURL, config.AIAPIKey, config.AIModel),
 	}
 	for _, configured := range config.AllowedOrigins {
 		origin := strings.TrimSpace(configured)
@@ -77,6 +82,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/v1/ping", s.ping)
 	mux.HandleFunc("/v1/sync", s.sync)
 	mux.HandleFunc("/v1/changes", s.changes)
+	mux.HandleFunc("/v1/ai", s.aiRequest)
 	return s.withCORS(mux)
 }
 

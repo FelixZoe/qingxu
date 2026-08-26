@@ -8,6 +8,9 @@ services:
       SYNC_TOKEN: ${SYNC_TOKEN:?请在 .env 中设置 SYNC_TOKEN}
       SYNC_CORS_ORIGINS: ${SYNC_CORS_ORIGINS:-https://todo.darker.one}
       SYNC_MAX_BODY_BYTES: ${SYNC_MAX_BODY_BYTES:-2097152}
+      AI_BASE_URL: ${AI_BASE_URL:-https://api.openai.com/v1/chat/completions}
+      AI_API_KEY: ${AI_API_KEY:-}
+      AI_MODEL: ${AI_MODEL:-gpt-4.1-mini}
       SYNC_HEALTH_URL: ${SYNC_HEALTH_URL:-http://127.0.0.1:8080/health}
       GOMEMLIMIT: ${GOMEMLIMIT:-48MiB}
     ports:

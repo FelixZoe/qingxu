@@ -45,6 +45,9 @@ func run() error {
 		Token:          config.token,
 		AllowedOrigins: config.allowedOrigins,
 		MaxBodyBytes:   config.maxBodyBytes,
+		AIBaseURL:      config.aiBaseURL,
+		AIAPIKey:       config.aiAPIKey,
+		AIModel:        config.aiModel,
 	}, taskStore)
 	if err != nil {
 		return fmt.Errorf("configure API: %w", err)
@@ -92,6 +95,9 @@ type appConfig struct {
 	token          string
 	allowedOrigins []string
 	maxBodyBytes   int64
+	aiBaseURL      string
+	aiAPIKey       string
+	aiModel        string
 }
 
 func loadConfig() (appConfig, error) {
@@ -100,6 +106,9 @@ func loadConfig() (appConfig, error) {
 		dataFile:     envOrDefault("SYNC_DATA_FILE", "./data/store.json"),
 		token:        strings.TrimSpace(os.Getenv("SYNC_TOKEN")),
 		maxBodyBytes: defaultMaxBodyBytes,
+		aiBaseURL:    envOrDefault("AI_BASE_URL", "https://api.openai.com/v1/chat/completions"),
+		aiAPIKey:     strings.TrimSpace(os.Getenv("AI_API_KEY")),
+		aiModel:      envOrDefault("AI_MODEL", "gpt-4.1-mini"),
 	}
 	if strings.TrimSpace(config.token) == "" {
 		return appConfig{}, errors.New("SYNC_TOKEN must be set")

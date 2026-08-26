@@ -29,6 +29,9 @@ docker compose up -d --build
 - `GET /v1/ping`：验证 `Authorization: Bearer <SYNC_TOKEN>`。
 - `POST /v1/sync`：双向合并任务与番茄钟状态，返回服务端时间。
 - `GET /v1/changes?since=<revision>`：最长等待 25 秒的变更通知；仅修订号变化时客户端再拉完整数据。
+- `POST /v1/ai`：可选的 RSS 摘要和任务规划代理；复用同步密钥鉴权，模型密钥不会下发到客户端。
+
+如需启用 AI，在 `.env` 填写 `AI_API_KEY`。默认调用 OpenAI Chat Completions；使用其他兼容服务时一并修改 `AI_BASE_URL` 和 `AI_MODEL`。未配置时同步功能保持正常，客户端的 AI 入口会明确提示尚未启用。
 
 完整的 HTTPS 反向代理、客户端填写、更新、备份和恢复步骤见 [`docs/DEPLOYMENT.md`](../../docs/DEPLOYMENT.md)，协议细节见 [`docs/SYNC_PROTOCOL.md`](../../docs/SYNC_PROTOCOL.md)。
 

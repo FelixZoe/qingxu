@@ -11,8 +11,6 @@ struct SettingsScreen: View {
     NavigationStack {
       ScrollView {
         LazyVStack(spacing: 22) {
-          settingsHero
-
           SettingsGroup(title: "效率与界面") {
             NavigationLink { FeatureModulesSettingsView() } label: {
               SettingsDestinationRow(
@@ -84,11 +82,7 @@ struct SettingsScreen: View {
             #endif
           }
 
-          SettingsGroup(title: "概览") {
-            SettingsValueRow(title: "待办任务", value: "\(store.inboxTasks.count)")
-            SettingsDivider()
-            SettingsValueRow(title: "已完成", value: "\(store.completedTasks.count)")
-            SettingsDivider()
+          SettingsGroup(title: "关于") {
             Link(destination: URL(string: "https://github.com/FelixZoe/qingxu")!) {
               SettingsDestinationRow(
                 symbol: "chevron.left.forwardslash.chevron.right",
@@ -109,50 +103,6 @@ struct SettingsScreen: View {
       .task { await updateChecker.check() }
       #endif
     }
-  }
-
-  private var settingsHero: some View {
-    HStack(spacing: 15) {
-      Image(systemName: "checkmark")
-        .font(.title2.weight(.bold))
-        .foregroundStyle(QingxuPalette.onAccent)
-        .frame(width: 56, height: 56)
-        .background(
-          QingxuPalette.actionGradient,
-          in: RoundedRectangle(cornerRadius: 17, style: .continuous)
-        )
-
-      VStack(alignment: .leading, spacing: 4) {
-        Text("清序").font(.title3.weight(.bold))
-        Text("轻松安排，专注完成")
-          .font(.subheadline)
-          .foregroundStyle(QingxuPalette.quiet)
-      }
-
-      Spacer()
-
-      VStack(alignment: .trailing, spacing: 5) {
-        Label(
-          store.syncSettings.isConfigured ? "同步已连接" : "仅保存在本地",
-          systemImage: store.syncSettings.isConfigured ? "checkmark.icloud.fill" : "iphone"
-        )
-        .font(.caption.weight(.semibold))
-        .foregroundStyle(store.syncSettings.isConfigured ? QingxuPalette.success : QingxuPalette.quiet)
-        Text("v\(appVersion)")
-          .font(.caption2.monospacedDigit())
-          .foregroundStyle(QingxuPalette.faint)
-      }
-    }
-    .padding(18)
-    .background(QingxuPalette.surface, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
-    .overlay {
-      RoundedRectangle(cornerRadius: 24, style: .continuous)
-        .stroke(QingxuPalette.separator.opacity(0.7), lineWidth: 0.6)
-    }
-  }
-
-  private var appVersion: String {
-    Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "开发版"
   }
 
   #if os(iOS)
@@ -418,12 +368,6 @@ private struct FeatureModulesSettingsView: View {
   var body: some View {
     ScrollView {
       VStack(spacing: 22) {
-        SettingsGroup(title: "固定模块") {
-          moduleRow(symbol: "calendar", title: "今天", detail: "日历与当天任务", tint: QingxuPalette.success)
-          SettingsDivider()
-          moduleRow(symbol: "gearshape.fill", title: "设置", detail: "管理应用与同步", tint: QingxuPalette.quiet)
-        }
-
         SettingsGroup(title: "可选模块") {
           PreferenceToggleRow(
             symbol: "tray.fill", title: "收集箱", detail: "快速记录未安排的任务和想法",
@@ -457,19 +401,6 @@ private struct FeatureModulesSettingsView: View {
     #endif
   }
 
-  private func moduleRow(symbol: String, title: String, detail: String, tint: Color) -> some View {
-    HStack(spacing: 14) {
-      SettingsRowGlyph(symbol: symbol)
-      VStack(alignment: .leading, spacing: 3) {
-        Text(title).font(.body.weight(.medium))
-        Text(detail).font(.caption).foregroundStyle(QingxuPalette.quiet)
-      }
-      Spacer()
-      Image(systemName: "lock.fill").font(.caption).foregroundStyle(QingxuPalette.faint)
-    }
-    .padding(.horizontal, 16)
-    .frame(minHeight: 68)
-  }
 }
 
 struct AppearanceSettingsView: View {
@@ -501,20 +432,6 @@ struct AppearanceSettingsView: View {
           }
         }
 
-        SettingsGroup(title: "清序配色") {
-          HStack(spacing: 14) {
-            paletteDot(QingxuPalette.background)
-            paletteDot(QingxuPalette.accent)
-            paletteDot(QingxuPalette.success)
-            paletteDot(QingxuPalette.warning)
-            Spacer()
-            Text("纸白 · 石墨 · 炭黑")
-              .font(.caption)
-              .foregroundStyle(QingxuPalette.quiet)
-          }
-          .padding(.horizontal, 18)
-          .frame(minHeight: 72)
-        }
       }
       .padding(18)
       .padding(.bottom, 80)
@@ -534,10 +451,6 @@ struct AppearanceSettingsView: View {
     }
   }
 
-  private func paletteDot(_ color: Color) -> some View {
-    Circle().fill(color).frame(width: 30, height: 30)
-      .overlay(Circle().stroke(QingxuPalette.separator, lineWidth: 0.8))
-  }
 }
 
 #if os(iOS)
@@ -702,17 +615,7 @@ private struct WidgetSettingsView: View {
   var body: some View {
     ScrollView {
       VStack(spacing: 22) {
-        SettingsGroup(title: "主屏幕小组件") {
-          infoRow(symbol: "checklist", title: "今日任务", detail: "显示今日未完成数量和下一项任务", tint: QingxuPalette.accent)
-          SettingsDivider()
-          infoRow(symbol: "timer", title: "专注状态", detail: "显示准确倒计时，轻触回到番茄钟", tint: QingxuPalette.success)
-        }
-        SettingsGroup(title: "锁定屏幕与灵动岛") {
-          infoRow(symbol: "lock.rectangle", title: "锁屏小组件", detail: "圆形、矩形和单行三种样式", tint: QingxuPalette.accent)
-          SettingsDivider()
-          infoRow(symbol: "iphone.gen3", title: "灵动岛实时活动", detail: "退出应用后仍显示准确剩余时间", tint: QingxuPalette.warning)
-
-          SettingsDivider()
+        SettingsGroup(title: "实时活动诊断") {
           Button {
             Task { await testLiveActivity() }
           } label: {
@@ -736,7 +639,7 @@ private struct WidgetSettingsView: View {
           .buttonStyle(.plain)
           .disabled(testingLiveActivity)
         }
-        Text("添加方法：长按主屏幕空白区域，点击左上角“+”，搜索“清序”。灵动岛会在番茄钟开始后自动显示。")
+        Text("长按主屏幕或锁屏添加“清序”小组件；灵动岛会在番茄钟开始后自动显示。这里仅保留可执行的实时活动检测。")
           .font(.footnote)
           .foregroundStyle(QingxuPalette.quiet)
           .frame(maxWidth: .infinity, alignment: .leading)
@@ -748,20 +651,6 @@ private struct WidgetSettingsView: View {
     .qingxuScreen()
     .navigationTitle("小组件与灵动岛")
     .navigationBarTitleDisplayMode(.inline)
-  }
-
-  private func infoRow(symbol: String, title: String, detail: String, tint: Color) -> some View {
-    HStack(spacing: 14) {
-      SettingsRowGlyph(symbol: symbol)
-      VStack(alignment: .leading, spacing: 4) {
-        Text(title).font(.body.weight(.medium))
-        Text(detail).font(.caption).foregroundStyle(QingxuPalette.quiet)
-      }
-      Spacer()
-      Image(systemName: "checkmark.circle.fill").foregroundStyle(QingxuPalette.success)
-    }
-    .padding(.horizontal, 16)
-    .frame(minHeight: 72)
   }
 
   @MainActor

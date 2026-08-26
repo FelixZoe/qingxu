@@ -71,27 +71,28 @@ struct RSSScreen: View {
     NavigationStack {
       ScrollView {
         LazyVStack(alignment: .leading, spacing: 0) {
-          RSSFilterBar(selection: $filter)
+          RSSReadingControls(
+            filter: $filter,
+            scopeTitle: selectedScopeTitle,
+            folders: store.folders,
+            subscriptions: store.subscriptions,
+            selectedFolderID: selectedFolderID,
+            selectedFeedID: selectedFeedID,
+            selectAll: {
+              selectedFolderID = nil
+              selectedFeedID = nil
+            },
+            selectFolder: { folderID in
+              selectedFolderID = folderID
+              selectedFeedID = nil
+            },
+            selectFeed: { feedID in
+              selectedFeedID = feedID
+              selectedFolderID = nil
+            }
+          )
             .padding(.horizontal, 18)
-            .padding(.bottom, 12)
-
-          if !store.folders.isEmpty {
-            RSSFolderStrip(
-              folders: store.folders,
-              selection: $selectedFolderID,
-              onSelect: { selectedFeedID = nil }
-            )
-            .padding(.bottom, 10)
-          }
-
-          if !store.subscriptions.isEmpty {
-            RSSFeedStrip(
-              subscriptions: subscriptionsForSelectedFolder,
-              articles: store.articles,
-              selection: $selectedFeedID
-            )
             .padding(.bottom, 14)
-          }
 
           RSSContentState(
             hasSubscriptions: !store.subscriptions.isEmpty,
@@ -110,7 +111,7 @@ struct RSSScreen: View {
       }
       .scrollIndicators(.visible)
       .qingxuScreen()
-      .navigationTitle("RSS")
+      .navigationTitle("阅读")
       .navigationBarTitleDisplayMode(.large)
       .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .automatic), prompt: "搜索文章、来源或作者")
       .refreshable { await store.refresh() }
@@ -161,10 +162,30 @@ struct RSSScreen: View {
     return store.subscriptions.filter { $0.folderID == selectedFolderID }
   }
 
+  private var selectedScopeTitle: String {
+    if let selectedFeedID,
+       let feed = store.subscriptions.first(where: { $0.id == selectedFeedID }) {
+      return feed.title
+    }
+    if let selectedFolderID,
+       let folder = store.folders.first(where: { $0.id == selectedFolderID }) {
+      return folder.title
+    }
+    return "全部来源"
+  }
+
   @ToolbarContentBuilder
   private var toolbarContent: some ToolbarContent {
-    ToolbarItem(placement: .navigationBarLeading) {
+    ToolbarItem(placement: .navigationBarTrailing) {
       Menu {
+        Button { presentation = .addSubscription } label: {
+          Label("添加订阅", systemImage: "plus")
+        }
+        Button { Task { await store.refresh() } } label: {
+          Label("刷新", systemImage: "arrow.clockwise")
+        }
+        .disabled(store.subscriptions.isEmpty || store.phase == .refreshing)
+        Divider()
         Button { presentation = .manageSubscriptions } label: {
           Label("管理订阅", systemImage: "dot.radiowaves.left.and.right")
         }
@@ -182,23 +203,13 @@ struct RSSScreen: View {
           Label("导出 OPML", systemImage: "square.and.arrow.up")
         }
       } label: {
-        Image(systemName: "line.3.horizontal.decrease")
+        if case .refreshing = store.phase {
+          ProgressView().controlSize(.small)
+        } else {
+          Image(systemName: "ellipsis")
+        }
       }
       .accessibilityLabel("RSS 管理")
-    }
-
-    ToolbarItemGroup(placement: .navigationBarTrailing) {
-      if case .refreshing = store.phase {
-        ProgressView().controlSize(.small)
-      } else {
-        Button { Task { await store.refresh() } } label: {
-          Image(systemName: "arrow.clockwise")
-        }
-        .disabled(store.subscriptions.isEmpty)
-      }
-      Button { presentation = .addSubscription } label: {
-        Image(systemName: "plus")
-      }
     }
   }
 
@@ -221,28 +232,74 @@ struct RSSScreen: View {
   }
 }
 
-private struct RSSFilterBar: View {
-  @Binding var selection: RSSArticleFilter
+private struct RSSReadingControls: View {
+  @Binding var filter: RSSArticleFilter
+  let scopeTitle: String
+  let folders: [RSSFolder]
+  let subscriptions: [RSSSubscription]
+  let selectedFolderID: String?
+  let selectedFeedID: String?
+  let selectAll: () -> Void
+  let selectFolder: (String) -> Void
+  let selectFeed: (String) -> Void
 
   var body: some View {
-    HStack(spacing: 7) {
-      ForEach(RSSArticleFilter.allCases) { filter in
-        Button {
-          withAnimation(.easeInOut(duration: 0.2)) { selection = filter }
-          UISelectionFeedbackGenerator().selectionChanged()
-        } label: {
-          Text(filter.title)
-            .font(.subheadline.weight(selection == filter ? .semibold : .medium))
-            .foregroundStyle(selection == filter ? QingxuPalette.onAccent : QingxuPalette.quiet)
-            .frame(maxWidth: .infinity)
-            .frame(height: 38)
-            .background(selection == filter ? QingxuPalette.accent : Color.clear, in: Capsule())
+    HStack(spacing: 10) {
+      HStack(spacing: 2) {
+        ForEach(RSSArticleFilter.allCases) { item in
+          Button {
+            withAnimation(.easeInOut(duration: 0.16)) { filter = item }
+            UISelectionFeedbackGenerator().selectionChanged()
+          } label: {
+            Text(item.title)
+              .font(.caption.weight(filter == item ? .semibold : .medium))
+              .foregroundStyle(filter == item ? QingxuPalette.ink : QingxuPalette.quiet)
+              .padding(.horizontal, 10)
+              .frame(height: 34)
+              .background(filter == item ? QingxuPalette.surface : Color.clear, in: Capsule())
+          }
+          .buttonStyle(.plain)
         }
-        .buttonStyle(.plain)
       }
+      .padding(3)
+      .background(QingxuPalette.secondaryBackground, in: Capsule())
+
+      Menu {
+        Button(action: selectAll) {
+          Label("全部来源", systemImage: selectedFolderID == nil && selectedFeedID == nil ? "checkmark" : "square.grid.2x2")
+        }
+        if !folders.isEmpty {
+          Section("分类") {
+            ForEach(folders) { folder in
+              Button { selectFolder(folder.id) } label: {
+                Label(folder.title, systemImage: selectedFolderID == folder.id ? "checkmark" : "folder")
+              }
+            }
+          }
+        }
+        if !subscriptions.isEmpty {
+          Section("订阅") {
+            ForEach(subscriptions) { subscription in
+              Button { selectFeed(subscription.id) } label: {
+                Label(subscription.title, systemImage: selectedFeedID == subscription.id ? "checkmark" : "dot.radiowaves.left.and.right")
+              }
+            }
+          }
+        }
+      } label: {
+        HStack(spacing: 6) {
+          Text(scopeTitle).lineLimit(1)
+          Image(systemName: "chevron.down").font(.caption2.weight(.semibold))
+        }
+        .font(.caption.weight(.semibold))
+        .foregroundStyle(QingxuPalette.ink)
+        .padding(.horizontal, 12)
+        .frame(height: 40)
+        .background(QingxuPalette.secondaryBackground, in: Capsule())
+      }
+      .buttonStyle(.plain)
+      .frame(maxWidth: .infinity, alignment: .trailing)
     }
-    .padding(4)
-    .background(QingxuPalette.secondaryBackground, in: Capsule())
   }
 }
 
@@ -399,11 +456,20 @@ private struct RSSContentState: View {
           }
 
           Divider()
-            .overlay(QingxuPalette.separator.opacity(0.7))
-            .padding(.leading, 56)
+            .overlay(QingxuPalette.separator)
+            .padding(.leading, 50)
         }
       }
-      .padding(.horizontal, 18)
+      .padding(.horizontal, 16)
+      .background(
+        QingxuPalette.surface,
+        in: RoundedRectangle(cornerRadius: 24, style: .continuous)
+      )
+      .overlay {
+        RoundedRectangle(cornerRadius: 24, style: .continuous)
+          .stroke(QingxuPalette.separator.opacity(0.55), lineWidth: 0.5)
+      }
+      .padding(.horizontal, 16)
     }
   }
 }
@@ -413,16 +479,22 @@ private struct RSSArticleLine: View {
 
   var body: some View {
     HStack(alignment: .top, spacing: 12) {
-      Circle()
-        .fill(article.isRead ? Color.clear : QingxuPalette.accent)
-        .frame(width: 7, height: 7)
-        .overlay(Circle().stroke(QingxuPalette.separator, lineWidth: article.isRead ? 0.7 : 0))
-        .padding(.top, 8)
+      RSSSourceIcon(urlString: nil, size: 28)
+        .foregroundStyle(article.isRead ? QingxuPalette.faint : QingxuPalette.ink)
+        .overlay(alignment: .topTrailing) {
+          if !article.isRead {
+            Circle()
+              .fill(QingxuPalette.accent)
+              .frame(width: 7, height: 7)
+              .overlay(Circle().stroke(QingxuPalette.surface, lineWidth: 1.5))
+              .offset(x: 2, y: -2)
+          }
+        }
 
       VStack(alignment: .leading, spacing: 6) {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
           Text(article.title)
-            .font(.body.weight(article.isRead ? .regular : .semibold))
+            .font(article.isRead ? QingxuType.body : QingxuType.body.weight(.semibold))
             .foregroundStyle(QingxuPalette.ink)
             .lineLimit(3)
           Spacer(minLength: 4)
@@ -453,7 +525,7 @@ private struct RSSArticleLine: View {
         .foregroundStyle(QingxuPalette.faint)
       }
     }
-    .padding(.vertical, 13)
+    .padding(.vertical, 15)
     .contentShape(Rectangle())
   }
 }
@@ -522,14 +594,23 @@ private struct RSSEmptyArticles: View {
 }
 
 private struct RSSReaderView: View {
+  @EnvironmentObject private var appStore: AppStore
   let article: RSSArticle
   let openArticle: (RSSArticle) -> Void
   let toggleStarred: (RSSArticle) -> Void
   let setReadingProgress: (Double, String) -> Void
   @State private var isStarred: Bool
   @State private var websiteRoute: RSSWebsiteRoute?
-  @State private var showTranslation = false
+  @State private var resolvedText = ""
+  @State private var isLoadingFullText = false
+  @State private var isTranslating = false
+  @State private var translatedTitle: String?
+  @State private var translatedBody: String?
+  @State private var showsOriginal = false
   @State private var translationUnavailable = false
+  @State private var aiSummary: String?
+  @State private var isSummarizing = false
+  @State private var aiError: String?
   @AppStorage("qingxu.rss.reader.fontScale") private var fontScale = 1.0
   @AppStorage("qingxu.rss.reader.lineSpacing") private var readerLineSpacing = 7.0
 
@@ -552,7 +633,7 @@ private struct RSSReaderView: View {
         Text(article.feedTitle)
           .font(.subheadline.weight(.semibold))
           .foregroundStyle(QingxuPalette.accent)
-        Text(article.title)
+        Text(displayedTitle)
           .font(.largeTitle.bold())
           .foregroundStyle(QingxuPalette.ink)
         HStack(spacing: 7) {
@@ -565,13 +646,40 @@ private struct RSSReaderView: View {
         .font(.subheadline)
         .foregroundStyle(QingxuPalette.quiet)
 
+        if let aiSummary {
+          VStack(alignment: .leading, spacing: 9) {
+            Label("AI 摘要", systemImage: "sparkles")
+              .font(.subheadline.weight(.semibold))
+            Text(aiSummary)
+              .font(QingxuType.body)
+              .foregroundStyle(QingxuPalette.ink)
+              .lineSpacing(4)
+          }
+          .padding(.vertical, 4)
+        }
+
         Divider().overlay(QingxuPalette.separator)
 
-        Text(readerText)
-          .font(.system(size: 17 * fontScale, weight: .regular, design: .rounded))
+        if isLoadingFullText {
+          HStack(spacing: 8) {
+            ProgressView().controlSize(.small)
+            Text("正在补全原文")
+          }
+          .font(.caption)
+          .foregroundStyle(QingxuPalette.quiet)
+        }
+
+        Text(displayedBody)
+          .font(.system(size: 17 * fontScale, weight: .regular))
           .foregroundStyle(QingxuPalette.ink)
           .lineSpacing(readerLineSpacing)
           .textSelection(.enabled)
+
+        if translatedBody != nil, !showsOriginal {
+          Label("译文已覆盖原文", systemImage: "character.bubble")
+            .font(.caption)
+            .foregroundStyle(QingxuPalette.quiet)
+        }
 
         Color.clear
           .frame(height: 1)
@@ -598,17 +706,39 @@ private struct RSSReaderView: View {
     .qingxuScreen()
     .navigationBarTitleDisplayMode(.inline)
     .onAppear { openArticle(article) }
-    .rssTranslationPresentation(isPresented: $showTranslation, text: translationText)
+    .task(id: article.id) { await loadFullTextIfNeeded() }
+    .overlay {
+      if isTranslating {
+        translationWorker
+      }
+    }
     .toolbar {
       ToolbarItemGroup(placement: .navigationBarTrailing) {
         Button {
-          if #available(iOS 18.0, *) {
-            showTranslation = true
+          Task { await summarize() }
+        } label: {
+          if isSummarizing {
+            ProgressView().controlSize(.small)
+          } else {
+            Image(systemName: "sparkles")
+          }
+        }
+        .disabled(isSummarizing)
+        .accessibilityLabel("AI 总结")
+        Button {
+          if translatedBody != nil {
+            withAnimation(.easeInOut(duration: 0.16)) { showsOriginal.toggle() }
+          } else if #available(iOS 18.0, *) {
+            isTranslating = true
           } else {
             translationUnavailable = true
           }
         } label: {
-          Image(systemName: "character.bubble")
+          if isTranslating {
+            ProgressView().controlSize(.small)
+          } else {
+            Image(systemName: translatedBody != nil && !showsOriginal ? "textformat" : "character.bubble")
+          }
         }
         .accessibilityLabel("翻译文章")
         Button {
@@ -630,30 +760,191 @@ private struct RSSReaderView: View {
     } message: {
       Text("原生中英互译需要 iOS 18 或更高版本。")
     }
+    .alert("AI 暂时不可用", isPresented: Binding(
+      get: { aiError != nil },
+      set: { if !$0 { aiError = nil } }
+    )) {
+      Button("好", role: .cancel) { aiError = nil }
+    } message: {
+      Text(aiError ?? "")
+    }
   }
 
   private var readerText: String {
+    if !resolvedText.isEmpty { return resolvedText }
     let content = article.content?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
     return content.isEmpty ? article.summary : content
   }
 
-  private var translationText: String {
-    [article.title, readerText].filter { !$0.isEmpty }.joined(separator: "\n\n")
+  private var displayedTitle: String {
+    if !showsOriginal, let translatedTitle, !translatedTitle.isEmpty { return translatedTitle }
+    return article.title
+  }
+
+  private var displayedBody: String {
+    if !showsOriginal, let translatedBody, !translatedBody.isEmpty { return translatedBody }
+    return readerText
+  }
+
+  @ViewBuilder
+  private var translationWorker: some View {
+    #if canImport(Translation)
+    if #available(iOS 18.0, *) {
+      RSSInlineTranslationWorker(title: article.title, text: readerText) { title, body in
+        translatedTitle = title
+        translatedBody = body
+        showsOriginal = false
+        isTranslating = false
+      } onFailure: {
+        isTranslating = false
+        translationUnavailable = true
+      }
+      .frame(width: 1, height: 1)
+      .opacity(0.001)
+    }
+    #endif
+  }
+
+  private func loadFullTextIfNeeded() async {
+    guard readerText.count < 1_200,
+          let url = URL(string: article.link),
+          !article.link.isEmpty
+    else { return }
+    await MainActor.run { isLoadingFullText = true }
+    let fullText = await RSSArticleExtractor.fullText(from: url)
+    await MainActor.run {
+      if let fullText, fullText.count > readerText.count + 180 {
+        resolvedText = fullText
+        translatedBody = nil
+      }
+      isLoadingFullText = false
+    }
+  }
+
+  @MainActor
+  private func summarize() async {
+    guard !isSummarizing else { return }
+    isSummarizing = true
+    defer { isSummarizing = false }
+    do {
+      aiSummary = try await QingxuAIClient().summarize(
+        title: article.title,
+        content: readerText,
+        settings: appStore.syncSettings
+      )
+    } catch {
+      aiError = error.localizedDescription
+    }
   }
 }
 
-private extension View {
-  @ViewBuilder
-  func rssTranslationPresentation(isPresented: Binding<Bool>, text: String) -> some View {
-    #if canImport(Translation)
-    if #available(iOS 18.0, *) {
-      translationPresentation(isPresented: isPresented, text: text)
-    } else {
-      self
+#if canImport(Translation)
+@available(iOS 18.0, *)
+private struct RSSInlineTranslationWorker: View {
+  let title: String
+  let text: String
+  let onComplete: (String, String) -> Void
+  let onFailure: () -> Void
+
+  var body: some View {
+    Color.clear
+      .translationTask(source: nil, target: Locale.Language(identifier: "zh-Hans")) { session in
+        do {
+          let translatedTitle = try await session.translate(title).targetText
+          var parts: [String] = []
+          for chunk in text.translationChunks(maximumLength: 1_800) {
+            parts.append(try await session.translate(chunk).targetText)
+          }
+          await MainActor.run { onComplete(translatedTitle, parts.joined(separator: "\n\n")) }
+        } catch {
+          await MainActor.run { onFailure() }
+        }
+      }
+  }
+}
+#endif
+
+private enum RSSArticleExtractor {
+  static func fullText(from url: URL) async -> String? {
+    do {
+      var request = URLRequest(url: url)
+      request.timeoutInterval = 18
+      request.setValue(
+        "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Version/18.0 Mobile Safari/604.1",
+        forHTTPHeaderField: "User-Agent"
+      )
+      let (data, response) = try await URLSession.shared.data(for: request)
+      guard let http = response as? HTTPURLResponse,
+            200..<400 ~= http.statusCode,
+            data.count < 8_000_000,
+            let html = String(data: data, encoding: .utf8) ?? String(data: data, encoding: .isoLatin1)
+      else { return nil }
+      return extractReadableText(html)
+    } catch {
+      return nil
     }
-    #else
-    self
-    #endif
+  }
+
+  private static func extractReadableText(_ html: String) -> String? {
+    var cleaned = html
+    for tag in ["script", "style", "svg", "nav", "header", "footer", "form", "aside"] {
+      cleaned = cleaned.replacingOccurrences(
+        of: "(?is)<\(tag)\\b[^>]*>.*?</\(tag)>",
+        with: " ",
+        options: .regularExpression
+      )
+    }
+    let candidates = ["article", "main"]
+    for tag in candidates {
+      if let range = cleaned.range(of: "(?is)<\(tag)\\b[^>]*>(.*?)</\(tag)>", options: .regularExpression) {
+        let candidate = readableText(String(cleaned[range]))
+        if candidate.count > 500 { return candidate }
+      }
+    }
+    let fallback = readableText(cleaned)
+    return fallback.count > 500 ? fallback : nil
+  }
+
+  private static func readableText(_ html: String) -> String {
+    var text = html
+      .replacingOccurrences(of: "(?i)<br\\s*/?>", with: "\n", options: .regularExpression)
+      .replacingOccurrences(of: "(?i)</(p|div|h[1-6]|li|blockquote|section)>", with: "\n\n", options: .regularExpression)
+      .replacingOccurrences(of: "(?s)<[^>]+>", with: " ", options: .regularExpression)
+    let entities = [
+      "&nbsp;": " ", "&amp;": "&", "&lt;": "<", "&gt;": ">",
+      "&quot;": "\"", "&#39;": "'", "&apos;": "'", "&mdash;": "—", "&ndash;": "–"
+    ]
+    for (entity, value) in entities { text = text.replacingOccurrences(of: entity, with: value) }
+    text = text.replacingOccurrences(of: "[ \\t]+", with: " ", options: .regularExpression)
+    text = text.replacingOccurrences(of: "\\n[ \\t]+", with: "\n", options: .regularExpression)
+    text = text.replacingOccurrences(of: "\\n{3,}", with: "\n\n", options: .regularExpression)
+    return text.trimmingCharacters(in: .whitespacesAndNewlines)
+  }
+}
+
+private extension String {
+  func translationChunks(maximumLength: Int) -> [String] {
+    guard count > maximumLength else { return [self] }
+    var result: [String] = []
+    var buffer = ""
+    for paragraph in components(separatedBy: "\n\n") {
+      if buffer.count + paragraph.count + 2 > maximumLength, !buffer.isEmpty {
+        result.append(buffer)
+        buffer = ""
+      }
+      if paragraph.count > maximumLength {
+        var start = paragraph.startIndex
+        while start < paragraph.endIndex {
+          let end = paragraph.index(start, offsetBy: maximumLength, limitedBy: paragraph.endIndex) ?? paragraph.endIndex
+          result.append(String(paragraph[start..<end]))
+          start = end
+        }
+      } else {
+        buffer += buffer.isEmpty ? paragraph : "\n\n\(paragraph)"
+      }
+    }
+    if !buffer.isEmpty { result.append(buffer) }
+    return result
   }
 }
 
