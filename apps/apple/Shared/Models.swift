@@ -67,7 +67,7 @@ enum PomodoroTimerDirection: String, Codable, CaseIterable, Identifiable {
   case countUp
 
   var id: String { rawValue }
-  var title: String { self == .countdown ? "倒计时" : "正计时" }
+  var title: String { self == .countdown ? "番茄计时" : "正计时" }
 }
 
 struct PomodoroState: Codable, Equatable {

@@ -66,29 +66,6 @@ struct RSSScreen: View {
     NavigationStack {
       ScrollView {
         LazyVStack(alignment: .leading, spacing: 0) {
-          RSSReadingControls(
-            filter: $filter,
-            scopeTitle: selectedScopeTitle,
-            folders: store.folders,
-            subscriptions: store.subscriptions,
-            selectedFolderID: selectedFolderID,
-            selectedFeedID: selectedFeedID,
-            selectAll: {
-              selectedFolderID = nil
-              selectedFeedID = nil
-            },
-            selectFolder: { folderID in
-              selectedFolderID = folderID
-              selectedFeedID = nil
-            },
-            selectFeed: { feedID in
-              selectedFeedID = feedID
-              selectedFolderID = nil
-            }
-          )
-            .padding(.horizontal, 18)
-            .padding(.bottom, 14)
-
           RSSContentState(
             hasSubscriptions: !store.subscriptions.isEmpty,
             isRefreshing: store.phase == .refreshing,
@@ -106,8 +83,8 @@ struct RSSScreen: View {
       }
       .scrollIndicators(.visible)
       .qingxuScreen()
-      .navigationTitle("阅读")
-      .navigationBarTitleDisplayMode(.large)
+      .navigationTitle("")
+      .navigationBarTitleDisplayMode(.inline)
       .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .automatic), prompt: "搜索文章、来源或作者")
       .refreshable { await store.refresh() }
       .task { await store.refreshIfNeeded() }
@@ -168,6 +145,56 @@ struct RSSScreen: View {
 
   @ToolbarContentBuilder
   private var toolbarContent: some ToolbarContent {
+    ToolbarItem(placement: .navigationBarLeading) {
+      Menu {
+        Button {
+          selectedFolderID = nil
+          selectedFeedID = nil
+        } label: {
+          Label("全部来源", systemImage: selectedFolderID == nil && selectedFeedID == nil ? "checkmark" : "square.grid.2x2")
+        }
+        if !store.folders.isEmpty {
+          Section("分类") {
+            ForEach(store.folders) { folder in
+              Button {
+                selectedFolderID = folder.id
+                selectedFeedID = nil
+              } label: {
+                Label(folder.title, systemImage: selectedFolderID == folder.id ? "checkmark" : "folder")
+              }
+            }
+          }
+        }
+        if !store.subscriptions.isEmpty {
+          Section("订阅") {
+            ForEach(store.subscriptions) { subscription in
+              Button {
+                selectedFeedID = subscription.id
+                selectedFolderID = nil
+              } label: {
+                Label(subscription.title, systemImage: selectedFeedID == subscription.id ? "checkmark" : "dot.radiowaves.left.and.right")
+              }
+            }
+          }
+        }
+      } label: {
+        Image(systemName: "line.3.horizontal.decrease")
+          .font(.system(size: 17, weight: .medium))
+          .frame(width: 40, height: 40)
+      }
+      .accessibilityLabel("选择来源，当前为\(selectedScopeTitle)")
+    }
+
+    ToolbarItem(placement: .principal) {
+      Picker("文章范围", selection: $filter) {
+        ForEach(RSSArticleFilter.allCases) { item in
+          Text(item.title).tag(item)
+        }
+      }
+      .pickerStyle(.segmented)
+      .frame(width: 210)
+    }
+
     ToolbarItem(placement: .navigationBarTrailing) {
       Menu {
         Button { presentation = .addSubscription } label: {
@@ -195,11 +222,14 @@ struct RSSScreen: View {
           Label("导出 OPML", systemImage: "square.and.arrow.up")
         }
       } label: {
-        if case .refreshing = store.phase {
-          ProgressView().controlSize(.small)
-        } else {
-          Image(systemName: "ellipsis")
+        Group {
+          if case .refreshing = store.phase {
+            ProgressView().controlSize(.small)
+          } else {
+            Image(systemName: "ellipsis")
+          }
         }
+        .frame(width: 40, height: 40)
       }
       .accessibilityLabel("RSS 管理")
     }
@@ -220,77 +250,6 @@ struct RSSScreen: View {
       } catch {
         importMessage = "导入失败：\(error.localizedDescription)"
       }
-    }
-  }
-}
-
-private struct RSSReadingControls: View {
-  @Binding var filter: RSSArticleFilter
-  let scopeTitle: String
-  let folders: [RSSFolder]
-  let subscriptions: [RSSSubscription]
-  let selectedFolderID: String?
-  let selectedFeedID: String?
-  let selectAll: () -> Void
-  let selectFolder: (String) -> Void
-  let selectFeed: (String) -> Void
-
-  var body: some View {
-    HStack(spacing: 10) {
-      HStack(spacing: 2) {
-        ForEach(RSSArticleFilter.allCases) { item in
-          Button {
-            withAnimation(.easeInOut(duration: 0.16)) { filter = item }
-            UISelectionFeedbackGenerator().selectionChanged()
-          } label: {
-            Text(item.title)
-              .font(.caption.weight(filter == item ? .semibold : .medium))
-              .foregroundStyle(filter == item ? QingxuPalette.ink : QingxuPalette.quiet)
-              .padding(.horizontal, 10)
-              .frame(height: 34)
-              .background(filter == item ? QingxuPalette.surface : Color.clear, in: Capsule())
-          }
-          .buttonStyle(.plain)
-        }
-      }
-      .padding(3)
-      .background(QingxuPalette.secondaryBackground, in: Capsule())
-
-      Menu {
-        Button(action: selectAll) {
-          Label("全部来源", systemImage: selectedFolderID == nil && selectedFeedID == nil ? "checkmark" : "square.grid.2x2")
-        }
-        if !folders.isEmpty {
-          Section("分类") {
-            ForEach(folders) { folder in
-              Button { selectFolder(folder.id) } label: {
-                Label(folder.title, systemImage: selectedFolderID == folder.id ? "checkmark" : "folder")
-              }
-            }
-          }
-        }
-        if !subscriptions.isEmpty {
-          Section("订阅") {
-            ForEach(subscriptions) { subscription in
-              Button { selectFeed(subscription.id) } label: {
-                Label(subscription.title, systemImage: selectedFeedID == subscription.id ? "checkmark" : "dot.radiowaves.left.and.right")
-              }
-            }
-          }
-        }
-      } label: {
-        HStack(spacing: 6) {
-          Text(scopeTitle).lineLimit(1)
-          Image(systemName: "chevron.down").font(.caption2.weight(.semibold))
-        }
-        .font(.caption.weight(.semibold))
-        .foregroundStyle(QingxuPalette.ink)
-        .padding(.horizontal, 12)
-        .frame(height: 40)
-        .background(QingxuPalette.secondaryBackground, in: Capsule())
-      }
-      .buttonStyle(.plain)
-      .frame(maxWidth: .infinity, alignment: .trailing)
     }
   }
 }

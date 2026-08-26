@@ -27,6 +27,7 @@ struct PomodoroScreen: View {
   var body: some View {
     NavigationStack {
       VStack(spacing: 0) {
+        #if os(macOS)
         Picker("计时方向", selection: Binding(
           get: { store.pomodoro.timerDirection },
           set: store.setPomodoroTimerDirection
@@ -39,8 +40,23 @@ struct PomodoroScreen: View {
         .frame(maxWidth: 430)
         .padding(.horizontal, 24)
         .padding(.top, 12)
+        #endif
 
-        Spacer(minLength: 20)
+        Spacer(minLength: 64)
+
+        Button { presentedSheet = .task } label: {
+          HStack(spacing: 8) {
+            Text(timerTitle)
+              .font(.headline)
+              .lineLimit(1)
+            Image(systemName: "chevron.right")
+              .font(.caption.weight(.semibold))
+              .foregroundStyle(QingxuPalette.quiet)
+          }
+          .foregroundStyle(QingxuPalette.ink)
+        }
+        .buttonStyle(.plain)
+        .padding(.bottom, 44)
 
         ZStack {
           Circle()
@@ -53,24 +69,24 @@ struct PomodoroScreen: View {
             )
             .rotationEffect(.degrees(-90))
             .animation(.linear(duration: 0.25), value: progress)
-          VStack(spacing: 12) {
-            Text(timerTitle)
-              .font(.subheadline.weight(.semibold))
-              .foregroundStyle(QingxuPalette.quiet)
-              .lineLimit(1)
-              .padding(.horizontal, 28)
-            Text(format(store.displayedRemainingSeconds))
-              .font(.system(size: 54, weight: .light, design: .rounded).monospacedDigit())
-            Text("已完成 \(store.pomodoro.completedFocusSessions) 次专注")
-              .font(.caption)
-              .foregroundStyle(QingxuPalette.quiet)
-          }
+          Text(format(store.displayedRemainingSeconds))
+            .font(.system(size: 54, weight: .light, design: .rounded).monospacedDigit())
         }
         .frame(width: 268, height: 268)
         .accessibilityElement(children: .combine)
 
-        Spacer(minLength: 28)
+        Spacer(minLength: 48)
 
+        #if os(iOS)
+        Button(action: store.togglePomodoro) {
+          Text(store.pomodoro.status == .running ? "暂停" : "开始")
+            .font(.headline)
+            .frame(width: 148, height: 52)
+            .foregroundStyle(QingxuPalette.onAccent)
+            .background(QingxuPalette.actionGradient, in: Capsule())
+        }
+        .buttonStyle(.plain)
+        #else
         HStack(spacing: 16) {
           Button(action: store.resetPomodoro) {
             Image(systemName: "arrow.counterclockwise")
@@ -97,14 +113,42 @@ struct PomodoroScreen: View {
           .buttonStyle(.plain)
           .accessibilityLabel("选择专注任务")
         }
+        #endif
 
-        Spacer(minLength: 34)
+        Spacer(minLength: 38)
       }
       .frame(maxWidth: .infinity, maxHeight: .infinity)
       .background(QingxuPalette.canvasGradient.ignoresSafeArea())
       .tint(QingxuPalette.accent)
+      #if os(iOS)
+      .navigationTitle("")
+      .navigationBarTitleDisplayMode(.inline)
+      #else
       .navigationTitle("番茄钟")
+      #endif
       .toolbar {
+        #if os(iOS)
+        ToolbarItem(placement: .navigationBarLeading) {
+          Button { presentedSheet = .durations } label: {
+            Image(systemName: "clock")
+              .font(.system(size: 18, weight: .medium))
+              .frame(width: 40, height: 40)
+          }
+          .accessibilityLabel("自定义时长")
+        }
+        ToolbarItem(placement: .principal) {
+          Picker("计时方向", selection: Binding(
+            get: { store.pomodoro.timerDirection },
+            set: store.setPomodoroTimerDirection
+          )) {
+            ForEach(PomodoroTimerDirection.allCases) { direction in
+              Text(direction.title).tag(direction)
+            }
+          }
+          .pickerStyle(.segmented)
+          .frame(width: 210)
+        }
+        #endif
         ToolbarItem(placement: .primaryAction) {
           Menu {
             Button {
@@ -125,7 +169,7 @@ struct PomodoroScreen: View {
             }
           } label: {
             Image(systemName: "ellipsis")
-              .frame(width: 36, height: 36)
+              .frame(width: 40, height: 40)
           }
           .accessibilityLabel("番茄钟菜单")
         }
