@@ -60,6 +60,15 @@ struct SettingsScreen: View {
                 tint: QingxuPalette.success
               )
             }
+            SettingsDivider()
+            NavigationLink { AISettingsView().environmentObject(store) } label: {
+              SettingsDestinationRow(
+                symbol: "sparkles",
+                title: "AI 助手",
+                detail: aiDetail,
+                tint: QingxuPalette.ink
+              )
+            }
             #if os(iOS)
             SettingsDivider()
             NavigationLink { WidgetSettingsView() } label: {
@@ -116,6 +125,16 @@ struct SettingsScreen: View {
     }
   }
   #endif
+
+  private var aiDetail: String {
+    guard store.aiSettings.isConfigured(syncSettings: store.syncSettings) else {
+      return "未配置"
+    }
+    switch store.aiSettings.mode {
+    case .selfHosted: return "自托管代理"
+    case .compatible: return store.aiSettings.model
+    }
+  }
 }
 
 #if os(iOS)
@@ -724,6 +743,138 @@ struct SyncSettingsView: View {
   private func save() {
     do {
       try store.saveSyncSettings(draft)
+      message = "设置已保存。"
+    } catch {
+      message = "保存失败：\(error.localizedDescription)"
+    }
+  }
+}
+
+struct AISettingsView: View {
+  @EnvironmentObject private var store: AppStore
+  @State private var draft = AISettings()
+  @State private var testing = false
+  @State private var message: String?
+
+  var body: some View {
+    Form {
+      Section("连接方式") {
+        Picker("AI 服务", selection: $draft.mode) {
+          ForEach(AIConnectionMode.allCases) { mode in
+            Text(mode.title).tag(mode)
+          }
+        }
+        .pickerStyle(.segmented)
+      }
+
+      switch draft.mode {
+      case .selfHosted:
+        Section("自托管代理") {
+          LabeledContent("服务器", value: store.syncSettings.normalizedServerURL)
+          LabeledContent(
+            "状态",
+            value: store.syncSettings.isConfigured ? "同步配置可用" : "需要先配置同步"
+          )
+          NavigationLink("打开同步设置") {
+            SyncSettingsView().environmentObject(store)
+          }
+        }
+      case .compatible:
+        Section("OpenAI 兼容接口") {
+          TextField("接口地址", text: $draft.baseURL)
+            #if os(iOS)
+            .textInputAutocapitalization(.never)
+            .keyboardType(.URL)
+            #endif
+          TextField("模型名称", text: $draft.model)
+            #if os(iOS)
+            .textInputAutocapitalization(.never)
+            #endif
+          SecureField("API 密钥", text: $draft.apiKey)
+            #if os(iOS)
+            .textInputAutocapitalization(.never)
+            #endif
+        }
+      }
+
+      Section("RSS 摘要提示词") {
+        TextField(
+          "自定义摘要要求（可选）",
+          text: $draft.summaryPrompt,
+          axis: .vertical
+        )
+        .lineLimit(3...7)
+        Text("留空时使用内置提示词：输出一句话结论、3 个关键点和一个可执行建议，总计不超过 260 字。")
+          .font(.footnote)
+          .foregroundStyle(QingxuPalette.quiet)
+      }
+
+      Section {
+        Button {
+          Task { await test() }
+        } label: {
+          if testing {
+            HStack(spacing: 10) {
+              ProgressView()
+              Text("正在测试…")
+            }
+          } else {
+            Label("测试连接", systemImage: "bolt.horizontal.circle")
+          }
+        }
+        .disabled(testing || draft.validationMessage(syncSettings: store.syncSettings) != nil)
+
+        Button {
+          save()
+        } label: {
+          Label("保存 AI 设置", systemImage: "checkmark.circle")
+        }
+        .disabled(draft.validationMessage(syncSettings: store.syncSettings) != nil)
+      }
+
+      if let message {
+        Section("状态") {
+          Text(message)
+            .foregroundStyle(message.hasPrefix("连接成功") || message.hasPrefix("设置已保存")
+              ? QingxuPalette.success
+              : QingxuPalette.danger)
+        }
+      } else if let validation = draft.validationMessage(syncSettings: store.syncSettings) {
+        Section("尚未完成") {
+          Text(validation).foregroundStyle(QingxuPalette.quiet)
+        }
+      }
+
+      Section {
+        Text("兼容接口的 API 密钥只保存在本机系统钥匙串中，不写入配置文件，也不会参与多端同步。自托管模式由你的服务器保管模型密钥。")
+          .font(.footnote)
+          .foregroundStyle(QingxuPalette.quiet)
+      }
+    }
+    .qingxuScreen()
+    .navigationTitle("AI 助手")
+    #if os(iOS)
+    .navigationBarTitleDisplayMode(.inline)
+    #endif
+    .onAppear { draft = store.aiSettings }
+  }
+
+  @MainActor
+  private func test() async {
+    testing = true
+    message = nil
+    defer { testing = false }
+    do {
+      try await store.testAIConnection(draft)
+      message = "连接成功，RSS 总结和任务规划可以使用。"
+    } catch {
+      message = error.localizedDescription
+    }
+  }
+
+  private func save() {
+    do {
+      try store.saveAISettings(draft)
       message = "设置已保存。"
     } catch {
       message = "保存失败：\(error.localizedDescription)"

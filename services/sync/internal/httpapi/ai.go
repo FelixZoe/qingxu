@@ -26,6 +26,7 @@ type aiInput struct {
 	Content string   `json:"content,omitempty"`
 	Goal    string   `json:"goal,omitempty"`
 	Tasks   []aiTask `json:"tasks,omitempty"`
+	Prompt  string   `json:"prompt,omitempty"`
 }
 
 type aiTask struct {
@@ -117,8 +118,12 @@ func buildAIPrompt(input aiInput) (string, string, error) {
 		if len(content) > 60_000 {
 			content = content[:60_000]
 		}
+		instruction := strings.TrimSpace(input.Prompt)
+		if instruction == "" {
+			instruction = "请用三段输出：一句话结论；3 个关键点；值得采取的一个行动。总计不超过 260 个汉字。"
+		}
 		return "你是克制、准确的中文阅读助手。只根据原文作答，不编造事实。输出纯文本，不使用 Markdown 标题。",
-			fmt.Sprintf("文章标题：%s\n\n原文：\n%s\n\n请用三段输出：一句话结论；3 个关键点；值得采取的一个行动。总计不超过 260 个汉字。", strings.TrimSpace(input.Title), content), nil
+			fmt.Sprintf("文章标题：%s\n\n原文：\n%s\n\n摘要要求：%s", strings.TrimSpace(input.Title), content, instruction), nil
 	case "task_plan":
 		if len(input.Tasks) == 0 && strings.TrimSpace(input.Goal) == "" {
 			return "", "", errors.New("tasks or goal is required")

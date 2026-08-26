@@ -277,15 +277,23 @@ struct QingxuLiveActivity: Widget {
     } dynamicIsland: { context in
       DynamicIsland {
         DynamicIslandExpandedRegion(.leading) {
-          Label(modeTitle(context.state.mode), systemImage: "timer")
-            .font(.caption.weight(.medium))
+          Image(systemName: context.state.mode == "focus" ? "timer" : "cup.and.saucer.fill")
+            .font(.system(size: 15, weight: .semibold))
+            .foregroundStyle(QingxuWidgetPalette.accent)
+            .frame(width: 24, height: 24)
+        }
+        DynamicIslandExpandedRegion(.center) {
+          liveTimer(context.state)
+            .font(.title3.weight(.semibold).monospacedDigit())
             .lineLimit(1)
+            .minimumScaleFactor(0.82)
+            .frame(minWidth: 76)
         }
         DynamicIslandExpandedRegion(.trailing) {
-          liveTimer(context.state)
-            .font(.headline.weight(.semibold).monospacedDigit())
+          Text(modeTitle(context.state.mode))
+            .font(.caption.weight(.medium))
             .lineLimit(1)
-            .minimumScaleFactor(0.7)
+            .foregroundStyle(.secondary)
         }
         DynamicIslandExpandedRegion(.bottom) {
           HStack(spacing: 8) {
@@ -301,12 +309,15 @@ struct QingxuLiveActivity: Widget {
         }
       } compactLeading: {
         Image(systemName: context.state.mode == "focus" ? "timer" : "cup.and.saucer.fill")
+          .font(.system(size: 11, weight: .semibold))
           .foregroundStyle(QingxuWidgetPalette.accent)
+          .frame(width: 12)
       } compactTrailing: {
         liveTimer(context.state)
-          .font(.caption2.monospacedDigit())
+          .font(.system(size: 11, weight: .medium, design: .monospaced))
           .lineLimit(1)
-          .minimumScaleFactor(0.72)
+          .minimumScaleFactor(0.8)
+          .frame(width: 38, alignment: .trailing)
       } minimal: {
         Image(systemName: context.state.mode == "focus" ? "timer" : "cup.and.saucer.fill")
       }

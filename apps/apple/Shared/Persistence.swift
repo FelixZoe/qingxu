@@ -61,3 +61,41 @@ enum SecureSyncToken {
     }
   }
 }
+
+enum SecureAIAPIKey {
+  private static let account = "qingxu.ai.api-key.v1"
+
+  static func read() -> String {
+    let query: [String: Any] = [
+      kSecClass as String: kSecClassGenericPassword,
+      kSecAttrAccount as String: account,
+      kSecReturnData as String: true,
+      kSecMatchLimit as String: kSecMatchLimitOne,
+    ]
+    var result: CFTypeRef?
+    guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
+          let data = result as? Data,
+          let value = String(data: data, encoding: .utf8)
+    else { return "" }
+    return value
+  }
+
+  static func write(_ apiKey: String) throws {
+    let base: [String: Any] = [
+      kSecClass as String: kSecClassGenericPassword,
+      kSecAttrAccount as String: account,
+    ]
+    SecItemDelete(base as CFDictionary)
+    let normalized = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !normalized.isEmpty else { return }
+    var item = base
+    item[kSecValueData as String] = Data(normalized.utf8)
+    #if os(iOS)
+    item[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+    #endif
+    let status = SecItemAdd(item as CFDictionary, nil)
+    guard status == errSecSuccess else {
+      throw NSError(domain: NSOSStatusErrorDomain, code: Int(status))
+    }
+  }
+}

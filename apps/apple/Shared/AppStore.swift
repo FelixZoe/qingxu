@@ -28,6 +28,7 @@ final class AppStore: ObservableObject {
   @Published private(set) var tasks: [TaskItem] = []
   @Published private(set) var pomodoro = PomodoroState.initial()
   @Published var syncSettings = SyncSettings()
+  @Published var aiSettings = AISettings()
   @Published private(set) var syncPhase: SyncPhase = .localOnly
   @Published private(set) var displayedRemainingSeconds = 25 * 60
 
@@ -48,6 +49,8 @@ final class AppStore: ObservableObject {
     pomodoro = QingxuFiles.load(PomodoroState.self, name: "pomodoro.json") ?? .initial()
     syncSettings = QingxuFiles.load(SyncSettings.self, name: "sync.json") ?? SyncSettings()
     syncSettings.token = SecureSyncToken.read()
+    aiSettings = QingxuFiles.load(AISettings.self, name: "ai.json") ?? AISettings()
+    aiSettings.apiKey = SecureAIAPIKey.read()
     if let metadata = QingxuFiles.load(SyncMetadata.self, name: "sync-state.json") {
       lastRevision = metadata.revision
       dirtyTaskIDs = metadata.dirtyTaskIDs
@@ -267,6 +270,16 @@ final class AppStore: ObservableObject {
 
   func testConnection(_ settings: SyncSettings) async throws {
     try await client.testConnection(settings: settings)
+  }
+
+  func saveAISettings(_ settings: AISettings) throws {
+    aiSettings = settings
+    try SecureAIAPIKey.write(settings.apiKey)
+    try QingxuFiles.save(settings, name: "ai.json")
+  }
+
+  func testAIConnection(_ settings: AISettings) async throws {
+    try await QingxuAIClient().test(settings: syncSettings, aiSettings: settings)
   }
 
   @discardableResult

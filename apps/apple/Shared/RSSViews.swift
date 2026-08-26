@@ -1,7 +1,7 @@
 #if os(iOS)
-import SafariServices
 import SwiftUI
 import UniformTypeIdentifiers
+import WebKit
 #if canImport(Translation)
 import Translation
 #endif
@@ -13,11 +13,6 @@ private enum RSSPresentation: String, Identifiable {
   case preferences
 
   var id: String { rawValue }
-}
-
-private struct RSSWebsiteRoute: Identifiable {
-  let id = UUID()
-  let url: URL
 }
 
 private struct OPMLOutlineDocument: FileDocument {
@@ -45,7 +40,6 @@ private struct OPMLOutlineDocument: FileDocument {
 struct RSSScreen: View {
   @ObservedObject var store: RSSStore
   @State private var presentation: RSSPresentation?
-  @State private var websiteRoute: RSSWebsiteRoute?
   @State private var selectedFeedID: String?
   @State private var selectedFolderID: String?
   @State private var filter = RSSArticleFilter.unread
@@ -130,9 +124,6 @@ struct RSSScreen: View {
         case .preferences:
           NavigationStack { RSSPreferencesView(store: store) }
         }
-      }
-      .sheet(item: $websiteRoute) { route in
-        RSSWebsiteView(url: route.url).ignoresSafeArea()
       }
       .fileImporter(
         isPresented: $isImporting,
@@ -595,14 +586,16 @@ private struct RSSEmptyArticles: View {
 
 private struct RSSReaderView: View {
   @EnvironmentObject private var appStore: AppStore
+  @Environment(\.openURL) private var openURL
   let article: RSSArticle
   let openArticle: (RSSArticle) -> Void
   let toggleStarred: (RSSArticle) -> Void
   let setReadingProgress: (Double, String) -> Void
   @State private var isStarred: Bool
-  @State private var websiteRoute: RSSWebsiteRoute?
-  @State private var resolvedText = ""
-  @State private var isLoadingFullText = false
+  @State private var pageTitle = ""
+  @State private var pageText = ""
+  @State private var isLoadingPage = true
+  @State private var reloadID = UUID()
   @State private var isTranslating = false
   @State private var translatedTitle: String?
   @State private var translatedBody: String?
@@ -610,9 +603,8 @@ private struct RSSReaderView: View {
   @State private var translationUnavailable = false
   @State private var aiSummary: String?
   @State private var isSummarizing = false
+  @State private var showingSummary = false
   @State private var aiError: String?
-  @AppStorage("qingxu.rss.reader.fontScale") private var fontScale = 1.0
-  @AppStorage("qingxu.rss.reader.lineSpacing") private var readerLineSpacing = 7.0
 
   init(
     article: RSSArticle,
@@ -628,85 +620,45 @@ private struct RSSReaderView: View {
   }
 
   var body: some View {
-    ScrollView {
-      VStack(alignment: .leading, spacing: 18) {
-        Text(article.feedTitle)
-          .font(.subheadline.weight(.semibold))
-          .foregroundStyle(QingxuPalette.accent)
-        Text(displayedTitle)
-          .font(.largeTitle.bold())
-          .foregroundStyle(QingxuPalette.ink)
-        HStack(spacing: 7) {
-          if let author = article.author { Text(author) }
-          if let date = article.publishedAt {
-            if article.author != nil { Text("·") }
-            Text(date.formatted(date: .abbreviated, time: .shortened))
+    ZStack(alignment: .top) {
+      if let url = articleURL {
+        RSSWebArticleView(
+          url: url,
+          translatedTitle: showsOriginal ? nil : translatedTitle,
+          translatedBody: showsOriginal ? nil : translatedBody,
+          reloadID: reloadID,
+          onLoadingChange: { isLoadingPage = $0 },
+          onContent: { title, text in
+            guard translatedBody == nil || showsOriginal else { return }
+            pageTitle = title
+            pageText = text
+            setReadingProgress(1, article.id)
           }
-        }
-        .font(.subheadline)
-        .foregroundStyle(QingxuPalette.quiet)
-
-        if let aiSummary {
-          VStack(alignment: .leading, spacing: 9) {
-            Label("AI 摘要", systemImage: "sparkles")
-              .font(.subheadline.weight(.semibold))
-            Text(aiSummary)
-              .font(QingxuType.body)
-              .foregroundStyle(QingxuPalette.ink)
-              .lineSpacing(4)
-          }
-          .padding(.vertical, 4)
-        }
-
-        Divider().overlay(QingxuPalette.separator)
-
-        if isLoadingFullText {
-          HStack(spacing: 8) {
-            ProgressView().controlSize(.small)
-            Text("正在补全原文")
-          }
-          .font(.caption)
-          .foregroundStyle(QingxuPalette.quiet)
-        }
-
-        Text(displayedBody)
-          .font(.system(size: 17 * fontScale, weight: .regular))
-          .foregroundStyle(QingxuPalette.ink)
-          .lineSpacing(readerLineSpacing)
-          .textSelection(.enabled)
-
-        if translatedBody != nil, !showsOriginal {
-          Label("译文已覆盖原文", systemImage: "character.bubble")
-            .font(.caption)
-            .foregroundStyle(QingxuPalette.quiet)
-        }
-
-        Color.clear
-          .frame(height: 1)
-          .onAppear { setReadingProgress(1, article.id) }
-
-        if let url = URL(string: article.link), !article.link.isEmpty {
-          Button {
-            websiteRoute = RSSWebsiteRoute(url: url)
-          } label: {
-            Label("查看原网页", systemImage: "safari")
-              .font(.subheadline.weight(.semibold))
-              .frame(maxWidth: .infinity)
-              .frame(height: 46)
-              .background(QingxuPalette.selected, in: Capsule())
-          }
-          .buttonStyle(.plain)
-          .padding(.top, 10)
+        )
+      } else {
+        ScrollView {
+          Text(readerText)
+            .font(QingxuType.body)
+            .foregroundStyle(QingxuPalette.ink)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(22)
         }
       }
-      .frame(maxWidth: 720, alignment: .leading)
-      .padding(22)
-      .padding(.bottom, 80)
+
+      if isLoadingPage, articleURL != nil {
+        ProgressView()
+          .controlSize(.small)
+          .padding(.horizontal, 13)
+          .padding(.vertical, 8)
+          .background(.regularMaterial, in: Capsule())
+          .padding(.top, 8)
+          .transition(.opacity)
+      }
     }
     .qingxuScreen()
+    .navigationTitle(article.feedTitle)
     .navigationBarTitleDisplayMode(.inline)
     .onAppear { openArticle(article) }
-    .task(id: article.id) { await loadFullTextIfNeeded() }
     .overlay {
       if isTranslating {
         translationWorker
@@ -715,45 +667,88 @@ private struct RSSReaderView: View {
     .toolbar {
       ToolbarItemGroup(placement: .navigationBarTrailing) {
         Button {
-          Task { await summarize() }
-        } label: {
-          if isSummarizing {
-            ProgressView().controlSize(.small)
-          } else {
-            Image(systemName: "sparkles")
-          }
-        }
-        .disabled(isSummarizing)
-        .accessibilityLabel("AI 总结")
-        Button {
-          if translatedBody != nil {
-            withAnimation(.easeInOut(duration: 0.16)) { showsOriginal.toggle() }
-          } else if #available(iOS 18.0, *) {
-            isTranslating = true
-          } else {
-            translationUnavailable = true
-          }
-        } label: {
-          if isTranslating {
-            ProgressView().controlSize(.small)
-          } else {
-            Image(systemName: translatedBody != nil && !showsOriginal ? "textformat" : "character.bubble")
-          }
-        }
-        .accessibilityLabel("翻译文章")
-        Button {
           toggleStarred(article)
           isStarred.toggle()
         } label: {
           Image(systemName: isStarred ? "star.fill" : "star")
         }
-        if let url = URL(string: article.link), !article.link.isEmpty {
-          ShareLink(item: url) { Image(systemName: "square.and.arrow.up") }
+
+        Menu {
+          Button {
+            if aiSummary != nil {
+              showingSummary = true
+            } else {
+              Task { await summarize() }
+            }
+          } label: {
+            Label(isSummarizing ? "正在生成摘要…" : "AI 总结", systemImage: "sparkles")
+          }
+          .disabled(isSummarizing)
+
+          Button {
+            if translatedBody != nil {
+              withAnimation(.easeInOut(duration: 0.16)) { showsOriginal.toggle() }
+            } else if #available(iOS 18.0, *) {
+              isTranslating = true
+            } else {
+              translationUnavailable = true
+            }
+          } label: {
+            Label(
+              translatedBody != nil && !showsOriginal ? "显示原文" : "翻译为简体中文",
+              systemImage: "character.bubble"
+            )
+          }
+          .disabled(isTranslating)
+
+          if let url = articleURL {
+            Divider()
+            Button {
+              reloadID = UUID()
+            } label: {
+              Label("刷新网页", systemImage: "arrow.clockwise")
+            }
+            Button {
+              openURL(url)
+            } label: {
+              Label("用外部浏览器打开", systemImage: "safari")
+            }
+            ShareLink(item: url) {
+              Label("分享链接", systemImage: "square.and.arrow.up")
+            }
+          }
+        } label: {
+          if isSummarizing || isTranslating {
+            ProgressView().controlSize(.small)
+          } else {
+            Image(systemName: "ellipsis")
+          }
         }
+        .accessibilityLabel("文章操作")
       }
     }
-    .sheet(item: $websiteRoute) { route in
-      RSSWebsiteView(url: route.url).ignoresSafeArea()
+    .sheet(isPresented: $showingSummary) {
+      NavigationStack {
+        ScrollView {
+          VStack(alignment: .leading, spacing: 14) {
+            Text(article.title)
+              .font(.headline)
+              .foregroundStyle(QingxuPalette.quiet)
+            Text(aiSummary ?? "")
+              .font(QingxuType.body)
+              .foregroundStyle(QingxuPalette.ink)
+              .lineSpacing(5)
+              .textSelection(.enabled)
+          }
+          .frame(maxWidth: .infinity, alignment: .leading)
+          .padding(22)
+        }
+        .qingxuScreen()
+        .navigationTitle("AI 摘要")
+        .navigationBarTitleDisplayMode(.inline)
+      }
+      .presentationDetents([.medium, .large])
+      .presentationDragIndicator(.visible)
     }
     .alert("系统翻译不可用", isPresented: $translationUnavailable) {
       Button("好", role: .cancel) {}
@@ -770,27 +765,23 @@ private struct RSSReaderView: View {
     }
   }
 
+  private var articleURL: URL? {
+    guard !article.link.isEmpty else { return nil }
+    return URL(string: article.link)
+  }
+
   private var readerText: String {
-    if !resolvedText.isEmpty { return resolvedText }
+    let webText = pageText.trimmingCharacters(in: .whitespacesAndNewlines)
+    if !webText.isEmpty { return webText }
     let content = article.content?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
     return content.isEmpty ? article.summary : content
-  }
-
-  private var displayedTitle: String {
-    if !showsOriginal, let translatedTitle, !translatedTitle.isEmpty { return translatedTitle }
-    return article.title
-  }
-
-  private var displayedBody: String {
-    if !showsOriginal, let translatedBody, !translatedBody.isEmpty { return translatedBody }
-    return readerText
   }
 
   @ViewBuilder
   private var translationWorker: some View {
     #if canImport(Translation)
     if #available(iOS 18.0, *) {
-      RSSInlineTranslationWorker(title: article.title, text: readerText) { title, body in
+      RSSInlineTranslationWorker(title: pageTitle.isEmpty ? article.title : pageTitle, text: readerText) { title, body in
         translatedTitle = title
         translatedBody = body
         showsOriginal = false
@@ -805,22 +796,6 @@ private struct RSSReaderView: View {
     #endif
   }
 
-  private func loadFullTextIfNeeded() async {
-    guard readerText.count < 1_200,
-          let url = URL(string: article.link),
-          !article.link.isEmpty
-    else { return }
-    await MainActor.run { isLoadingFullText = true }
-    let fullText = await RSSArticleExtractor.fullText(from: url)
-    await MainActor.run {
-      if let fullText, fullText.count > readerText.count + 180 {
-        resolvedText = fullText
-        translatedBody = nil
-      }
-      isLoadingFullText = false
-    }
-  }
-
   @MainActor
   private func summarize() async {
     guard !isSummarizing else { return }
@@ -828,12 +803,171 @@ private struct RSSReaderView: View {
     defer { isSummarizing = false }
     do {
       aiSummary = try await QingxuAIClient().summarize(
-        title: article.title,
+        title: pageTitle.isEmpty ? article.title : pageTitle,
         content: readerText,
-        settings: appStore.syncSettings
+        settings: appStore.syncSettings,
+        aiSettings: appStore.aiSettings
       )
+      showingSummary = true
     } catch {
       aiError = error.localizedDescription
+    }
+  }
+}
+
+private struct RSSWebArticleView: UIViewRepresentable {
+  let url: URL
+  let translatedTitle: String?
+  let translatedBody: String?
+  let reloadID: UUID
+  let onLoadingChange: (Bool) -> Void
+  let onContent: (String, String) -> Void
+
+  func makeCoordinator() -> Coordinator { Coordinator(parent: self) }
+
+  func makeUIView(context: Context) -> WKWebView {
+    let configuration = WKWebViewConfiguration()
+    configuration.websiteDataStore = .default()
+    configuration.defaultWebpagePreferences.allowsContentJavaScript = true
+    configuration.allowsInlineMediaPlayback = true
+    let webView = WKWebView(frame: .zero, configuration: configuration)
+    webView.navigationDelegate = context.coordinator
+    webView.allowsBackForwardNavigationGestures = true
+    webView.scrollView.contentInsetAdjustmentBehavior = .automatic
+    webView.scrollView.keyboardDismissMode = .interactive
+    webView.isOpaque = false
+    webView.backgroundColor = .clear
+    context.coordinator.loadIfNeeded(in: webView, force: true)
+    return webView
+  }
+
+  func updateUIView(_ webView: WKWebView, context: Context) {
+    context.coordinator.parent = self
+    context.coordinator.loadIfNeeded(in: webView, force: false)
+  }
+
+  final class Coordinator: NSObject, WKNavigationDelegate {
+    var parent: RSSWebArticleView
+    private var loadedSource = ""
+    private var loadedReloadID: UUID?
+
+    init(parent: RSSWebArticleView) {
+      self.parent = parent
+    }
+
+    func loadIfNeeded(in webView: WKWebView, force: Bool) {
+      let translationKey = parent.translatedBody.map { String($0.hashValue) } ?? "original"
+      let source = "\(parent.url.absoluteString)|\(translationKey)"
+      guard force || source != loadedSource || loadedReloadID != parent.reloadID else { return }
+      loadedSource = source
+      loadedReloadID = parent.reloadID
+      DispatchQueue.main.async { self.parent.onLoadingChange(true) }
+      if let body = parent.translatedBody, !body.isEmpty {
+        webView.loadHTMLString(
+          translatedDocument(title: parent.translatedTitle ?? "译文", body: body),
+          baseURL: parent.url
+        )
+      } else {
+        webView.load(URLRequest(url: parent.url, cachePolicy: .useProtocolCachePolicy, timeoutInterval: 30))
+      }
+    }
+
+    func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation?) {
+      parent.onLoadingChange(true)
+    }
+
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation?) {
+      parent.onLoadingChange(false)
+      captureContent(from: webView)
+      DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self, weak webView] in
+        guard let self, let webView else { return }
+        self.captureContent(from: webView)
+      }
+    }
+
+    func webView(
+      _ webView: WKWebView,
+      didFail navigation: WKNavigation?,
+      withError error: Error
+    ) {
+      parent.onLoadingChange(false)
+    }
+
+    func webView(
+      _ webView: WKWebView,
+      didFailProvisionalNavigation navigation: WKNavigation?,
+      withError error: Error
+    ) {
+      parent.onLoadingChange(false)
+    }
+
+    func webView(
+      _ webView: WKWebView,
+      decidePolicyFor navigationAction: WKNavigationAction,
+      decisionHandler: @escaping (WKNavigationActionPolicy) -> Void
+    ) {
+      guard let destination = navigationAction.request.url,
+            let scheme = destination.scheme?.lowercased(),
+            scheme == "http" || scheme == "https"
+      else {
+        decisionHandler(.cancel)
+        return
+      }
+      if navigationAction.targetFrame == nil {
+        webView.load(navigationAction.request)
+        decisionHandler(.cancel)
+      } else {
+        decisionHandler(.allow)
+      }
+    }
+
+    private func captureContent(from webView: WKWebView) {
+      let script = """
+      (() => ({
+        title: document.title || '',
+        text: document.body ? document.body.innerText : ''
+      }))()
+      """
+      webView.evaluateJavaScript(script) { [weak self] result, _ in
+        guard let self,
+              let values = result as? [String: Any],
+              let text = values["text"] as? String,
+              !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        else { return }
+        let title = values["title"] as? String ?? ""
+        DispatchQueue.main.async { self.parent.onContent(title, text) }
+      }
+    }
+
+    private func translatedDocument(title: String, body: String) -> String {
+      let paragraphs = body
+        .components(separatedBy: "\n\n")
+        .map { "<p>\(htmlEscaped($0).replacingOccurrences(of: "\n", with: "<br>"))</p>" }
+        .joined(separator: "\n")
+      return """
+      <!doctype html>
+      <html lang="zh-Hans">
+      <head>
+        <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+        <style>
+          :root { color-scheme: light dark; }
+          body { margin: 0 auto; max-width: 760px; padding: 28px 22px 80px;
+            font: 17px/1.75 -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif; }
+          h1 { font-size: 28px; line-height: 1.25; margin: 0 0 26px; letter-spacing: -0.02em; }
+          p { margin: 0 0 1.05em; }
+        </style>
+      </head>
+      <body><h1>\(htmlEscaped(title))</h1>\(paragraphs)</body>
+      </html>
+      """
+    }
+
+    private func htmlEscaped(_ value: String) -> String {
+      value
+        .replacingOccurrences(of: "&", with: "&amp;")
+        .replacingOccurrences(of: "<", with: "&lt;")
+        .replacingOccurrences(of: ">", with: "&gt;")
+        .replacingOccurrences(of: "\"", with: "&quot;")
     }
   }
 }
@@ -864,64 +998,6 @@ private struct RSSInlineTranslationWorker: View {
 }
 #endif
 
-private enum RSSArticleExtractor {
-  static func fullText(from url: URL) async -> String? {
-    do {
-      var request = URLRequest(url: url)
-      request.timeoutInterval = 18
-      request.setValue(
-        "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Version/18.0 Mobile Safari/604.1",
-        forHTTPHeaderField: "User-Agent"
-      )
-      let (data, response) = try await URLSession.shared.data(for: request)
-      guard let http = response as? HTTPURLResponse,
-            200..<400 ~= http.statusCode,
-            data.count < 8_000_000,
-            let html = String(data: data, encoding: .utf8) ?? String(data: data, encoding: .isoLatin1)
-      else { return nil }
-      return extractReadableText(html)
-    } catch {
-      return nil
-    }
-  }
-
-  private static func extractReadableText(_ html: String) -> String? {
-    var cleaned = html
-    for tag in ["script", "style", "svg", "nav", "header", "footer", "form", "aside"] {
-      cleaned = cleaned.replacingOccurrences(
-        of: "(?is)<\(tag)\\b[^>]*>.*?</\(tag)>",
-        with: " ",
-        options: .regularExpression
-      )
-    }
-    let candidates = ["article", "main"]
-    for tag in candidates {
-      if let range = cleaned.range(of: "(?is)<\(tag)\\b[^>]*>(.*?)</\(tag)>", options: .regularExpression) {
-        let candidate = readableText(String(cleaned[range]))
-        if candidate.count > 500 { return candidate }
-      }
-    }
-    let fallback = readableText(cleaned)
-    return fallback.count > 500 ? fallback : nil
-  }
-
-  private static func readableText(_ html: String) -> String {
-    var text = html
-      .replacingOccurrences(of: "(?i)<br\\s*/?>", with: "\n", options: .regularExpression)
-      .replacingOccurrences(of: "(?i)</(p|div|h[1-6]|li|blockquote|section)>", with: "\n\n", options: .regularExpression)
-      .replacingOccurrences(of: "(?s)<[^>]+>", with: " ", options: .regularExpression)
-    let entities = [
-      "&nbsp;": " ", "&amp;": "&", "&lt;": "<", "&gt;": ">",
-      "&quot;": "\"", "&#39;": "'", "&apos;": "'", "&mdash;": "—", "&ndash;": "–"
-    ]
-    for (entity, value) in entities { text = text.replacingOccurrences(of: entity, with: value) }
-    text = text.replacingOccurrences(of: "[ \\t]+", with: " ", options: .regularExpression)
-    text = text.replacingOccurrences(of: "\\n[ \\t]+", with: "\n", options: .regularExpression)
-    text = text.replacingOccurrences(of: "\\n{3,}", with: "\n\n", options: .regularExpression)
-    return text.trimmingCharacters(in: .whitespacesAndNewlines)
-  }
-}
-
 private extension String {
   func translationChunks(maximumLength: Int) -> [String] {
     guard count > maximumLength else { return [self] }
@@ -946,22 +1022,6 @@ private extension String {
     if !buffer.isEmpty { result.append(buffer) }
     return result
   }
-}
-
-private struct RSSWebsiteView: UIViewControllerRepresentable {
-  let url: URL
-
-  func makeUIViewController(context: Context) -> SFSafariViewController {
-    let configuration = SFSafariViewController.Configuration()
-    configuration.entersReaderIfAvailable = true
-    configuration.barCollapsingEnabled = true
-    let controller = SFSafariViewController(url: url, configuration: configuration)
-    controller.dismissButtonStyle = .close
-    controller.preferredControlTintColor = UIColor(QingxuPalette.accent)
-    return controller
-  }
-
-  func updateUIViewController(_ controller: SFSafariViewController, context: Context) {}
 }
 
 private struct RSSAddSheet: View {
@@ -1176,34 +1236,11 @@ private struct RSSFolderManager: View {
 
 private struct RSSPreferencesView: View {
   @ObservedObject var store: RSSStore
-  @AppStorage("qingxu.rss.reader.fontScale") private var fontScale = 1.0
-  @AppStorage("qingxu.rss.reader.lineSpacing") private var lineSpacing = 7.0
   @State private var syncing = false
   @State private var syncMessage = ""
 
   var body: some View {
     Form {
-      Section("原生阅读器") {
-        VStack(alignment: .leading, spacing: 8) {
-          HStack {
-            Text("字号")
-            Spacer()
-            Text("\(Int(fontScale * 100))%")
-              .foregroundStyle(QingxuPalette.quiet)
-          }
-          Slider(value: $fontScale, in: 0.88...1.28, step: 0.04)
-        }
-        VStack(alignment: .leading, spacing: 8) {
-          HStack {
-            Text("行距")
-            Spacer()
-            Text("\(Int(lineSpacing))")
-              .foregroundStyle(QingxuPalette.quiet)
-          }
-          Slider(value: $lineSpacing, in: 3...12, step: 1)
-        }
-      }
-
       Section("离线缓存") {
         LabeledContent("已缓存文章", value: "\(store.articles.count) 篇")
         LabeledContent(

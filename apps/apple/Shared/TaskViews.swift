@@ -7,7 +7,7 @@ enum TaskScope {
   var title: String { self == .inbox ? "收集箱" : "今天" }
   var emptyTitle: String { self == .inbox ? "收集箱已清空" : "今天没有任务" }
   var emptyDetail: String { self == .inbox ? "随时记录任务和想法" : "留一点时间给自己" }
-  var symbol: String { self == .inbox ? "tray" : "sun.max" }
+  var symbol: String { self == .inbox ? "tray" : "sun.horizon" }
 }
 
 private struct TaskEditorRoute: Identifiable {
@@ -92,9 +92,6 @@ struct TaskListScreen: View {
         if scope == .today {
           ToolbarItem(placement: .principal) {
             TodayNavigationTitle(date: selectedDate, expansion: calendarExpansion)
-          }
-          ToolbarItem(placement: .navigationBarTrailing) {
-            todayCalendarButton
           }
           ToolbarItem(placement: .navigationBarTrailing) {
             todayMoreMenu
@@ -305,6 +302,7 @@ struct TaskListScreen: View {
           weekStartsMonday: weekStartsMonday
         )
         .padding(.horizontal, 20)
+        .frame(maxWidth: .infinity)
         .padding(.top, TodayCalendarMetrics.topPadding)
         .background(QingxuPalette.background)
         .contentShape(Rectangle())
@@ -334,7 +332,7 @@ struct TaskListScreen: View {
 
             Color.clear.frame(height: tasks.isEmpty ? 360 : 118)
           }
-          .frame(maxWidth: .infinity)
+          .frame(width: geometry.size.width)
           .background(TodayTaskScrollConfigurator(expansion: $calendarExpansion))
         }
         .scrollIndicators(.visible)
@@ -393,18 +391,6 @@ struct TaskListScreen: View {
   }
 
   #if os(iOS)
-  private var todayCalendarButton: some View {
-    Button {
-      setCalendarExpanded(calendarExpansion < 0.5)
-    } label: {
-      Image(systemName: calendarExpansion < 0.5
-        ? "calendar.day.timeline.left"
-        : "calendar")
-    }
-    .foregroundStyle(QingxuPalette.ink)
-    .accessibilityLabel(calendarExpansion < 0.5 ? "显示整月" : "显示当前周")
-  }
-
   private var todayMoreMenu: some View {
     Menu {
       Menu {
@@ -915,7 +901,8 @@ private struct AITaskPlannerSheet: View {
       let result = try await QingxuAIClient().plan(
         goal: goal.trimmingCharacters(in: .whitespacesAndNewlines),
         tasks: tasks,
-        settings: store.syncSettings
+        settings: store.syncSettings,
+        aiSettings: store.aiSettings
       )
       plan = result
       selected = Set(result.suggestions.map(\.id))

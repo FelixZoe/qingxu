@@ -221,6 +221,67 @@ struct SyncSettings: Codable, Equatable {
   }
 }
 
+enum AIConnectionMode: String, Codable, CaseIterable, Identifiable {
+  case selfHosted
+  case compatible
+
+  var id: String { rawValue }
+
+  var title: String {
+    switch self {
+    case .selfHosted: "自托管代理"
+    case .compatible: "兼容接口"
+    }
+  }
+}
+
+struct AISettings: Codable, Equatable {
+  var mode: AIConnectionMode = .selfHosted
+  var baseURL = "https://api.openai.com/v1/chat/completions"
+  var model = "gpt-4.1-mini"
+  var summaryPrompt = ""
+  var apiKey = ""
+
+  var normalizedBaseURL: String {
+    var value = baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+    while value.hasSuffix("/") { value.removeLast() }
+    if !value.contains("://") { value = "https://\(value)" }
+    if let url = URL(string: value), url.path.isEmpty || url.path == "/" {
+      return value + "/v1/chat/completions"
+    }
+    if value.hasSuffix("/v1") { return value + "/chat/completions" }
+    return value
+  }
+
+  func validationMessage(syncSettings: SyncSettings) -> String? {
+    switch mode {
+    case .selfHosted:
+      return syncSettings.validationMessage == nil
+        ? nil
+        : "请先配置可用的自托管同步服务器"
+    case .compatible:
+      guard let url = URL(string: normalizedBaseURL), url.host != nil else {
+        return "AI 接口地址格式不正确"
+      }
+      guard !model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+        return "请填写模型名称"
+      }
+      guard !apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+        return "请填写 API 密钥"
+      }
+      return nil
+    }
+  }
+
+  func isConfigured(syncSettings: SyncSettings) -> Bool {
+    validationMessage(syncSettings: syncSettings) == nil
+  }
+
+  enum CodingKeys: String, CodingKey {
+    case mode, baseURL, model, summaryPrompt
+  }
+}
+
 enum AppTab: String, CaseIterable, Identifiable, Hashable {
   case inbox
   case today
@@ -243,7 +304,7 @@ enum AppTab: String, CaseIterable, Identifiable, Hashable {
   var symbol: String {
     switch self {
     case .inbox: "tray"
-    case .today: "sun.max"
+    case .today: "sun.horizon"
     case .pomodoro: "timer"
     case .rss: "dot.radiowaves.left.and.right"
     case .settings: "gearshape"
