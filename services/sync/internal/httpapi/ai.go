@@ -134,6 +134,17 @@ func buildAIPrompt(input aiInput) (string, string, error) {
 		tasks, _ := json.Marshal(input.Tasks)
 		return "你是轻量任务规划助手。保持现实、少而明确，不制造冗余任务。必须只输出合法 JSON，不要代码块。",
 			fmt.Sprintf("用户目标：%s\n现有任务：%s\n今天日期：%s\n请返回 {\"summary\":\"一句简短建议\",\"suggestions\":[{\"title\":\"任务名\",\"dayOffset\":0}]}。dayOffset 为 0 到 14，最多 6 项；保留必要的原任务，可拆分过大的任务。", strings.TrimSpace(input.Goal), tasks, time.Now().Format("2006-01-02")), nil
+	case "rss_translation":
+		content := strings.TrimSpace(input.Content)
+		var segments []string
+		if err := json.Unmarshal([]byte(content), &segments); err != nil || len(segments) == 0 {
+			return "", "", errors.New("content must be a non-empty JSON string array")
+		}
+		if len(segments) > 40 {
+			return "", "", errors.New("at most 40 translation segments are allowed")
+		}
+		return "你是专业翻译器。把输入 JSON 字符串数组逐项翻译成自然、准确的简体中文。保持数组数量和顺序完全一致，只输出合法 JSON 数组，不要解释，不要 Markdown。",
+			fmt.Sprintf("待翻译 JSON 数组：\n%s", content), nil
 	default:
 		return "", "", errors.New("unsupported mode")
 	}

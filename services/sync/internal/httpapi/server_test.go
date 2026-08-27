@@ -15,6 +15,25 @@ import (
 
 const testToken = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 
+func TestBuildAIPromptAcceptsTranslationSegments(t *testing.T) {
+	system, prompt, err := buildAIPrompt(aiInput{
+		Mode:    "rss_translation",
+		Content: `["A short title","A longer paragraph."]`,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(system, "JSON") || !strings.Contains(prompt, "A short title") {
+		t.Fatalf("unexpected translation prompt: system=%q prompt=%q", system, prompt)
+	}
+}
+
+func TestBuildAIPromptRejectsInvalidTranslationPayload(t *testing.T) {
+	if _, _, err := buildAIPrompt(aiInput{Mode: "rss_translation", Content: `not-json`}); err == nil {
+		t.Fatal("expected invalid translation payload to be rejected")
+	}
+}
+
 func TestNewRejectsNonHexOrWeakToken(t *testing.T) {
 	taskStore, err := store.Open(filepath.Join(t.TempDir(), "store.json"))
 	if err != nil {

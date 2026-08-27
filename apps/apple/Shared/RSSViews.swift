@@ -561,7 +561,7 @@ private struct RSSReaderView: View {
   @State private var translationSourceSegments: [String] = []
   @State private var translatedSegments: [String]?
   @State private var showsOriginal = false
-  @State private var translationUnavailable = false
+  @State private var translationError: String?
   @State private var aiSummary: String?
   @State private var isSummarizing = false
   @State private var showingSummary = false
@@ -599,7 +599,7 @@ private struct RSSReaderView: View {
             guard isTranslating else { return }
             guard !segments.isEmpty else {
               isTranslating = false
-              translationUnavailable = true
+              translationError = "没有从网页正文中提取到可翻译内容，请刷新后重试。"
               return
             }
             translationSourceSegments = segments
@@ -658,12 +658,10 @@ private struct RSSReaderView: View {
           Button {
             if translatedSegments != nil {
               withAnimation(.easeInOut(duration: 0.16)) { showsOriginal.toggle() }
-            } else if #available(iOS 18.0, *) {
+            } else {
               translationSourceSegments = []
               translationRequestID = UUID()
               isTranslating = true
-            } else {
-              translationUnavailable = true
             }
           } label: {
             Label(
@@ -727,10 +725,13 @@ private struct RSSReaderView: View {
       .presentationDetents([.medium, .large])
       .presentationDragIndicator(.visible)
     }
-    .alert("系统翻译不可用", isPresented: $translationUnavailable) {
-      Button("好", role: .cancel) {}
+    .alert("翻译不可用", isPresented: Binding(
+      get: { translationError != nil },
+      set: { if !$0 { translationError = nil } }
+    )) {
+      Button("好", role: .cancel) { translationError = nil }
     } message: {
-      Text("当前网页没有可翻译正文，或系统翻译暂不可用。原生翻译需要 iOS 18 或更高版本。")
+      Text(translationError ?? "请稍后重试。")
     }
     .alert("AI 暂时不可用", isPresented: Binding(
       get: { aiError != nil },
@@ -769,15 +770,36 @@ private struct RSSReaderView: View {
           showsOriginal = false
           isTranslating = false
         } onFailure: {
-          isTranslating = false
-          translationUnavailable = true
+          Task { await translateWithAI() }
         }
         .frame(width: 1, height: 1)
         .opacity(0.001)
         .id(translationRequestID)
       }
+    } else if isTranslating, !translationSourceSegments.isEmpty {
+      Color.clear
+        .frame(width: 1, height: 1)
+        .task(id: translationRequestID) { await translateWithAI() }
     }
     #endif
+  }
+
+  @MainActor
+  private func translateWithAI() async {
+    do {
+      translatedSegments = try await QingxuAIClient().translate(
+        segments: translationSourceSegments,
+        settings: appStore.syncSettings,
+        aiSettings: appStore.aiSettings
+      )
+      showsOriginal = false
+      isTranslating = false
+    } catch {
+      isTranslating = false
+      translationError = appStore.aiSettings.isConfigured(syncSettings: appStore.syncSettings)
+        ? error.localizedDescription
+        : "系统翻译暂不可用。你可以在“设置 → AI 助手”中选择服务并填写 API 密钥，应用会自动使用 AI 翻译回退。"
+    }
   }
 
   @MainActor
@@ -816,6 +838,11 @@ private struct RSSWebArticleView: UIViewRepresentable {
     configuration.websiteDataStore = .default()
     configuration.defaultWebpagePreferences.allowsContentJavaScript = true
     configuration.allowsInlineMediaPlayback = true
+    configuration.userContentController.addUserScript(WKUserScript(
+      source: Self.readerModeScript,
+      injectionTime: .atDocumentEnd,
+      forMainFrameOnly: true
+    ))
     let webView = WKWebView(frame: .zero, configuration: configuration)
     webView.navigationDelegate = context.coordinator
     webView.allowsBackForwardNavigationGestures = true
@@ -864,13 +891,10 @@ private struct RSSWebArticleView: UIViewRepresentable {
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation?) {
       parent.onLoadingChange(false)
-      captureContent(from: webView)
-      requestTranslationSegmentsIfNeeded(from: webView)
-      applyTranslationIfNeeded(in: webView)
+      installReaderMode(in: webView)
       DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self, weak webView] in
         guard let self, let webView else { return }
-        self.captureContent(from: webView)
-        self.requestTranslationSegmentsIfNeeded(from: webView)
+        self.installReaderMode(in: webView)
       }
     }
 
@@ -914,7 +938,7 @@ private struct RSSWebArticleView: UIViewRepresentable {
       let script = """
       (() => ({
         title: document.title || '',
-        text: document.body ? document.body.innerText : ''
+        text: (window.__qingxuReaderRoot || document.querySelector('article, main, [role="main"]') || document.body)?.innerText || ''
       }))()
       """
       webView.evaluateJavaScript(script) { [weak self] result, _ in
@@ -938,9 +962,10 @@ private struct RSSWebArticleView: UIViewRepresentable {
       translationRequestInFlight = requestID
       let script = """
       (() => {
-        if (!document.body) return [];
+        const root = window.__qingxuReaderRoot || document.querySelector('article, main, [role="main"]') || document.body;
+        if (!root) return [];
         const rejected = new Set(['SCRIPT', 'STYLE', 'NOSCRIPT', 'TEXTAREA', 'CODE', 'PRE', 'SVG']);
-        const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {
+        const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
           acceptNode(node) {
             const element = node.parentElement;
             const text = (node.nodeValue || '').trim();
@@ -966,7 +991,7 @@ private struct RSSWebArticleView: UIViewRepresentable {
         guard let self else { return }
         self.translationRequestInFlight = nil
         guard requestID == self.parent.translationRequestID else { return }
-        let segments = (result as? [String]) ?? []
+        let segments = (result as? [Any])?.compactMap { $0 as? String } ?? []
         self.handledTranslationRequestID = requestID
         DispatchQueue.main.async { self.parent.onTranslationSource(segments) }
       }
@@ -1007,7 +1032,86 @@ private struct RSSWebArticleView: UIViewRepresentable {
       }
       webView.evaluateJavaScript(script)
     }
+
+    private func installReaderMode(in webView: WKWebView) {
+      webView.evaluateJavaScript(RSSWebArticleView.readerModeScript) { [weak self, weak webView] _, _ in
+        guard let self, let webView else { return }
+        self.captureContent(from: webView)
+        self.requestTranslationSegmentsIfNeeded(from: webView)
+        self.applyTranslationIfNeeded(in: webView)
+      }
+    }
   }
+
+  fileprivate static let readerModeScript = """
+  (() => {
+    if (!document.body) return;
+    const candidates = [
+      'article', '[itemprop="articleBody"]', 'main article',
+      '[role="main"] article', 'main', '[role="main"]'
+    ];
+    let root = candidates
+      .map(selector => document.querySelector(selector))
+      .find(element => element && (element.innerText || '').trim().length > 240) || document.body;
+    window.__qingxuReaderRoot = root;
+
+    let currentRoot = root;
+    let rootMarker = currentRoot;
+    var current = currentRoot;
+    while (current && current.parentElement && current !== document.body) {
+      const parent = current.parentElement;
+      Array.from(parent.children).forEach(sibling => {
+        if (sibling !== current && !sibling.contains(rootMarker)) sibling.style.setProperty('display', 'none', 'important');
+      });
+      current = parent;
+    }
+
+    const noiseSelectors = [
+      'nav', 'aside', 'footer', '[role="navigation"]', '[role="complementary"]',
+      '[role="dialog"]', '[aria-modal="true"]', '[class*="breadcrumb"]',
+      '[class*="author"]', '[class*="byline"]', '[class*="profile"]',
+      '[class*="social"]', '[class*="share"]', '[class*="contact"]',
+      '[class*="newsletter"]', '[class*="subscribe"]', '[class*="related"]',
+      '[class*="recommend"]', '[class*="comment"]', '[class*="cookie"]',
+      '[class*="banner"]', '[class*="popup"]', '[class*="modal"]',
+      '[id*="cookie"]', '[id*="newsletter"]', '[id*="comments"]'
+    ];
+    root.querySelectorAll(noiseSelectors.join(',')).forEach(element => {
+      element.style.setProperty('display', 'none', 'important');
+    });
+
+    if (!document.getElementById('qingxu-reader-style')) {
+      const style = document.createElement('style');
+      style.id = 'qingxu-reader-style';
+      style.textContent = `
+        html, body { overflow-x: hidden !important; }
+        body { margin: 0 !important; padding: 0 !important; background: #fbfaf7 !important; color: #161817 !important; }
+        #qingxu-reader-root {
+          box-sizing: border-box !important; width: min(100%, 760px) !important;
+          max-width: 760px !important; margin: 0 auto !important; padding: 24px 20px 80px !important;
+          font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif !important;
+          font-size: 17px !important; line-height: 1.76 !important; letter-spacing: 0 !important;
+        }
+        h1 { font-size: 30px !important; line-height: 1.22 !important; margin: 8px 0 22px !important; }
+        h2 { font-size: 23px !important; line-height: 1.32 !important; margin-top: 32px !important; }
+        h3 { font-size: 19px !important; line-height: 1.4 !important; margin-top: 26px !important; }
+        p, li { font-size: 17px !important; line-height: 1.76 !important; }
+        img, video, iframe { max-width: 100% !important; height: auto !important; border-radius: 12px !important; }
+        pre { overflow-x: auto !important; border-radius: 12px !important; padding: 16px !important; }
+        a { color: inherit !important; text-decoration-color: rgba(80, 92, 87, .38) !important; }
+        button, input, form { max-width: 100% !important; }
+        @media (prefers-color-scheme: dark) {
+          body { background: #0d0f0e !important; color: #f3f1ec !important; }
+          pre, code { background: #171a18 !important; color: #e8e5de !important; }
+          a { color: #f3f1ec !important; text-decoration-color: rgba(193, 203, 198, .42) !important; }
+        }
+      `;
+      document.head.appendChild(style);
+    }
+    root.id = 'qingxu-reader-root';
+    return true;
+  })()
+  """
 }
 
 #if canImport(Translation)

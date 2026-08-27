@@ -43,6 +43,41 @@ struct QingxuAIClient {
     return try await perform(body, settings: settings, aiSettings: aiSettings).text
   }
 
+  func translate(
+    segments: [String],
+    settings: SyncSettings,
+    aiSettings: AISettings
+  ) async throws -> [String] {
+    guard !segments.isEmpty else { return [] }
+    var result: [String] = []
+    result.reserveCapacity(segments.count)
+
+    for batch in segments.translationBatches(maximumCount: 24, maximumCharacters: 7_000) {
+      let data = try JSONEncoder().encode(batch)
+      guard let content = String(data: data, encoding: .utf8) else {
+        throw QingxuAIError.invalidResponse
+      }
+      let body = AIRequest(
+        mode: "rss_translation",
+        title: nil,
+        content: content,
+        goal: nil,
+        tasks: nil,
+        prompt: nil
+      )
+      let raw = try await perform(body, settings: settings, aiSettings: aiSettings).text
+        .replacingOccurrences(of: "```json", with: "")
+        .replacingOccurrences(of: "```", with: "")
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+      guard let translatedData = raw.data(using: .utf8),
+            let translated = try? JSONDecoder().decode([String].self, from: translatedData),
+            translated.count == batch.count
+      else { throw QingxuAIError.invalidResponse }
+      result.append(contentsOf: translated)
+    }
+    return result
+  }
+
   func plan(
     goal: String,
     tasks: [TaskItem],
@@ -190,6 +225,8 @@ private struct AIRequest: Encodable {
     switch mode {
     case "task_plan":
       return "你是简洁的中文任务规划助手。只输出合法 JSON，不要 Markdown。"
+    case "rss_translation":
+      return "你是专业翻译器。把输入 JSON 字符串数组逐项翻译成自然、准确的简体中文。保持数组数量和顺序完全一致，只输出合法 JSON 数组，不要解释，不要 Markdown。"
     default:
       return "你是简洁准确的中文阅读助手。保留关键事实，不要套话。"
     }
@@ -210,6 +247,8 @@ private struct AIRequest: Encodable {
       {"summary":"一句话建议","suggestions":[{"title":"任务名","dayOffset":0}]}
       dayOffset 从今天起计算，控制在 0 到 30，最多 8 项。
       """
+    case "rss_translation":
+      return "待翻译 JSON 数组：\n\(content ?? "[]")"
     default:
       let instruction = prompt?.trimmingCharacters(in: .whitespacesAndNewlines)
       let summaryInstruction = instruction?.isEmpty == false
@@ -223,6 +262,26 @@ private struct AIRequest: Encodable {
       摘要要求：\(summaryInstruction)
       """
     }
+  }
+}
+
+private extension Array where Element == String {
+  func translationBatches(maximumCount: Int, maximumCharacters: Int) -> [[String]] {
+    var batches: [[String]] = []
+    var batch: [String] = []
+    var characterCount = 0
+    for segment in self {
+      if !batch.isEmpty,
+         batch.count >= maximumCount || characterCount + segment.count > maximumCharacters {
+        batches.append(batch)
+        batch = []
+        characterCount = 0
+      }
+      batch.append(segment)
+      characterCount += segment.count
+    }
+    if !batch.isEmpty { batches.append(batch) }
+    return batches
   }
 }
 

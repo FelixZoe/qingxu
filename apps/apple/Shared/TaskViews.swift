@@ -1246,9 +1246,9 @@ private struct TodayTaskScrollConfigurator: UIViewRepresentable {
       var ancestor = marker?.superview
       while let view = ancestor {
         if let scrollView = view as? UIScrollView {
-          // Calendar owns the pull-down interaction at the top. Disabling
-          // UIKit's rubber-band keeps the task surface from moving first.
-          scrollView.bounces = false
+          // A short task list is smaller than the viewport. It still needs a
+          // vertical pan recognizer so a pull can expand the calendar.
+          scrollView.bounces = true
           scrollView.alwaysBounceVertical = true
           scrollView.showsVerticalScrollIndicator = true
           scrollView.isDirectionalLockEnabled = true
