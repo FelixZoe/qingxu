@@ -513,7 +513,7 @@ private struct FocusHeatmap: View {
     let seconds = records
       .filter { calendar.isDate($0.endedAt, inSameDayAs: date) }
       .reduce(0) { $0 + $1.durationSeconds }
-    switch seconds {
+    return switch seconds {
     case 1..<(25 * 60): QingxuPalette.faint.opacity(0.35)
     case (25 * 60)..<(60 * 60): QingxuPalette.quiet.opacity(0.55)
     case (60 * 60)..<(120 * 60): QingxuPalette.ink.opacity(0.72)
