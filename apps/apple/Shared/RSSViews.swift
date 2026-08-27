@@ -85,6 +85,7 @@ struct RSSScreen: View {
       .qingxuScreen()
       .navigationTitle("")
       .navigationBarTitleDisplayMode(.inline)
+      .toolbarBackground(.hidden, for: .navigationBar)
       .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .automatic), prompt: "搜索文章、来源或作者")
       .refreshable { await store.refresh() }
       .task { await store.refreshIfNeeded() }
@@ -179,8 +180,8 @@ struct RSSScreen: View {
         }
       } label: {
         Image(systemName: "line.3.horizontal.decrease")
-          .font(.system(size: 17, weight: .medium))
-          .frame(width: 40, height: 40)
+          .font(.system(size: 16, weight: .medium))
+          .frame(width: 34, height: 34)
       }
       .accessibilityLabel("选择来源，当前为\(selectedScopeTitle)")
     }
@@ -192,7 +193,8 @@ struct RSSScreen: View {
         }
       }
       .pickerStyle(.segmented)
-      .frame(width: 210)
+      .controlSize(.small)
+      .frame(width: 184)
     }
 
     ToolbarItem(placement: .navigationBarTrailing) {
@@ -229,7 +231,7 @@ struct RSSScreen: View {
             Image(systemName: "ellipsis")
           }
         }
-        .frame(width: 40, height: 40)
+        .frame(width: 34, height: 34)
       }
       .accessibilityLabel("RSS 管理")
     }

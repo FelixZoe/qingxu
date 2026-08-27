@@ -46,7 +46,7 @@ struct PomodoroScreen: View {
         .padding(.top, 12)
         #endif
 
-        Spacer(minLength: store.pomodoro.status == .idle ? 52 : 34)
+        Spacer(minLength: 24)
 
         Button { presentedSheet = .task } label: {
           HStack(spacing: 8) {
@@ -60,7 +60,7 @@ struct PomodoroScreen: View {
           .foregroundStyle(QingxuPalette.ink)
         }
         .buttonStyle(.plain)
-        .padding(.bottom, 34)
+        .padding(.bottom, 28)
 
         ZStack {
           Circle()
@@ -83,12 +83,12 @@ struct PomodoroScreen: View {
           }
         }
         .frame(
-          width: min(320, max(270, proxy.size.width - 72)),
-          height: min(320, max(270, proxy.size.width - 72))
+          width: min(304, max(264, proxy.size.width - 88)),
+          height: min(304, max(264, proxy.size.width - 88))
         )
         .accessibilityElement(children: .combine)
 
-        Spacer(minLength: 42)
+        Color.clear.frame(height: 34)
 
         #if os(iOS)
         if store.pomodoro.status == .idle {
@@ -164,7 +164,7 @@ struct PomodoroScreen: View {
         }
         #endif
 
-        Spacer(minLength: 30)
+        Spacer(minLength: 24)
         }
       }
       .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -173,6 +173,7 @@ struct PomodoroScreen: View {
       #if os(iOS)
       .navigationTitle("")
       .navigationBarTitleDisplayMode(.inline)
+      .toolbarBackground(.hidden, for: .navigationBar)
       #else
       .navigationTitle("番茄钟")
       #endif
@@ -187,8 +188,8 @@ struct PomodoroScreen: View {
             }
           } label: {
             Image(systemName: store.pomodoro.status == .idle ? "clock.arrow.circlepath" : "chevron.down")
-              .font(.system(size: 18, weight: .medium))
-              .frame(width: 40, height: 40)
+              .font(.system(size: 17, weight: .medium))
+              .frame(width: 34, height: 34)
           }
           .accessibilityLabel(store.pomodoro.status == .idle ? "专注统计" : "收起计时")
         }
@@ -203,7 +204,8 @@ struct PomodoroScreen: View {
               }
             }
             .pickerStyle(.segmented)
-            .frame(width: 210)
+            .controlSize(.small)
+            .frame(width: 184)
           }
         }
         #endif
@@ -227,7 +229,7 @@ struct PomodoroScreen: View {
             }
           } label: {
             Image(systemName: "ellipsis")
-              .frame(width: 40, height: 40)
+              .frame(width: 34, height: 34)
           }
           .accessibilityLabel("番茄钟菜单")
         }

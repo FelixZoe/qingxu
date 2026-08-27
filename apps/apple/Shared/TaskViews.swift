@@ -1265,7 +1265,7 @@ private struct TodayTaskScrollConfigurator: UIViewRepresentable {
     private weak var scrollView: UIScrollView?
     private var direction: TodayCalendarDragDirection?
     private var startExpansion: CGFloat = 0
-    private var startTranslation: CGFloat = 0
+    private var lastTranslation: CGFloat = 0
 
     init(expansion: Binding<CGFloat>) {
       self.expansion = expansion
@@ -1290,31 +1290,38 @@ private struct TodayTaskScrollConfigurator: UIViewRepresentable {
       case .began:
         direction = nil
         startExpansion = expansion.wrappedValue
-        startTranslation = translation
+        lastTranslation = translation
 
       case .changed:
+        let step = translation - lastTranslation
+        lastTranslation = translation
+
         if direction == nil {
           let top = -scrollView.adjustedContentInset.top
           let atTop = scrollView.contentOffset.y <= top + 1
-          let delta = translation - startTranslation
-          if delta > 2, atTop, expansion.wrappedValue < 0.999 {
+          if step > 0.5, atTop, expansion.wrappedValue < 0.999 {
             direction = .expand
             startExpansion = expansion.wrappedValue
-            startTranslation = translation
-          } else if delta < -2, expansion.wrappedValue > 0.001 {
+          } else if step < -0.5, expansion.wrappedValue > 0.001 {
             direction = .collapse
             startExpansion = expansion.wrappedValue
-            startTranslation = translation
           }
         }
         guard let direction else { return }
         keepListAtTop(scrollView)
-        let delta = translation - startTranslation
-        let directionalDelta = direction == .expand ? max(0, delta) : min(0, delta)
+        let directionalDelta = direction == .expand ? max(0, step) : min(0, step)
         expansion.wrappedValue = min(
           1,
-          max(0, startExpansion + directionalDelta / TodayCalendarMetrics.expansionDistance)
+          max(0, expansion.wrappedValue + directionalDelta / TodayCalendarMetrics.expansionDistance)
         )
+        if direction == .collapse, expansion.wrappedValue <= 0.001 {
+          // Once the calendar is fully collapsed, release the rest of this
+          // same upward gesture to the task list instead of requiring a
+          // second swipe.
+          self.direction = nil
+        } else if direction == .expand, expansion.wrappedValue >= 0.999 {
+          self.direction = nil
+        }
 
       case .ended, .cancelled, .failed:
         guard let direction else { return }
