@@ -70,6 +70,28 @@ enum PomodoroTimerDirection: String, Codable, CaseIterable, Identifiable {
   var title: String { self == .countdown ? "番茄计时" : "正计时" }
 }
 
+struct FocusSessionRecord: Codable, Equatable, Identifiable {
+  var id: String
+  var startedAt: Date
+  var endedAt: Date
+  var durationSeconds: Int
+  var completed: Bool
+
+  init(
+    id: String = UUID().uuidString,
+    startedAt: Date,
+    endedAt: Date,
+    durationSeconds: Int,
+    completed: Bool
+  ) {
+    self.id = id
+    self.startedAt = startedAt
+    self.endedAt = endedAt
+    self.durationSeconds = max(0, durationSeconds)
+    self.completed = completed
+  }
+}
+
 struct PomodoroState: Codable, Equatable {
   var mode: PomodoroMode
   var status: PomodoroStatus
@@ -82,6 +104,7 @@ struct PomodoroState: Codable, Equatable {
   var timerDirection: PomodoroTimerDirection
   var endsAt: Date?
   var startedAt: Date?
+  var focusHistory: [FocusSessionRecord]
   var updatedAt: Date
 
   static func initial(now: Date = .distantPast) -> PomodoroState {
@@ -97,6 +120,7 @@ struct PomodoroState: Codable, Equatable {
       timerDirection: .countdown,
       endsAt: nil,
       startedAt: nil,
+      focusHistory: [],
       updatedAt: now
     )
   }
@@ -122,7 +146,7 @@ struct PomodoroState: Codable, Equatable {
   enum CodingKeys: String, CodingKey {
     case mode, status, remainingSeconds, completedFocusSessions
     case focusMinutes, shortBreakMinutes, longBreakMinutes, longBreakEvery
-    case timerDirection, endsAt, startedAt, updatedAt
+    case timerDirection, endsAt, startedAt, focusHistory, updatedAt
   }
 
   init(
@@ -137,6 +161,7 @@ struct PomodoroState: Codable, Equatable {
     timerDirection: PomodoroTimerDirection = .countdown,
     endsAt: Date?,
     startedAt: Date? = nil,
+    focusHistory: [FocusSessionRecord] = [],
     updatedAt: Date
   ) {
     self.mode = mode
@@ -150,6 +175,7 @@ struct PomodoroState: Codable, Equatable {
     self.timerDirection = timerDirection
     self.endsAt = endsAt
     self.startedAt = startedAt
+    self.focusHistory = focusHistory
     self.updatedAt = updatedAt
   }
 
@@ -177,6 +203,10 @@ struct PomodoroState: Codable, Equatable {
     ) ?? .countdown
     endsAt = try container.decodeIfPresent(Date.self, forKey: .endsAt)
     startedAt = try container.decodeIfPresent(Date.self, forKey: .startedAt)
+    focusHistory = try container.decodeIfPresent(
+      [FocusSessionRecord].self,
+      forKey: .focusHistory
+    ) ?? []
     updatedAt = try container.decodeIfPresent(Date.self, forKey: .updatedAt) ?? .distantPast
     let fallback = switch mode {
     case .focus: focusMinutes * 60

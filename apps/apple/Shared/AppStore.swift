@@ -231,6 +231,27 @@ final class AppStore: ObservableObject {
     pomodoroChanged()
   }
 
+  /// Ends the current focus deliberately and keeps the elapsed time in the
+  /// focus history. A plain reset remains available for discarding a timer.
+  func stopPomodoro() {
+    let now = estimatedNow
+    if pomodoro.mode == .focus {
+      recordFocusSession(
+        durationSeconds: currentFocusElapsed(at: now),
+        endedAt: now,
+        completed: false
+      )
+    }
+    pomodoro.status = .idle
+    pomodoro.endsAt = nil
+    pomodoro.startedAt = nil
+    pomodoro.remainingSeconds = pomodoro.timerDirection == .countUp
+      ? 0
+      : pomodoro.duration(for: pomodoro.mode)
+    pomodoro.updatedAt = now
+    pomodoroChanged()
+  }
+
   #if os(iOS)
   func restartLiveActivity() async -> String {
     await SystemFeatures.restartLiveActivity(for: pomodoro)
@@ -495,6 +516,11 @@ final class AppStore: ObservableObject {
 
   private func advancePomodoro() {
     if pomodoro.mode == .focus {
+      recordFocusSession(
+        durationSeconds: pomodoro.duration(for: .focus),
+        endedAt: estimatedNow,
+        completed: true
+      )
       pomodoro.completedFocusSessions += 1
       pomodoro.mode = pomodoro.completedFocusSessions.isMultiple(of: pomodoro.longBreakEvery)
         ? .longBreak
@@ -508,6 +534,32 @@ final class AppStore: ObservableObject {
     pomodoro.endsAt = estimatedNow.addingTimeInterval(TimeInterval(pomodoro.remainingSeconds))
     pomodoro.updatedAt = estimatedNow
     pomodoroChanged()
+  }
+
+  private func currentFocusElapsed(at now: Date) -> Int {
+    guard pomodoro.mode == .focus else { return 0 }
+    if pomodoro.timerDirection == .countUp {
+      return pomodoro.remaining(at: now)
+    }
+    return max(0, pomodoro.duration(for: .focus) - pomodoro.remaining(at: now))
+  }
+
+  private func recordFocusSession(
+    durationSeconds: Int,
+    endedAt: Date,
+    completed: Bool
+  ) {
+    guard durationSeconds > 0 else { return }
+    let record = FocusSessionRecord(
+      startedAt: endedAt.addingTimeInterval(-TimeInterval(durationSeconds)),
+      endedAt: endedAt,
+      durationSeconds: durationSeconds,
+      completed: completed
+    )
+    pomodoro.focusHistory.insert(record, at: 0)
+    if pomodoro.focusHistory.count > 730 {
+      pomodoro.focusHistory.removeLast(pomodoro.focusHistory.count - 730)
+    }
   }
 
   private func refreshSystemSurfaces() {

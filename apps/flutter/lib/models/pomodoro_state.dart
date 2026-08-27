@@ -4,6 +4,44 @@ enum PomodoroStatus { idle, running, paused }
 
 enum PomodoroTimerDirection { countdown, countUp }
 
+class FocusSessionRecord {
+  const FocusSessionRecord({
+    required this.id,
+    required this.startedAt,
+    required this.endedAt,
+    required this.durationSeconds,
+    required this.completed,
+  });
+
+  factory FocusSessionRecord.fromJson(Map<String, Object?> json) {
+    final endedAt = DateTime.tryParse(json['endedAt'] as String? ?? '')?.toUtc();
+    final duration = (json['durationSeconds'] as num?)?.toInt().clamp(0, 24 * 3600) ?? 0;
+    return FocusSessionRecord(
+      id: json['id'] as String? ?? '',
+      startedAt: DateTime.tryParse(json['startedAt'] as String? ?? '')?.toUtc() ??
+          (endedAt ?? DateTime.fromMillisecondsSinceEpoch(0, isUtc: true))
+              .subtract(Duration(seconds: duration)),
+      endedAt: endedAt ?? DateTime.fromMillisecondsSinceEpoch(0, isUtc: true),
+      durationSeconds: duration,
+      completed: json['completed'] as bool? ?? false,
+    );
+  }
+
+  final String id;
+  final DateTime startedAt;
+  final DateTime endedAt;
+  final int durationSeconds;
+  final bool completed;
+
+  Map<String, Object?> toJson() => {
+    'id': id,
+    'startedAt': startedAt.toUtc().toIso8601String(),
+    'endedAt': endedAt.toUtc().toIso8601String(),
+    'durationSeconds': durationSeconds,
+    'completed': completed,
+  };
+}
+
 class PomodoroState {
   const PomodoroState({
     required this.mode,
@@ -18,6 +56,7 @@ class PomodoroState {
     this.timerDirection = PomodoroTimerDirection.countdown,
     this.endsAt,
     this.startedAt,
+    this.focusHistory = const [],
   });
 
   static const defaultFocusMinutes = 25;
@@ -86,6 +125,10 @@ class PomodoroState {
       startedAt: json['startedAt'] is String
           ? DateTime.tryParse(json['startedAt']! as String)?.toUtc()
           : null,
+      focusHistory: (json['focusHistory'] as List<Object?>? ?? const [])
+          .whereType<Map<String, Object?>>()
+          .map(FocusSessionRecord.fromJson)
+          .toList(growable: false),
       updatedAt:
           DateTime.tryParse(json['updatedAt'] as String? ?? '')?.toUtc() ??
           DateTime.fromMillisecondsSinceEpoch(0, isUtc: true),
@@ -103,6 +146,7 @@ class PomodoroState {
   final PomodoroTimerDirection timerDirection;
   final DateTime? endsAt;
   final DateTime? startedAt;
+  final List<FocusSessionRecord> focusHistory;
   final DateTime updatedAt;
 
   static Duration durationFor(PomodoroMode mode) => switch (mode) {
@@ -163,6 +207,7 @@ class PomodoroState {
     bool clearEndsAt = false,
     DateTime? startedAt,
     bool clearStartedAt = false,
+    List<FocusSessionRecord>? focusHistory,
     DateTime? updatedAt,
   }) => PomodoroState(
     mode: mode ?? this.mode,
@@ -177,6 +222,7 @@ class PomodoroState {
     timerDirection: timerDirection ?? this.timerDirection,
     endsAt: clearEndsAt ? null : endsAt ?? this.endsAt,
     startedAt: clearStartedAt ? null : startedAt ?? this.startedAt,
+    focusHistory: focusHistory ?? this.focusHistory,
     updatedAt: (updatedAt ?? this.updatedAt).toUtc(),
   );
 
@@ -192,6 +238,7 @@ class PomodoroState {
     'timerDirection': timerDirection.name,
     'endsAt': endsAt?.toUtc().toIso8601String(),
     'startedAt': startedAt?.toUtc().toIso8601String(),
+    'focusHistory': focusHistory.map((record) => record.toJson()).toList(),
     'updatedAt': updatedAt.toUtc().toIso8601String(),
   };
 }

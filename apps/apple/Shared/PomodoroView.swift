@@ -3,14 +3,17 @@ import SwiftUI
 private enum PomodoroSheet: String, Identifiable {
   case durations
   case task
+  case statistics
 
   var id: String { rawValue }
 }
 
 struct PomodoroScreen: View {
   @EnvironmentObject private var store: AppStore
+  @Environment(\.openURL) private var openURL
   @State private var presentedSheet: PomodoroSheet?
   @State private var selectedTaskID: String?
+  @AppStorage(QingxuPreferenceKey.completionSound) private var completionSoundEnabled = false
 
   private var selectedTask: TaskItem? {
     store.todayTasks.first { $0.id == selectedTaskID }
@@ -26,7 +29,8 @@ struct PomodoroScreen: View {
 
   var body: some View {
     NavigationStack {
-      VStack(spacing: 0) {
+      GeometryReader { proxy in
+        VStack(spacing: 0) {
         #if os(macOS)
         Picker("计时方向", selection: Binding(
           get: { store.pomodoro.timerDirection },
@@ -42,7 +46,7 @@ struct PomodoroScreen: View {
         .padding(.top, 12)
         #endif
 
-        Spacer(minLength: 64)
+        Spacer(minLength: store.pomodoro.status == .idle ? 52 : 34)
 
         Button { presentedSheet = .task } label: {
           HStack(spacing: 8) {
@@ -56,7 +60,7 @@ struct PomodoroScreen: View {
           .foregroundStyle(QingxuPalette.ink)
         }
         .buttonStyle(.plain)
-        .padding(.bottom, 44)
+        .padding(.bottom, 34)
 
         ZStack {
           Circle()
@@ -70,22 +74,67 @@ struct PomodoroScreen: View {
             .rotationEffect(.degrees(-90))
             .animation(.linear(duration: 0.25), value: progress)
           Text(format(store.displayedRemainingSeconds))
-            .font(.system(size: 54, weight: .light, design: .rounded).monospacedDigit())
+            .font(.system(size: 58, weight: .light, design: .rounded).monospacedDigit())
+          if store.pomodoro.status == .paused {
+            Text("已暂停")
+              .font(.subheadline)
+              .foregroundStyle(QingxuPalette.quiet)
+              .offset(y: 48)
+          }
         }
-        .frame(width: 268, height: 268)
+        .frame(
+          width: min(320, max(270, proxy.size.width - 72)),
+          height: min(320, max(270, proxy.size.width - 72))
+        )
         .accessibilityElement(children: .combine)
 
-        Spacer(minLength: 48)
+        Spacer(minLength: 42)
 
         #if os(iOS)
-        Button(action: store.togglePomodoro) {
-          Text(store.pomodoro.status == .running ? "暂停" : "开始")
-            .font(.headline)
-            .frame(width: 148, height: 52)
-            .foregroundStyle(QingxuPalette.onAccent)
-            .background(QingxuPalette.actionGradient, in: Capsule())
+        if store.pomodoro.status == .idle {
+          Button(action: store.togglePomodoro) {
+            Text("开始")
+              .font(.headline)
+              .frame(width: 148, height: 54)
+              .foregroundStyle(QingxuPalette.onAccent)
+              .background(QingxuPalette.actionGradient, in: Capsule())
+          }
+          .buttonStyle(.plain)
+        } else {
+          HStack(spacing: 42) {
+            Button { completionSoundEnabled.toggle() } label: {
+              Image(systemName: completionSoundEnabled ? "speaker.wave.2" : "speaker.slash")
+                .font(.system(size: 20, weight: .medium))
+                .foregroundStyle(QingxuPalette.quiet)
+                .frame(width: 52, height: 52)
+                .background(QingxuPalette.surface, in: Circle())
+                .overlay(Circle().stroke(QingxuPalette.separator, lineWidth: 1))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(completionSoundEnabled ? "关闭结束提示音" : "开启结束提示音")
+
+            Button(action: store.togglePomodoro) {
+              Image(systemName: store.pomodoro.status == .running ? "pause.fill" : "play.fill")
+                .font(.system(size: 26, weight: .semibold))
+                .foregroundStyle(QingxuPalette.onAccent)
+                .frame(width: 72, height: 72)
+                .background(QingxuPalette.actionGradient, in: Circle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(store.pomodoro.status == .running ? "暂停" : "继续")
+
+            Button(action: store.stopPomodoro) {
+              Image(systemName: "stop.fill")
+                .font(.system(size: 19, weight: .semibold))
+                .foregroundStyle(QingxuPalette.quiet)
+                .frame(width: 52, height: 52)
+                .background(QingxuPalette.surface, in: Circle())
+                .overlay(Circle().stroke(QingxuPalette.separator, lineWidth: 1))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("停止并记录")
+          }
         }
-        .buttonStyle(.plain)
         #else
         HStack(spacing: 16) {
           Button(action: store.resetPomodoro) {
@@ -115,7 +164,8 @@ struct PomodoroScreen: View {
         }
         #endif
 
-        Spacer(minLength: 38)
+        Spacer(minLength: 30)
+        }
       }
       .frame(maxWidth: .infinity, maxHeight: .infinity)
       .background(QingxuPalette.canvasGradient.ignoresSafeArea())
@@ -129,24 +179,32 @@ struct PomodoroScreen: View {
       .toolbar {
         #if os(iOS)
         ToolbarItem(placement: .navigationBarLeading) {
-          Button { presentedSheet = .durations } label: {
-            Image(systemName: "clock")
+          Button {
+            if store.pomodoro.status == .idle {
+              presentedSheet = .statistics
+            } else {
+              openURL(URL(string: "qingxu://today")!)
+            }
+          } label: {
+            Image(systemName: store.pomodoro.status == .idle ? "clock.arrow.circlepath" : "chevron.down")
               .font(.system(size: 18, weight: .medium))
               .frame(width: 40, height: 40)
           }
-          .accessibilityLabel("自定义时长")
+          .accessibilityLabel(store.pomodoro.status == .idle ? "专注统计" : "收起计时")
         }
         ToolbarItem(placement: .principal) {
-          Picker("计时方向", selection: Binding(
-            get: { store.pomodoro.timerDirection },
-            set: store.setPomodoroTimerDirection
-          )) {
-            ForEach(PomodoroTimerDirection.allCases) { direction in
-              Text(direction.title).tag(direction)
+          if store.pomodoro.status == .idle {
+            Picker("计时方向", selection: Binding(
+              get: { store.pomodoro.timerDirection },
+              set: store.setPomodoroTimerDirection
+            )) {
+              ForEach(PomodoroTimerDirection.allCases) { direction in
+                Text(direction.title).tag(direction)
+              }
             }
+            .pickerStyle(.segmented)
+            .frame(width: 210)
           }
-          .pickerStyle(.segmented)
-          .frame(width: 210)
         }
         #endif
         ToolbarItem(placement: .primaryAction) {
@@ -184,6 +242,10 @@ struct PomodoroScreen: View {
           PomodoroTaskPicker(selection: $selectedTaskID)
             .environmentObject(store)
             .presentationDetents([.medium])
+        case .statistics:
+          FocusStatisticsSheet()
+            .environmentObject(store)
+            .presentationDetents([.large])
         }
       }
     }
@@ -196,6 +258,276 @@ struct PomodoroScreen: View {
   private var timerTitle: String {
     if store.pomodoro.mode != .focus { return store.pomodoro.mode.title }
     return selectedTask?.title ?? (store.pomodoro.timerDirection == .countUp ? "自由专注" : "专注")
+  }
+}
+
+private enum FocusStatisticsRange: String, CaseIterable, Identifiable {
+  case week
+  case month
+  case year
+
+  var id: String { rawValue }
+  var title: String {
+    switch self {
+    case .week: "周"
+    case .month: "月"
+    case .year: "年"
+    }
+  }
+}
+
+private struct FocusStatisticsSheet: View {
+  @EnvironmentObject private var store: AppStore
+  @Environment(\.dismiss) private var dismiss
+  @State private var range: FocusStatisticsRange = .week
+
+  private let calendar = Calendar.autoupdatingCurrent
+
+  private var records: [FocusSessionRecord] {
+    store.pomodoro.focusHistory.sorted { $0.endedAt > $1.endedAt }
+  }
+
+  private var todayRecords: [FocusSessionRecord] {
+    records.filter { calendar.isDateInToday($0.endedAt) }
+  }
+
+  private var todaySeconds: Int { todayRecords.reduce(0) { $0 + $1.durationSeconds } }
+  private var totalSeconds: Int { records.reduce(0) { $0 + $1.durationSeconds } }
+
+  var body: some View {
+    NavigationStack {
+      ScrollView {
+        LazyVStack(spacing: 16) {
+          summaryGrid
+          recentRecords
+          trendSection
+          heatmapSection
+        }
+        .padding(.horizontal, 20)
+        .padding(.bottom, 36)
+      }
+      .qingxuScreen()
+      .navigationTitle("专注统计")
+      #if os(iOS)
+      .navigationBarTitleDisplayMode(.inline)
+      #endif
+      .toolbar {
+        ToolbarItem(placement: .cancellationAction) {
+          Button { dismiss() } label: { Image(systemName: "xmark") }
+            .accessibilityLabel("关闭")
+        }
+        ToolbarItem(placement: .primaryAction) {
+          ShareLink(item: shareSummary) {
+            Image(systemName: "square.and.arrow.up")
+          }
+          .accessibilityLabel("分享统计")
+        }
+      }
+    }
+  }
+
+  private var summaryGrid: some View {
+    LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
+      FocusMetricCard(title: "今日番茄", value: "\(todayRecords.count)")
+      FocusMetricCard(title: "今日专注时长", value: durationText(todaySeconds))
+      FocusMetricCard(title: "总番茄", value: "\(records.count)")
+      FocusMetricCard(title: "总专注时长", value: durationText(totalSeconds))
+    }
+    .padding(.top, 10)
+  }
+
+  private var recentRecords: some View {
+    VStack(alignment: .leading, spacing: 14) {
+      HStack {
+        Text("专注记录").font(QingxuType.sectionTitle)
+        Spacer()
+        Text("最近 \(min(records.count, 6)) 次")
+          .font(QingxuType.metadata)
+          .foregroundStyle(QingxuPalette.quiet)
+      }
+      if records.isEmpty {
+        FocusEmptyStat(message: "完成一次专注后，这里会留下记录")
+      } else {
+        ForEach(Array(records.prefix(6))) { record in
+          HStack(spacing: 12) {
+            Image(systemName: record.completed ? "checkmark.circle.fill" : "circle.lefthalf.filled")
+              .foregroundStyle(QingxuPalette.ink)
+            VStack(alignment: .leading, spacing: 3) {
+              Text(record.endedAt.formatted(date: .abbreviated, time: .omitted))
+                .font(.subheadline.weight(.medium))
+              Text(record.startedAt.formatted(date: .omitted, time: .shortened) + " – " + record.endedAt.formatted(date: .omitted, time: .shortened))
+                .font(QingxuType.metadata)
+                .foregroundStyle(QingxuPalette.quiet)
+            }
+            Spacer()
+            Text(durationText(record.durationSeconds))
+              .font(.subheadline.monospacedDigit())
+              .foregroundStyle(QingxuPalette.quiet)
+          }
+        }
+      }
+    }
+    .focusStatCard()
+  }
+
+  private var trendSection: some View {
+    VStack(alignment: .leading, spacing: 16) {
+      Text("专注趋势").font(QingxuType.sectionTitle)
+      Picker("统计范围", selection: $range) {
+        ForEach(FocusStatisticsRange.allCases) { item in
+          Text(item.title).tag(item)
+        }
+      }
+      .pickerStyle(.segmented)
+
+      if records.isEmpty {
+        FocusEmptyStat(message: "暂无趋势数据")
+      } else {
+        FocusBarChart(values: trendValues)
+          .frame(height: 170)
+      }
+    }
+    .focusStatCard()
+  }
+
+  private var heatmapSection: some View {
+    VStack(alignment: .leading, spacing: 16) {
+      Text("年度专注").font(QingxuType.sectionTitle)
+      if records.isEmpty {
+        FocusEmptyStat(message: "暂无年度数据")
+      } else {
+        FocusHeatmap(records: records)
+      }
+    }
+    .focusStatCard()
+  }
+
+  private var trendValues: [Double] {
+    let now = Date()
+    let dayCount: Int
+    switch range {
+    case .week: dayCount = 7
+    case .month: dayCount = 30
+    case .year: dayCount = 365
+    }
+    if range == .year {
+      return (0..<12).map { offset in
+        guard let month = calendar.date(byAdding: .month, value: offset - 11, to: now),
+              let interval = calendar.dateInterval(of: .month, for: month) else { return 0 }
+        return Double(records.filter { interval.contains($0.endedAt) }.reduce(0) { $0 + $1.durationSeconds })
+      }
+    }
+    return (0..<dayCount).map { offset in
+      guard let date = calendar.date(byAdding: .day, value: offset - dayCount + 1, to: now) else { return 0 }
+      return Double(records.filter { calendar.isDate($0.endedAt, inSameDayAs: date) }.reduce(0) { $0 + $1.durationSeconds })
+    }
+  }
+
+  private var shareSummary: String {
+    "清序专注统计：今天完成 \(todayRecords.count) 次，专注 \(durationText(todaySeconds))；累计专注 \(durationText(totalSeconds))。"
+  }
+
+  private func durationText(_ seconds: Int) -> String {
+    let hours = seconds / 3600
+    let minutes = (seconds % 3600) / 60
+    if hours > 0 { return "\(hours)时\(minutes)分" }
+    if minutes > 0 { return "\(minutes)分" }
+    return "\(seconds)秒"
+  }
+}
+
+private struct FocusMetricCard: View {
+  let title: String
+  let value: String
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 14) {
+      Text(title)
+        .font(.subheadline.weight(.medium))
+        .foregroundStyle(QingxuPalette.quiet)
+      Text(value)
+        .font(.system(size: 28, weight: .semibold, design: .rounded).monospacedDigit())
+        .foregroundStyle(QingxuPalette.ink)
+    }
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .focusStatCard()
+  }
+}
+
+private struct FocusEmptyStat: View {
+  let message: String
+  var body: some View {
+    Text(message)
+      .font(.subheadline)
+      .foregroundStyle(QingxuPalette.quiet)
+      .frame(maxWidth: .infinity, minHeight: 72)
+  }
+}
+
+private struct FocusBarChart: View {
+  let values: [Double]
+
+  var body: some View {
+    GeometryReader { proxy in
+      let peak = max(values.max() ?? 0, 1)
+      HStack(alignment: .bottom, spacing: values.count > 40 ? 2 : 7) {
+        ForEach(Array(values.enumerated()), id: \.offset) { _, value in
+          Capsule()
+            .fill(value > 0 ? QingxuPalette.ink : QingxuPalette.separator.opacity(0.5))
+            .frame(height: max(4, proxy.size.height * value / peak))
+        }
+      }
+      .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+    }
+    .accessibilityLabel("专注时长趋势")
+  }
+}
+
+private struct FocusHeatmap: View {
+  let records: [FocusSessionRecord]
+  private let calendar = Calendar.autoupdatingCurrent
+
+  var body: some View {
+    ScrollView(.horizontal, showsIndicators: false) {
+      HStack(alignment: .top, spacing: 4) {
+        ForEach(0..<26, id: \.self) { weekOffset in
+          VStack(spacing: 4) {
+            ForEach(0..<7, id: \.self) { dayOffset in
+              RoundedRectangle(cornerRadius: 2)
+                .fill(color(for: date(weekOffset: weekOffset, dayOffset: dayOffset)))
+                .frame(width: 12, height: 12)
+            }
+          }
+        }
+      }
+    }
+    .accessibilityLabel("最近半年的专注热力图")
+  }
+
+  private func date(weekOffset: Int, dayOffset: Int) -> Date {
+    let daysAgo = (25 - weekOffset) * 7 + (6 - dayOffset)
+    return calendar.date(byAdding: .day, value: -daysAgo, to: Date()) ?? Date()
+  }
+
+  private func color(for date: Date) -> Color {
+    let seconds = records
+      .filter { calendar.isDate($0.endedAt, inSameDayAs: date) }
+      .reduce(0) { $0 + $1.durationSeconds }
+    switch seconds {
+    case 1..<(25 * 60): QingxuPalette.faint.opacity(0.35)
+    case (25 * 60)..<(60 * 60): QingxuPalette.quiet.opacity(0.55)
+    case (60 * 60)..<(120 * 60): QingxuPalette.ink.opacity(0.72)
+    case (120 * 60)...: QingxuPalette.ink
+    default: QingxuPalette.separator.opacity(0.36)
+    }
+  }
+}
+
+private extension View {
+  func focusStatCard() -> some View {
+    self
+      .padding(18)
+      .background(QingxuPalette.surface, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
   }
 }
 
