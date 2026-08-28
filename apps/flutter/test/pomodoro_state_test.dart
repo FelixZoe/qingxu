@@ -26,12 +26,20 @@ void main() {
 
   test('custom durations round-trip and legacy data keeps defaults', () {
     final customized = PomodoroState.initial(DateTime.utc(2026, 8, 23))
-        .copyWith(focusMinutes: 45, shortBreakMinutes: 8, longBreakMinutes: 24);
+        .copyWith(
+          focusMinutes: 45,
+          shortBreakMinutes: 8,
+          longBreakMinutes: 24,
+          dailyFocusGoal: 6,
+          phaseId: 'focus-20260823',
+        );
 
     final restored = PomodoroState.fromJson(customized.toJson());
     expect(restored.focusMinutes, 45);
     expect(restored.shortBreakMinutes, 8);
     expect(restored.longBreakMinutes, 24);
+    expect(restored.dailyFocusGoal, 6);
+    expect(restored.phaseId, 'focus-20260823');
     expect(
       restored.configuredDurationFor(PomodoroMode.longBreak),
       const Duration(minutes: 24),
@@ -44,6 +52,7 @@ void main() {
     });
     expect(legacy.focusMinutes, PomodoroState.defaultFocusMinutes);
     expect(legacy.shortBreakMinutes, PomodoroState.defaultShortBreakMinutes);
+    expect(legacy.dailyFocusGoal, 4);
     expect(legacy.remainingSeconds, 5 * 60);
   });
 }

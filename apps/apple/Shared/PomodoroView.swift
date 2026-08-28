@@ -330,7 +330,10 @@ private struct FocusStatisticsSheet: View {
 
   private var summaryGrid: some View {
     LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
-      FocusMetricCard(title: "今日番茄", value: "\(todayRecords.count)")
+      FocusMetricCard(
+        title: "今日番茄",
+        value: "\(todayRecords.filter(\.completed).count)/\(store.pomodoro.dailyFocusGoal)"
+      )
       FocusMetricCard(title: "今日专注时长", value: durationText(todaySeconds))
       FocusMetricCard(title: "总番茄", value: "\(records.count)")
       FocusMetricCard(title: "总专注时长", value: durationText(totalSeconds))
@@ -394,11 +397,29 @@ private struct FocusStatisticsSheet: View {
 
   private var heatmapSection: some View {
     VStack(alignment: .leading, spacing: 16) {
-      Text("年度专注").font(QingxuType.sectionTitle)
+      HStack {
+        Text("年度专注").font(QingxuType.sectionTitle)
+        Spacer()
+        Text("过去 52 周")
+          .font(QingxuType.metadata)
+          .foregroundStyle(QingxuPalette.quiet)
+      }
       if records.isEmpty {
         FocusEmptyStat(message: "暂无年度数据")
       } else {
         FocusHeatmap(records: records)
+        HStack(spacing: 5) {
+          Text("少")
+          ForEach(0..<5, id: \.self) { level in
+            RoundedRectangle(cornerRadius: 2)
+              .fill(FocusHeatmap.legendColor(level: level))
+              .frame(width: 11, height: 11)
+          }
+          Text("多")
+        }
+        .font(.caption2)
+        .foregroundStyle(QingxuPalette.quiet)
+        .frame(maxWidth: .infinity, alignment: .trailing)
       }
     }
     .focusStatCard()
@@ -492,7 +513,7 @@ private struct FocusHeatmap: View {
   var body: some View {
     ScrollView(.horizontal, showsIndicators: false) {
       HStack(alignment: .top, spacing: 4) {
-        ForEach(0..<26, id: \.self) { weekOffset in
+        ForEach(0..<52, id: \.self) { weekOffset in
           VStack(spacing: 4) {
             ForEach(0..<7, id: \.self) { dayOffset in
               RoundedRectangle(cornerRadius: 2)
@@ -503,11 +524,11 @@ private struct FocusHeatmap: View {
         }
       }
     }
-    .accessibilityLabel("最近半年的专注热力图")
+    .accessibilityLabel("过去一年的专注热力图")
   }
 
   private func date(weekOffset: Int, dayOffset: Int) -> Date {
-    let daysAgo = (25 - weekOffset) * 7 + (6 - dayOffset)
+    let daysAgo = (51 - weekOffset) * 7 + (6 - dayOffset)
     return calendar.date(byAdding: .day, value: -daysAgo, to: Date()) ?? Date()
   }
 
@@ -515,11 +536,22 @@ private struct FocusHeatmap: View {
     let seconds = records
       .filter { calendar.isDate($0.endedAt, inSameDayAs: date) }
       .reduce(0) { $0 + $1.durationSeconds }
-    return switch seconds {
-    case 1..<(25 * 60): QingxuPalette.faint.opacity(0.35)
-    case (25 * 60)..<(60 * 60): QingxuPalette.quiet.opacity(0.55)
-    case (60 * 60)..<(120 * 60): QingxuPalette.ink.opacity(0.72)
-    case (120 * 60)...: QingxuPalette.ink
+    let level = switch seconds {
+    case 1..<(25 * 60): 1
+    case (25 * 60)..<(60 * 60): 2
+    case (60 * 60)..<(120 * 60): 3
+    case (120 * 60)...: 4
+    default: 0
+    }
+    return Self.legendColor(level: level)
+  }
+
+  static func legendColor(level: Int) -> Color {
+    switch level {
+    case 1: QingxuPalette.faint.opacity(0.35)
+    case 2: QingxuPalette.quiet.opacity(0.55)
+    case 3: QingxuPalette.ink.opacity(0.72)
+    case 4: QingxuPalette.ink
     default: QingxuPalette.separator.opacity(0.36)
     }
   }
@@ -602,12 +634,14 @@ private struct DurationSettingsSheet: View {
   @State private var shortBreak: Int
   @State private var longBreak: Int
   @State private var longBreakEvery: Int
+  @State private var dailyFocusGoal: Int
 
   init() {
     _focus = State(initialValue: 25)
     _shortBreak = State(initialValue: 5)
     _longBreak = State(initialValue: 15)
     _longBreakEvery = State(initialValue: 4)
+    _dailyFocusGoal = State(initialValue: 4)
   }
 
   var body: some View {
@@ -617,6 +651,12 @@ private struct DurationSettingsSheet: View {
         Stepper("短休息：\(shortBreak) 分钟", value: $shortBreak, in: 1...60)
         Stepper("长休息：\(longBreak) 分钟", value: $longBreak, in: 1...120)
         Stepper("每 \(longBreakEvery) 次专注后长休息", value: $longBreakEvery, in: 2...12)
+        Section("今日目标") {
+          Stepper("完成 \(dailyFocusGoal) 个番茄", value: $dailyFocusGoal, in: 1...24)
+          Text("目标和完成进度会同步到安卓，并显示在灵动岛与专注统计中。")
+            .font(.footnote)
+            .foregroundStyle(QingxuPalette.quiet)
+        }
       }
       .qingxuScreen()
       .navigationTitle("自定义时长")
@@ -631,7 +671,8 @@ private struct DurationSettingsSheet: View {
               focus: focus,
               shortBreak: shortBreak,
               longBreak: longBreak,
-              longBreakEvery: longBreakEvery
+              longBreakEvery: longBreakEvery,
+              dailyFocusGoal: dailyFocusGoal
             )
             dismiss()
           }
@@ -644,6 +685,7 @@ private struct DurationSettingsSheet: View {
       shortBreak = store.pomodoro.shortBreakMinutes
       longBreak = store.pomodoro.longBreakMinutes
       longBreakEvery = store.pomodoro.longBreakEvery
+      dailyFocusGoal = store.pomodoro.dailyFocusGoal
     }
   }
 }

@@ -27,7 +27,7 @@ class TaskController extends ChangeNotifier {
     SecureTokenStorageBase? secureTokenStorage,
     SyncClientBase? syncClient,
     PomodoroStorageBase? pomodoroStorage,
-    this.syncDebounce = const Duration(milliseconds: 1200),
+    this.syncDebounce = const Duration(milliseconds: 100),
   }) : _storage = storage ?? TaskStorage(),
        _syncSettingsStorage = syncSettingsStorage ?? SyncSettingsStorage(),
        _secureTokenStorage = secureTokenStorage ?? SecureTokenStorage(),
@@ -342,6 +342,7 @@ class TaskController extends ChangeNotifier {
     _setPomodoro(
       _pomodoro.copyWith(
         status: PomodoroStatus.running,
+        phaseId: '${now.microsecondsSinceEpoch}-${_pomodoro.mode.name}',
         remainingSeconds: remaining,
         endsAt: _pomodoro.timerDirection == PomodoroTimerDirection.countdown
             ? now.add(Duration(seconds: remaining))
@@ -407,6 +408,7 @@ class TaskController extends ChangeNotifier {
     required int shortBreakMinutes,
     required int longBreakMinutes,
     int? longBreakEvery,
+    int? dailyFocusGoal,
   }) {
     final now = estimatedServerNow;
     final updated = _pomodoro.copyWith(
@@ -415,6 +417,7 @@ class TaskController extends ChangeNotifier {
       shortBreakMinutes: shortBreakMinutes.clamp(1, 60),
       longBreakMinutes: longBreakMinutes.clamp(1, 120),
       longBreakEvery: (longBreakEvery ?? _pomodoro.longBreakEvery).clamp(2, 12),
+      dailyFocusGoal: (dailyFocusGoal ?? _pomodoro.dailyFocusGoal).clamp(1, 24),
       clearEndsAt: true,
       updatedAt: now,
     );
@@ -443,6 +446,21 @@ class TaskController extends ChangeNotifier {
               ? PomodoroMode.longBreak
               : PomodoroMode.shortBreak)
         : PomodoroMode.focus;
+    final history = <FocusSessionRecord>[
+      if (countFocus)
+        FocusSessionRecord(
+          id: '${now.microsecondsSinceEpoch}-focus',
+          startedAt: now.subtract(
+            _pomodoro.configuredDurationFor(PomodoroMode.focus),
+          ),
+          endedAt: now,
+          durationSeconds: _pomodoro
+              .configuredDurationFor(PomodoroMode.focus)
+              .inSeconds,
+          completed: true,
+        ),
+      ..._pomodoro.focusHistory,
+    ];
     _setPomodoro(
       PomodoroState(
         mode: nextMode,
@@ -453,8 +471,11 @@ class TaskController extends ChangeNotifier {
         shortBreakMinutes: _pomodoro.shortBreakMinutes,
         longBreakMinutes: _pomodoro.longBreakMinutes,
         longBreakEvery: _pomodoro.longBreakEvery,
+        dailyFocusGoal: _pomodoro.dailyFocusGoal,
+        phaseId: '${now.microsecondsSinceEpoch}-${nextMode.name}',
         timerDirection: _pomodoro.timerDirection,
         endsAt: now.add(_pomodoro.configuredDurationFor(nextMode)),
+        focusHistory: history.take(730).toList(growable: false),
         updatedAt: now,
       ),
     );
@@ -644,12 +665,16 @@ class TaskController extends ChangeNotifier {
   void _publishSystemSnapshot() {
     final localNow = DateTime.now();
     final tomorrow = DateTime(localNow.year, localNow.month, localNow.day + 1);
-    final todayCount = _tasks.where((task) {
+    final todayTasks = _tasks.where((task) {
       if (!task.isOpen || task.deletedAt != null) return false;
       final start = task.startAt?.toLocal();
       return start != null && start.isBefore(tomorrow);
-    }).length;
-    IOSSystemFeatures.update(pomodoro: _pomodoro, todayTaskCount: todayCount);
+    }).toList(growable: false);
+    IOSSystemFeatures.update(
+      pomodoro: _pomodoro,
+      todayTaskCount: todayTasks.length,
+      todayTaskTitles: todayTasks.take(3).map((task) => task.title).toList(),
+    );
   }
 
   Future<void> _persistTasks() {

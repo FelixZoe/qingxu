@@ -68,6 +68,7 @@ class _PomodoroPageState extends State<PomodoroPage> {
         focusMinutes: state.focusMinutes,
         shortBreakMinutes: state.shortBreakMinutes,
         longBreakMinutes: state.longBreakMinutes,
+        dailyFocusGoal: state.dailyFocusGoal,
       ),
     );
     if (!mounted || values == null) return;
@@ -75,6 +76,7 @@ class _PomodoroPageState extends State<PomodoroPage> {
       focusMinutes: values[0],
       shortBreakMinutes: values[1],
       longBreakMinutes: values[2],
+      dailyFocusGoal: values[3],
     );
     unawaited(HapticFeedback.selectionClick());
   }
@@ -88,6 +90,7 @@ class _PomodoroPageState extends State<PomodoroPage> {
     final totalSeconds = state.configuredDurationFor(state.mode).inSeconds;
     final isRunning = state.status == PomodoroStatus.running;
     final isPaused = state.status == PomodoroStatus.paused;
+    final todayCompleted = state.completedFocusCountOn(DateTime.now());
     final modeLabel = switch (state.mode) {
       PomodoroMode.focus => isRunning ? '正在专注' : (isPaused ? '专注已暂停' : '准备专注'),
       PomodoroMode.shortBreak => isRunning ? '短暂休息' : '准备休息',
@@ -182,8 +185,11 @@ class _PomodoroPageState extends State<PomodoroPage> {
                                     ),
                                     const SizedBox(height: 28),
                                     _SessionSummary(
-                                      completed: state.completedFocusSessions,
+                                      completed: todayCompleted,
+                                      goal: state.dailyFocusGoal,
                                     ),
+                                    const SizedBox(height: 18),
+                                    _FocusHeatmap(records: state.focusHistory),
                                     const SizedBox(height: 18),
                                     TextButton.icon(
                                       onPressed: _openDurationSettings,
@@ -280,8 +286,11 @@ class _PomodoroPageState extends State<PomodoroPage> {
                           ),
                           SizedBox(height: compactHeight ? 26 : 38),
                           _SessionSummary(
-                            completed: state.completedFocusSessions,
+                            completed: todayCompleted,
+                            goal: state.dailyFocusGoal,
                           ),
+                          SizedBox(height: compactHeight ? 22 : 30),
+                          _FocusHeatmap(records: state.focusHistory),
                         ],
                       ),
                     ),
@@ -355,11 +364,13 @@ class _DurationSettingsSheet extends StatefulWidget {
     required this.focusMinutes,
     required this.shortBreakMinutes,
     required this.longBreakMinutes,
+    required this.dailyFocusGoal,
   });
 
   final int focusMinutes;
   final int shortBreakMinutes;
   final int longBreakMinutes;
+  final int dailyFocusGoal;
 
   @override
   State<_DurationSettingsSheet> createState() => _DurationSettingsSheetState();
@@ -369,12 +380,14 @@ class _DurationSettingsSheetState extends State<_DurationSettingsSheet> {
   late int _focusMinutes = widget.focusMinutes;
   late int _shortBreakMinutes = widget.shortBreakMinutes;
   late int _longBreakMinutes = widget.longBreakMinutes;
+  late int _dailyFocusGoal = widget.dailyFocusGoal;
 
   void _resetDefaults() {
     setState(() {
       _focusMinutes = PomodoroState.defaultFocusMinutes;
       _shortBreakMinutes = PomodoroState.defaultShortBreakMinutes;
       _longBreakMinutes = PomodoroState.defaultLongBreakMinutes;
+      _dailyFocusGoal = 4;
     });
   }
 
@@ -467,6 +480,17 @@ class _DurationSettingsSheetState extends State<_DurationSettingsSheet> {
                     onChanged: (value) =>
                         setState(() => _longBreakMinutes = value),
                   ),
+                  const SizedBox(height: 10),
+                  _DurationStepper(
+                    label: '今日番茄目标',
+                    detail: '同步到 iOS、安卓和桌面端',
+                    value: _dailyFocusGoal,
+                    minimum: 1,
+                    maximum: 24,
+                    unit: '个',
+                    onChanged: (value) =>
+                        setState(() => _dailyFocusGoal = value),
+                  ),
                   const SizedBox(height: 22),
                   SizedBox(
                     width: double.infinity,
@@ -476,6 +500,7 @@ class _DurationSettingsSheetState extends State<_DurationSettingsSheet> {
                         _focusMinutes,
                         _shortBreakMinutes,
                         _longBreakMinutes,
+                        _dailyFocusGoal,
                       ]),
                       child: const Text('保存时长'),
                     ),
@@ -498,6 +523,7 @@ class _DurationStepper extends StatelessWidget {
     required this.minimum,
     required this.maximum,
     required this.onChanged,
+    this.unit = '分钟',
   });
 
   final String label;
@@ -506,6 +532,7 @@ class _DurationStepper extends StatelessWidget {
   final int minimum;
   final int maximum;
   final ValueChanged<int> onChanged;
+  final String unit;
 
   @override
   Widget build(BuildContext context) {
@@ -541,14 +568,14 @@ class _DurationStepper extends StatelessWidget {
               ),
             ),
             IconButton(
-              tooltip: '减少 1 分钟',
+              tooltip: '减少 1$unit',
               onPressed: value > minimum ? () => onChanged(value - 1) : null,
               icon: const Icon(Icons.remove_rounded),
             ),
             SizedBox(
               width: 64,
               child: Text(
-                '$value 分钟',
+                '$value $unit',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   color: palette.ink,
@@ -559,7 +586,7 @@ class _DurationStepper extends StatelessWidget {
               ),
             ),
             IconButton(
-              tooltip: '增加 1 分钟',
+              tooltip: '增加 1$unit',
               onPressed: value < maximum ? () => onChanged(value + 1) : null,
               icon: const Icon(Icons.add_rounded),
             ),
@@ -782,41 +809,128 @@ class _FocusActions extends StatelessWidget {
 }
 
 class _SessionSummary extends StatelessWidget {
-  const _SessionSummary({required this.completed});
+  const _SessionSummary({required this.completed, required this.goal});
 
   final int completed;
+  final int goal;
 
   @override
   Widget build(BuildContext context) {
     final palette = QingxuPalette.of(context);
-    final completedInRound = completed % 4;
+    final visibleGoal = goal.clamp(1, 8);
     return Column(
       children: [
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            for (var index = 0; index < 4; index++) ...[
+            for (var index = 0; index < visibleGoal; index++) ...[
               AnimatedContainer(
                 duration: QingxuMotion.standard,
-                width: index < completedInRound ? 26 : 8,
+                width: index < completed.clamp(0, visibleGoal) ? 26 : 8,
                 height: 8,
                 decoration: BoxDecoration(
-                  color: index < completedInRound
+                  color: index < completed.clamp(0, visibleGoal)
                       ? palette.accent
                       : palette.border,
                   borderRadius: BorderRadius.circular(99),
                 ),
               ),
-              if (index != 3) const SizedBox(width: 7),
+              if (index != visibleGoal - 1) const SizedBox(width: 7),
             ],
           ],
         ),
         const SizedBox(height: 10),
         Text(
-          completed == 0 ? '今天还没有完成专注时段' : '今天已完成 $completed 个专注时段',
+          completed >= goal
+              ? '今日目标已完成 · $completed/$goal'
+              : '今日番茄 $completed/$goal',
           style: TextStyle(fontSize: 12.5, color: palette.muted),
         ),
       ],
+    );
+  }
+}
+
+class _FocusHeatmap extends StatelessWidget {
+  const _FocusHeatmap({required this.records});
+
+  final List<FocusSessionRecord> records;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = QingxuPalette.of(context);
+    final now = DateTime.now();
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: palette.surface,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: palette.border),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Text(
+                  '专注热力图',
+                  style: TextStyle(
+                    color: palette.ink,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const Spacer(),
+                Text('过去 26 周', style: TextStyle(color: palette.muted, fontSize: 11)),
+              ],
+            ),
+            const SizedBox(height: 12),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              reverse: true,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  for (var week = 0; week < 26; week++) ...[
+                    Column(
+                      children: [
+                        for (var day = 0; day < 7; day++) ...[
+                          _heatCell(
+                            palette,
+                            now.subtract(Duration(days: (25 - week) * 7 + (6 - day))),
+                          ),
+                          if (day != 6) const SizedBox(height: 3),
+                        ],
+                      ],
+                    ),
+                    if (week != 25) const SizedBox(width: 3),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _heatCell(QingxuPalette palette, DateTime date) {
+    final seconds = records.where((record) {
+      final ended = record.endedAt.toLocal();
+      return ended.year == date.year && ended.month == date.month && ended.day == date.day;
+    }).fold<int>(0, (sum, record) => sum + record.durationSeconds);
+    final color = switch (seconds) {
+      >= 7200 => palette.accent,
+      >= 3600 => palette.accent.withValues(alpha: 0.76),
+      >= 1500 => palette.accent.withValues(alpha: 0.5),
+      > 0 => palette.accent.withValues(alpha: 0.28),
+      _ => palette.border.withValues(alpha: 0.72),
+    };
+    return Container(
+      width: 10,
+      height: 10,
+      decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(2)),
     );
   }
 }

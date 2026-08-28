@@ -11,14 +11,22 @@ enum SystemFeatures {
   )
   private static let liveActivityStatusKey = "qingxu.liveActivity.status"
 
-  static func refresh(pomodoro: PomodoroState, todayTaskCount: Int, nextTodayTaskTitle: String?) {
+  static func refresh(
+    pomodoro: PomodoroState,
+    todayTaskCount: Int,
+    nextTodayTaskTitle: String?,
+    todayTaskTitles: [String]
+  ) {
     let defaults = UserDefaults(suiteName: appGroup)
     defaults?.set(todayTaskCount, forKey: "todayTaskCount")
     defaults?.set(nextTodayTaskTitle, forKey: "nextTodayTaskTitle")
+    defaults?.set(Array(todayTaskTitles.prefix(3)), forKey: "todayTaskTitles")
     defaults?.set(pomodoro.mode.rawValue, forKey: "pomodoroMode")
     defaults?.set(pomodoro.status.rawValue, forKey: "pomodoroStatus")
     defaults?.set(pomodoro.timerDirection.rawValue, forKey: "pomodoroTimerDirection")
     defaults?.set(pomodoro.remaining(at: .now), forKey: "pomodoroRemainingSeconds")
+    defaults?.set(pomodoro.dailyFocusGoal, forKey: "pomodoroDailyGoal")
+    defaults?.set(pomodoro.completedFocusCount(), forKey: "pomodoroTodayCompleted")
     defaults?.set(pomodoro.endsAt, forKey: "pomodoroEndsAt")
     let countUpDisplayStart = pomodoro.startedAt?.addingTimeInterval(
       TimeInterval(-pomodoro.remainingSeconds)
@@ -38,9 +46,13 @@ enum SystemFeatures {
         mode: pomodoro.mode.rawValue,
         status: pomodoro.status.rawValue,
         timerDirection: pomodoro.timerDirection.rawValue,
+        phaseID: pomodoro.phaseID,
         endsAt: pomodoro.endsAt,
         startedAt: countUpDisplayStart,
-        remainingSeconds: pomodoro.remaining(at: .now)
+        remainingSeconds: pomodoro.remaining(at: .now),
+        totalSeconds: pomodoro.duration(for: pomodoro.mode),
+        todayCompleted: pomodoro.completedFocusCount(),
+        dailyGoal: pomodoro.dailyFocusGoal
       ),
       staleDate: pomodoro.endsAt
     )

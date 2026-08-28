@@ -26,28 +26,51 @@ final class IOSSystemFeaturesBridge {
       }
       self?.update(
         pomodoro: pomodoro,
-        todayTaskCount: payload["todayTaskCount"] as? Int ?? 0
+        todayTaskCount: payload["todayTaskCount"] as? Int ?? 0,
+        todayTaskTitles: payload["todayTaskTitles"] as? [String] ?? []
       )
       result(nil)
     }
     self.channel = channel
   }
 
-  private func update(pomodoro: [String: Any], todayTaskCount: Int) {
+  private func update(
+    pomodoro: [String: Any],
+    todayTaskCount: Int,
+    todayTaskTitles: [String]
+  ) {
     let mode = pomodoro["mode"] as? String ?? "focus"
     let status = pomodoro["status"] as? String ?? "idle"
     let timerDirection = pomodoro["timerDirection"] as? String ?? "countdown"
     let remainingSeconds = pomodoro["remainingSeconds"] as? Int ?? 25 * 60
+    let phaseID = pomodoro["phaseID"] as? String ?? "\(mode)-\(pomodoro["updatedAt"] as? String ?? "legacy")"
+    let dailyGoal = pomodoro["dailyFocusGoal"] as? Int ?? 4
+    let totalSeconds: Int
+    switch mode {
+    case "shortBreak": totalSeconds = (pomodoro["shortBreakMinutes"] as? Int ?? 5) * 60
+    case "longBreak": totalSeconds = (pomodoro["longBreakMinutes"] as? Int ?? 15) * 60
+    default: totalSeconds = (pomodoro["focusMinutes"] as? Int ?? 25) * 60
+    }
+    let calendar = Calendar.autoupdatingCurrent
+    let todayCompleted = (pomodoro["focusHistory"] as? [[String: Any]] ?? []).filter { record in
+      guard record["completed"] as? Bool == true,
+            let value = record["endedAt"] as? String,
+            let date = ISO8601DateFormatter().date(from: value) else { return false }
+      return calendar.isDateInToday(date)
+    }.count
     let endsAt = (pomodoro["endsAt"] as? String).flatMap(ISO8601DateFormatter().date)
     let startedAt = (pomodoro["startedAt"] as? String).flatMap(ISO8601DateFormatter().date)
     let displayStartedAt = startedAt?.addingTimeInterval(TimeInterval(-remainingSeconds))
 
     if let defaults = UserDefaults(suiteName: Self.appGroup) {
       defaults.set(todayTaskCount, forKey: "todayTaskCount")
+      defaults.set(Array(todayTaskTitles.prefix(3)), forKey: "todayTaskTitles")
       defaults.set(mode, forKey: "pomodoroMode")
       defaults.set(status, forKey: "pomodoroStatus")
       defaults.set(timerDirection, forKey: "pomodoroTimerDirection")
       defaults.set(remainingSeconds, forKey: "pomodoroRemainingSeconds")
+      defaults.set(dailyGoal, forKey: "pomodoroDailyGoal")
+      defaults.set(todayCompleted, forKey: "pomodoroTodayCompleted")
       defaults.set(endsAt, forKey: "pomodoroEndsAt")
       defaults.set(displayStartedAt, forKey: "pomodoroStartedAt")
     }
@@ -58,9 +81,13 @@ final class IOSSystemFeaturesBridge {
       mode: mode,
       status: status,
       timerDirection: timerDirection,
+      phaseID: phaseID,
       endsAt: endsAt,
       startedAt: displayStartedAt,
-      remainingSeconds: remainingSeconds
+      remainingSeconds: remainingSeconds,
+      totalSeconds: totalSeconds,
+      todayCompleted: todayCompleted,
+      dailyGoal: dailyGoal
     )
     Task { @MainActor in
       await self.updateLiveActivity(state)

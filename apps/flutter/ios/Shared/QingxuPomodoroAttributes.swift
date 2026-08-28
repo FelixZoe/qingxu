@@ -7,9 +7,13 @@ struct QingxuPomodoroAttributes: ActivityAttributes {
     var mode: String
     var status: String
     var timerDirection: String
+    var phaseID: String
     var endsAt: Date?
     var startedAt: Date?
     var remainingSeconds: Int
+    var totalSeconds: Int
+    var todayCompleted: Int
+    var dailyGoal: Int
   }
 
   var title: String

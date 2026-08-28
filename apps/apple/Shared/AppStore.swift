@@ -183,6 +183,7 @@ final class AppStore: ObservableObject {
     pomodoro.endsAt = nil
     pomodoro.startedAt = nil
     pomodoro.remainingSeconds = pomodoro.timerDirection == .countUp ? 0 : pomodoro.duration(for: mode)
+    pomodoro.phaseID = UUID().uuidString
     pomodoro.updatedAt = estimatedNow
     pomodoroChanged()
   }
@@ -194,6 +195,7 @@ final class AppStore: ObservableObject {
     pomodoro.endsAt = nil
     pomodoro.startedAt = nil
     pomodoro.remainingSeconds = direction == .countUp ? 0 : pomodoro.duration(for: .focus)
+    pomodoro.phaseID = UUID().uuidString
     pomodoro.updatedAt = estimatedNow
     pomodoroChanged()
   }
@@ -206,6 +208,7 @@ final class AppStore: ObservableObject {
       pomodoro.startedAt = nil
       pomodoro.status = .paused
     } else {
+      pomodoro.phaseID = UUID().uuidString
       if pomodoro.timerDirection == .countUp {
         pomodoro.startedAt = now
         pomodoro.endsAt = nil
@@ -227,6 +230,7 @@ final class AppStore: ObservableObject {
     pomodoro.remainingSeconds = pomodoro.timerDirection == .countUp
       ? 0
       : pomodoro.duration(for: pomodoro.mode)
+    pomodoro.phaseID = UUID().uuidString
     pomodoro.updatedAt = estimatedNow
     pomodoroChanged()
   }
@@ -258,11 +262,18 @@ final class AppStore: ObservableObject {
   }
   #endif
 
-  func updateDurations(focus: Int, shortBreak: Int, longBreak: Int, longBreakEvery: Int) {
+  func updateDurations(
+    focus: Int,
+    shortBreak: Int,
+    longBreak: Int,
+    longBreakEvery: Int,
+    dailyFocusGoal: Int
+  ) {
     pomodoro.focusMinutes = min(180, max(1, focus))
     pomodoro.shortBreakMinutes = min(60, max(1, shortBreak))
     pomodoro.longBreakMinutes = min(120, max(1, longBreak))
     pomodoro.longBreakEvery = min(12, max(2, longBreakEvery))
+    pomodoro.dailyFocusGoal = min(24, max(1, dailyFocusGoal))
     if pomodoro.status != .running {
       pomodoro.remainingSeconds = pomodoro.timerDirection == .countUp
         ? 0
@@ -436,7 +447,7 @@ final class AppStore: ObservableObject {
     return Array(merged.values)
   }
 
-  private func scheduleSync(delay: Duration = .milliseconds(70)) {
+  private func scheduleSync(delay: Duration = .milliseconds(80)) {
     guard syncSettings.autoSync && syncSettings.isConfigured else { return }
     pendingSync?.cancel()
     pendingSync = Task { [weak self] in
@@ -532,6 +543,7 @@ final class AppStore: ObservableObject {
     pomodoro.startedAt = nil
     pomodoro.remainingSeconds = pomodoro.duration(for: pomodoro.mode)
     pomodoro.endsAt = estimatedNow.addingTimeInterval(TimeInterval(pomodoro.remainingSeconds))
+    pomodoro.phaseID = UUID().uuidString
     pomodoro.updatedAt = estimatedNow
     pomodoroChanged()
   }
@@ -566,7 +578,8 @@ final class AppStore: ObservableObject {
     SystemFeatures.refresh(
       pomodoro: pomodoro,
       todayTaskCount: todayTasks.count,
-      nextTodayTaskTitle: todayTasks.first?.title
+      nextTodayTaskTitle: todayTasks.first?.title,
+      todayTaskTitles: todayTasks.prefix(3).map(\.title)
     )
   }
 }

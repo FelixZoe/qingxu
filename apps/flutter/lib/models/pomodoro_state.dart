@@ -53,6 +53,8 @@ class PomodoroState {
     this.shortBreakMinutes = defaultShortBreakMinutes,
     this.longBreakMinutes = defaultLongBreakMinutes,
     this.longBreakEvery = 4,
+    this.dailyFocusGoal = 4,
+    this.phaseId = '',
     this.timerDirection = PomodoroTimerDirection.countdown,
     this.endsAt,
     this.startedAt,
@@ -68,6 +70,7 @@ class PomodoroState {
     status: PomodoroStatus.idle,
     remainingSeconds: durationFor(PomodoroMode.focus).inSeconds,
     completedFocusSessions: 0,
+    phaseId: 'initial',
     updatedAt: (now ?? DateTime.fromMillisecondsSinceEpoch(0, isUtc: true))
         .toUtc(),
   );
@@ -100,6 +103,10 @@ class PomodoroState {
       (value) => value.name == json['timerDirection'],
       orElse: () => PomodoroTimerDirection.countdown,
     );
+    final updatedAt =
+        DateTime.tryParse(json['updatedAt'] as String? ?? '')?.toUtc() ??
+        DateTime.fromMillisecondsSinceEpoch(0, isUtc: true);
+    final rawPhaseId = (json['phaseID'] ?? json['phaseId']) as String?;
     return PomodoroState(
       mode: mode,
       status: status,
@@ -107,6 +114,11 @@ class PomodoroState {
       shortBreakMinutes: shortBreakMinutes,
       longBreakMinutes: longBreakMinutes,
       longBreakEvery: (json['longBreakEvery'] as num?)?.toInt().clamp(2, 12) ?? 4,
+      dailyFocusGoal:
+          (json['dailyFocusGoal'] as num?)?.toInt().clamp(1, 24) ?? 4,
+      phaseId: rawPhaseId != null && rawPhaseId.trim().isNotEmpty
+          ? rawPhaseId
+          : '${mode.name}-${updatedAt.microsecondsSinceEpoch}',
       timerDirection: timerDirection,
       remainingSeconds:
           (json['remainingSeconds'] as num?)?.toInt().clamp(0, 24 * 3600) ??
@@ -129,9 +141,7 @@ class PomodoroState {
           .whereType<Map<String, Object?>>()
           .map(FocusSessionRecord.fromJson)
           .toList(growable: false),
-      updatedAt:
-          DateTime.tryParse(json['updatedAt'] as String? ?? '')?.toUtc() ??
-          DateTime.fromMillisecondsSinceEpoch(0, isUtc: true),
+      updatedAt: updatedAt,
     );
   }
 
@@ -143,11 +153,24 @@ class PomodoroState {
   final int shortBreakMinutes;
   final int longBreakMinutes;
   final int longBreakEvery;
+  final int dailyFocusGoal;
+  final String phaseId;
   final PomodoroTimerDirection timerDirection;
   final DateTime? endsAt;
   final DateTime? startedAt;
   final List<FocusSessionRecord> focusHistory;
   final DateTime updatedAt;
+
+  int completedFocusCountOn(DateTime date) {
+    final localDate = date.toLocal();
+    return focusHistory.where((record) {
+      if (!record.completed) return false;
+      final ended = record.endedAt.toLocal();
+      return ended.year == localDate.year &&
+          ended.month == localDate.month &&
+          ended.day == localDate.day;
+    }).length;
+  }
 
   static Duration durationFor(PomodoroMode mode) => switch (mode) {
     PomodoroMode.focus => const Duration(minutes: defaultFocusMinutes),
@@ -202,6 +225,8 @@ class PomodoroState {
     int? shortBreakMinutes,
     int? longBreakMinutes,
     int? longBreakEvery,
+    int? dailyFocusGoal,
+    String? phaseId,
     PomodoroTimerDirection? timerDirection,
     DateTime? endsAt,
     bool clearEndsAt = false,
@@ -219,6 +244,8 @@ class PomodoroState {
     shortBreakMinutes: shortBreakMinutes ?? this.shortBreakMinutes,
     longBreakMinutes: longBreakMinutes ?? this.longBreakMinutes,
     longBreakEvery: longBreakEvery ?? this.longBreakEvery,
+    dailyFocusGoal: dailyFocusGoal ?? this.dailyFocusGoal,
+    phaseId: phaseId ?? this.phaseId,
     timerDirection: timerDirection ?? this.timerDirection,
     endsAt: clearEndsAt ? null : endsAt ?? this.endsAt,
     startedAt: clearStartedAt ? null : startedAt ?? this.startedAt,
@@ -235,6 +262,8 @@ class PomodoroState {
     'shortBreakMinutes': shortBreakMinutes,
     'longBreakMinutes': longBreakMinutes,
     'longBreakEvery': longBreakEvery,
+    'dailyFocusGoal': dailyFocusGoal,
+    'phaseID': phaseId,
     'timerDirection': timerDirection.name,
     'endsAt': endsAt?.toUtc().toIso8601String(),
     'startedAt': startedAt?.toUtc().toIso8601String(),

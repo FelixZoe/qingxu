@@ -22,6 +22,7 @@ private struct QingxuEntry: TimelineEntry {
   let date: Date
   let todayTaskCount: Int
   let nextTodayTaskTitle: String?
+  let todayTaskTitles: [String]
   let mode: String
   let status: String
   let timerDirection: String
@@ -36,6 +37,7 @@ private struct QingxuProvider: TimelineProvider {
       date: .now,
       todayTaskCount: 3,
       nextTodayTaskTitle: "整理今天的安排",
+      todayTaskTitles: ["整理今天的安排", "检查同步状态"],
       mode: "focus",
       status: "idle",
       timerDirection: "countdown",
@@ -63,6 +65,7 @@ private struct QingxuProvider: TimelineProvider {
       date: .now,
       todayTaskCount: defaults?.integer(forKey: "todayTaskCount") ?? 0,
       nextTodayTaskTitle: defaults?.string(forKey: "nextTodayTaskTitle"),
+      todayTaskTitles: defaults?.stringArray(forKey: "todayTaskTitles") ?? [],
       mode: defaults?.string(forKey: "pomodoroMode") ?? "focus",
       status: defaults?.string(forKey: "pomodoroStatus") ?? "idle",
       timerDirection: defaults?.string(forKey: "pomodoroTimerDirection") ?? "countdown",
@@ -135,15 +138,24 @@ private struct TodayWidgetView: View {
         }
         Spacer()
         if family == .systemMedium {
-          HStack(alignment: .bottom, spacing: 16) {
+          HStack(alignment: .top, spacing: 18) {
             Text("\(entry.todayTaskCount)")
               .font(.system(size: 40, weight: .bold, design: .rounded))
             VStack(alignment: .leading, spacing: 4) {
               Text(entry.todayTaskCount == 0 ? "今天已清空" : "项待办")
                 .font(.caption).foregroundStyle(.secondary)
-              Text(entry.nextTodayTaskTitle ?? "给自己留一点轻松")
-                .font(.subheadline.weight(.semibold))
-                .lineLimit(1)
+              if entry.todayTaskTitles.isEmpty {
+                Text("给自己留一点轻松")
+                  .font(.subheadline.weight(.semibold))
+              } else {
+                ForEach(Array(entry.todayTaskTitles.prefix(3).enumerated()), id: \.offset) { _, title in
+                  HStack(spacing: 5) {
+                    Circle().fill(QingxuWidgetPalette.accent).frame(width: 4, height: 4)
+                    Text(title).lineLimit(1)
+                  }
+                  .font(.caption.weight(.medium))
+                }
+              }
             }
             Spacer()
           }
@@ -234,6 +246,7 @@ struct QingxuTodayWidget: Widget {
   var body: some WidgetConfiguration {
     StaticConfiguration(kind: kind, provider: QingxuProvider()) { entry in
       TodayWidgetView(entry: entry)
+        .qingxuWidgetBackground(QingxuWidgetPalette.background)
     }
     .configurationDisplayName("今日任务")
     .description("快速查看今天还剩多少项任务。")
@@ -247,6 +260,7 @@ struct QingxuFocusWidget: Widget {
   var body: some WidgetConfiguration {
     StaticConfiguration(kind: kind, provider: QingxuProvider()) { entry in
       FocusWidgetView(entry: entry)
+        .qingxuWidgetBackground(QingxuWidgetPalette.background)
     }
     .configurationDisplayName("专注状态")
     .description("查看当前番茄钟，并快速回到专注页面。")
@@ -258,11 +272,16 @@ struct QingxuFocusWidget: Widget {
 struct QingxuLiveActivity: Widget {
   var body: some WidgetConfiguration {
     ActivityConfiguration(for: QingxuPomodoroAttributes.self) { context in
-      HStack(spacing: 12) {
-        Image(systemName: "timer")
+      HStack(spacing: 10) {
+        Image(systemName: context.state.mode == "focus" ? "timer" : "cup.and.saucer.fill")
           .foregroundStyle(QingxuWidgetPalette.accent)
         VStack(alignment: .leading, spacing: 2) {
-          Text(modeTitle(context.state.mode)).font(.caption.weight(.semibold))
+          HStack(spacing: 6) {
+            Text(modeTitle(context.state.mode)).font(.caption.weight(.semibold))
+            Text("今日 \(context.state.todayCompleted)/\(context.state.dailyGoal)")
+              .font(.caption2)
+              .foregroundStyle(.secondary)
+          }
           liveTimer(context.state)
             .font(.title3.weight(.semibold).monospacedDigit())
             .lineLimit(1)
@@ -276,31 +295,45 @@ struct QingxuLiveActivity: Widget {
       .widgetURL(URL(string: "qingxu://pomodoro"))
     } dynamicIsland: { context in
       DynamicIsland {
-        DynamicIslandExpandedRegion(.center) {
-          HStack(spacing: 6) {
+        DynamicIslandExpandedRegion(.leading) {
+          HStack(spacing: 7) {
             Image(systemName: context.state.mode == "focus" ? "timer" : "cup.and.saucer.fill")
-              .font(.system(size: 13, weight: .semibold))
+              .font(.system(size: 15, weight: .semibold))
               .foregroundStyle(QingxuWidgetPalette.accent)
             Text(modeTitle(context.state.mode))
-              .font(.system(size: 13, weight: .semibold))
+              .font(.system(size: 14, weight: .semibold))
           }
           .lineLimit(1)
-          .frame(maxWidth: .infinity)
+          .padding(.leading, 2)
+        }
+        DynamicIslandExpandedRegion(.trailing) {
+          liveTimer(context.state)
+            .font(.system(size: 22, weight: .semibold, design: .rounded).monospacedDigit())
+            .lineLimit(1)
+            .minimumScaleFactor(0.78)
+            .id(context.state.phaseID)
+            .padding(.trailing, 2)
         }
         DynamicIslandExpandedRegion(.bottom) {
-          VStack(spacing: 5) {
-            liveTimer(context.state)
-              .font(.system(size: 28, weight: .semibold, design: .rounded).monospacedDigit())
-              .lineLimit(1)
-              .minimumScaleFactor(0.72)
-            Text(context.state.status == "running" ? "专注进行中" : "计时已暂停")
-              .font(.system(size: 12, weight: .medium))
-              .foregroundStyle(.secondary)
-              .lineLimit(1)
+          VStack(spacing: 7) {
+            ProgressView(
+              value: min(
+                1,
+                Double(context.state.todayCompleted) / Double(max(1, context.state.dailyGoal))
+              )
+            )
+            .tint(QingxuWidgetPalette.accent)
+            HStack(spacing: 8) {
+              Text("今日 \(context.state.todayCompleted)/\(context.state.dailyGoal)")
+              Spacer(minLength: 8)
+              Text(nextPhaseTitle(context.state.mode))
+            }
+            .font(.system(size: 11, weight: .medium))
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
           }
           .frame(maxWidth: .infinity)
-          .padding(.horizontal, 12)
-          .padding(.top, 2)
+          .padding(.horizontal, 4)
         }
       } compactLeading: {
         Image(systemName: context.state.mode == "focus" ? "timer" : "cup.and.saucer.fill")
@@ -313,6 +346,7 @@ struct QingxuLiveActivity: Widget {
           .lineLimit(1)
           .minimumScaleFactor(0.8)
           .frame(width: 38, alignment: .trailing)
+          .id(context.state.phaseID)
       } minimal: {
         Image(systemName: context.state.mode == "focus" ? "timer" : "cup.and.saucer.fill")
       }
@@ -338,6 +372,10 @@ struct QingxuLiveActivity: Widget {
     case "longBreak": return "长休息"
     default: return "专注"
     }
+  }
+
+  private func nextPhaseTitle(_ mode: String) -> String {
+    mode == "focus" ? "接下来休息" : "接下来专注"
   }
 }
 

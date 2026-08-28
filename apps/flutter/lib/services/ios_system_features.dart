@@ -13,6 +13,7 @@ final class IOSSystemFeatures {
   static void update({
     required PomodoroState pomodoro,
     required int todayTaskCount,
+    required List<String> todayTaskTitles,
   }) {
     if (kIsWeb || defaultTargetPlatform != TargetPlatform.iOS) return;
     unawaited(
@@ -20,6 +21,7 @@ final class IOSSystemFeatures {
           .invokeMethod<void>('updateSnapshot', {
             'pomodoro': pomodoro.toJson(),
             'todayTaskCount': todayTaskCount,
+            'todayTaskTitles': todayTaskTitles,
           })
           .catchError((Object _) {}),
     );

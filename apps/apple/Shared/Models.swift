@@ -101,6 +101,8 @@ struct PomodoroState: Codable, Equatable {
   var shortBreakMinutes: Int
   var longBreakMinutes: Int
   var longBreakEvery: Int
+  var dailyFocusGoal: Int
+  var phaseID: String
   var timerDirection: PomodoroTimerDirection
   var endsAt: Date?
   var startedAt: Date?
@@ -117,6 +119,8 @@ struct PomodoroState: Codable, Equatable {
       shortBreakMinutes: 5,
       longBreakMinutes: 15,
       longBreakEvery: 4,
+      dailyFocusGoal: 4,
+      phaseID: UUID().uuidString,
       timerDirection: .countdown,
       endsAt: nil,
       startedAt: nil,
@@ -143,9 +147,14 @@ struct PomodoroState: Codable, Equatable {
     return max(0, Int(ceil(endsAt.timeIntervalSince(now))))
   }
 
+  func completedFocusCount(on date: Date = .now, calendar: Calendar = .autoupdatingCurrent) -> Int {
+    focusHistory.filter { $0.completed && calendar.isDate($0.endedAt, inSameDayAs: date) }.count
+  }
+
   enum CodingKeys: String, CodingKey {
     case mode, status, remainingSeconds, completedFocusSessions
     case focusMinutes, shortBreakMinutes, longBreakMinutes, longBreakEvery
+    case dailyFocusGoal, phaseID
     case timerDirection, endsAt, startedAt, focusHistory, updatedAt
   }
 
@@ -158,6 +167,8 @@ struct PomodoroState: Codable, Equatable {
     shortBreakMinutes: Int,
     longBreakMinutes: Int,
     longBreakEvery: Int = 4,
+    dailyFocusGoal: Int = 4,
+    phaseID: String = UUID().uuidString,
     timerDirection: PomodoroTimerDirection = .countdown,
     endsAt: Date?,
     startedAt: Date? = nil,
@@ -172,6 +183,8 @@ struct PomodoroState: Codable, Equatable {
     self.shortBreakMinutes = shortBreakMinutes
     self.longBreakMinutes = longBreakMinutes
     self.longBreakEvery = longBreakEvery
+    self.dailyFocusGoal = dailyFocusGoal
+    self.phaseID = phaseID
     self.timerDirection = timerDirection
     self.endsAt = endsAt
     self.startedAt = startedAt
@@ -197,6 +210,8 @@ struct PomodoroState: Codable, Equatable {
       max(1, try container.decodeIfPresent(Int.self, forKey: .longBreakMinutes) ?? 15)
     )
     longBreakEvery = min(12, max(2, try container.decodeIfPresent(Int.self, forKey: .longBreakEvery) ?? 4))
+    dailyFocusGoal = min(24, max(1, try container.decodeIfPresent(Int.self, forKey: .dailyFocusGoal) ?? 4))
+    phaseID = try container.decodeIfPresent(String.self, forKey: .phaseID) ?? UUID().uuidString
     timerDirection = try container.decodeIfPresent(
       PomodoroTimerDirection.self,
       forKey: .timerDirection
