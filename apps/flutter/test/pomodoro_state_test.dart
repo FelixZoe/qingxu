@@ -15,6 +15,7 @@ void main() {
       status: PomodoroStatus.running,
       remainingSeconds: 1500,
       completedFocusSessions: 2,
+      phaseId: 'focus-20260822-1025',
       endsAt: DateTime.utc(2026, 8, 22, 10, 25),
       updatedAt: DateTime.utc(2026, 8, 22, 10),
     );
