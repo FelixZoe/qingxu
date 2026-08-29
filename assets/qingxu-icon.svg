@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" fill="none">
+  <title>qingxu icon</title>
+  <desc>Abstract circular rhythm symbol representing order, focus and gentle progress.</desc>
+  <defs>
+    <linearGradient id="bg" x1="180" y1="150" x2="844" y2="890" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#111111"/>
+      <stop offset="1" stop-color="#000000"/>
+    </linearGradient>
+    <linearGradient id="teal" x1="265" y1="264" x2="731" y2="731" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#FFFFFF"/>
+    </linearGradient>
+    <linearGradient id="blue" x1="748" y1="312" x2="338" y2="793" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#FFFFFF"/>
+    </linearGradient>
+  </defs>
+  <rect x="32" y="32" width="960" height="960" rx="236" fill="url(#bg)"/>
+  <path d="M260 703C179 610 172 474 244 369C316 264 445 214 566 241C649 260 716 307 760 371C711 340 651 328 594 339C515 354 447 405 414 476C381 547 383 628 431 697C478 765 557 806 644 811C508 887 341 803 260 703Z" fill="url(#teal)"/>
+  <path d="M766 371C848 465 852 601 783 711C713 823 580 872 459 832C379 806 315 757 274 693C325 723 385 732 442 718C522 699 588 648 620 577C653 504 647 422 601 354C556 286 477 244 393 239C530 161 684 275 766 371Z" fill="url(#blue)"/>
+  <path d="M302 616C332 699 409 756 498 767C589 778 679 740 730 668C705 724 652 768 589 790C497 823 392 793 334 721C313 695 300 666 292 636L302 616Z" fill="#000000"/>
+  <circle cx="512" cy="512" r="72" fill="#FFFFFF"/>
+  <circle cx="512" cy="512" r="38" fill="#000000"/>
+</svg>
