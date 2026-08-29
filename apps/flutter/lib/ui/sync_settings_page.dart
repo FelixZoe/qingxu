@@ -245,7 +245,7 @@ class _SyncSettingsPageState extends State<SyncSettingsPage> {
               ),
               _SettingSwitch(
                 title: '自动同步',
-                subtitle: '启动时同步，本地修改后约 1 秒上传',
+                subtitle: '启动时同步，本地修改后约 0.1 秒上传',
                 value: _autoSync,
                 onChanged: (value) => setState(() => _autoSync = value),
               ),
@@ -302,6 +302,76 @@ class _SyncSettingsPageState extends State<SyncSettingsPage> {
     Widget? trailing,
   }) {
     final palette = QingxuPalette.of(context);
+    if (widget.embedded) {
+      return ColoredBox(
+        color: Colors.transparent,
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(8, 8, 8, 7),
+              child: Row(
+                children: [
+                  if (showBack)
+                    IconButton(
+                      tooltip: '返回设置',
+                      visualDensity: VisualDensity.compact,
+                      onPressed: () {
+                        FocusManager.instance.primaryFocus?.unfocus();
+                        setState(() => _section = _SettingsSection.overview);
+                      },
+                      icon: const Icon(Icons.arrow_back_rounded, size: 18),
+                    )
+                  else
+                    const SizedBox(width: 8),
+                  const SizedBox(width: 3),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: palette.ink,
+                            fontSize: 17,
+                            fontWeight: FontWeight.w600,
+                            letterSpacing: -0.2,
+                          ),
+                        ),
+                        const SizedBox(height: 1),
+                        Text(
+                          subtitle,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(color: palette.muted, fontSize: 10.5),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (trailing != null) ...[
+                    const SizedBox(width: 6),
+                    trailing,
+                  ],
+                  const SizedBox(width: 38),
+                ],
+              ),
+            ),
+            Divider(height: 1, color: palette.border.withValues(alpha: 0.7)),
+            Expanded(
+              child: SingleChildScrollView(
+                keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+                padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: children,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
     return ColoredBox(
       color: palette.canvas,
       child: Column(
