@@ -22,6 +22,10 @@ enum QingxuFiles {
     let data = try QingxuCoding.encoder.encode(value)
     try data.write(to: root.appendingPathComponent(name), options: .atomic)
   }
+
+  static var hasPersistedInstallState: Bool {
+    FileManager.default.fileExists(atPath: root.path)
+  }
 }
 
 enum SecureSyncToken {
@@ -60,6 +64,15 @@ enum SecureSyncToken {
       throw NSError(domain: NSOSStatusErrorDomain, code: Int(status))
     }
   }
+
+
+  static func clear() {
+    let query: [String: Any] = [
+      kSecClass as String: kSecClassGenericPassword,
+      kSecAttrAccount as String: account,
+    ]
+    SecItemDelete(query as CFDictionary)
+  }
 }
 
 enum SecureAIAPIKey {
@@ -97,5 +110,34 @@ enum SecureAIAPIKey {
     guard status == errSecSuccess else {
       throw NSError(domain: NSOSStatusErrorDomain, code: Int(status))
     }
+  }
+
+
+  static func clear() {
+    let query: [String: Any] = [
+      kSecClass as String: kSecClassGenericPassword,
+      kSecAttrAccount as String: account,
+    ]
+    SecItemDelete(query as CFDictionary)
+  }
+}
+
+
+enum QingxuInstallPrivacy {
+  private static let launchMarker = "qingxu.install.didLaunch.v1"
+
+  /// Keychain values survive uninstall on iOS. Clear them only when the app has
+  /// no local container state, which identifies a real reinstall. An in-place
+  /// update keeps both the local state and the user's secrets.
+  static func prepareForLaunch() {
+    #if os(iOS)
+    let defaults = UserDefaults.standard
+    guard !defaults.bool(forKey: launchMarker) else { return }
+    if !QingxuFiles.hasPersistedInstallState {
+      SecureSyncToken.clear()
+      SecureAIAPIKey.clear()
+    }
+    defaults.set(true, forKey: launchMarker)
+    #endif
   }
 }

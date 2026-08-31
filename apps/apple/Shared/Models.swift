@@ -233,7 +233,7 @@ struct PomodoroState: Codable, Equatable {
 }
 
 struct SyncSettings: Codable, Equatable {
-  var serverURL = "https://todo.darker.one"
+  var serverURL = ""
   var token = ""
   var deviceName = ""
   var autoSync = false

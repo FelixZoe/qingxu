@@ -45,6 +45,7 @@ final class AppStore: ObservableObject {
   private var activeSync: Task<Bool, Never>?
 
   init() {
+    QingxuInstallPrivacy.prepareForLaunch()
     tasks = QingxuFiles.load([TaskItem].self, name: "tasks.json") ?? []
     pomodoro = QingxuFiles.load(PomodoroState.self, name: "pomodoro.json") ?? .initial()
     syncSettings = QingxuFiles.load(SyncSettings.self, name: "sync.json") ?? SyncSettings()
