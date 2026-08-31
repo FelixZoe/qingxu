@@ -1,5 +1,6 @@
 import 'dart:ui';
 
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -629,7 +630,6 @@ class _FlowtimeNavigationBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final palette = QingxuPalette.of(context);
     final dark = Theme.of(context).brightness == Brightness.dark;
     final content = Container(
       height: 70,
