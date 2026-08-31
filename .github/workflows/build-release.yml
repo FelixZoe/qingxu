@@ -335,6 +335,7 @@ jobs:
     env:
       APP_VERSION: ${{ needs.version.outputs.version }}
       BUILD_NUMBER: ${{ needs.version.outputs.build_number }}
+      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v7
       - uses: subosito/flutter-action@v2
@@ -342,15 +343,91 @@ jobs:
           channel: stable
           cache: true
       - run: flutter pub get
+      - name: Configure stable Android release signing
+        if: needs.version.outputs.should_release == 'true'
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          test -n "$ANDROID_KEYSTORE_BASE64"
+          test -n "$ANDROID_KEYSTORE_PASSWORD"
+          test -n "$ANDROID_KEY_ALIAS"
+          test -n "$ANDROID_KEY_PASSWORD"
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > android/app/qingxu-release.jks
+          cat > android/key.properties <<EOF
+          storeFile=qingxu-release.jks
+          storePassword=$ANDROID_KEYSTORE_PASSWORD
+          keyAlias=$ANDROID_KEY_ALIAS
+          keyPassword=$ANDROID_KEY_PASSWORD
+          EOF
+          echo "ANDROID_KEY_PROPERTIES=$PWD/android/key.properties" >> "$GITHUB_ENV"
       - name: Build Android APK
         run: flutter build apk --release --build-name "$APP_VERSION" --build-number "$BUILD_NUMBER"
       - name: Package Android APK
         run: cp build/app/outputs/flutter-apk/app-release.apk "Qingxu-${APP_VERSION}-Android.apk"
+      - name: Generate Android incremental update assets
+        if: needs.version.outputs.should_release == 'true'
+        run: |
+          set -euo pipefail
+          full="Qingxu-${APP_VERSION}-Android.apk"
+          full_sha="$(sha256sum "$full" | cut -d' ' -f1)"
+          previous_tag="$(gh release list --repo "$GITHUB_REPOSITORY" --limit 1 --json tagName --jq '.[0].tagName // empty')"
+          previous_version="${previous_tag#v}"
+          patch_name=""
+          if [[ -n "$previous_tag" && "$previous_tag" != "v${APP_VERSION}" ]]; then
+            mkdir -p previous
+            if gh release download "$previous_tag" \
+              --repo "$GITHUB_REPOSITORY" \
+              --pattern "Qingxu-*-Android.apk" \
+              --dir previous; then
+              old_apk="$(find previous -maxdepth 1 -name 'Qingxu-*-Android.apk' -print -quit)"
+              if [[ -n "$old_apk" ]]; then
+                patch_name="Qingxu-${previous_version}-to-${APP_VERSION}-Android.bpatch"
+                dart run binary_patch create "$old_apk" "$full" "$patch_name"
+              fi
+            fi
+          fi
+          FULL_SHA="$full_sha" PREVIOUS_VERSION="$previous_version" PATCH_NAME="$patch_name" \
+            python3 - <<'PY'
+          import hashlib, json, os
+          from pathlib import Path
+
+          version = os.environ["APP_VERSION"]
+          repo = os.environ["GITHUB_REPOSITORY"]
+          base = f"https://github.com/{repo}/releases/download/v{version}"
+          full_name = f"Qingxu-{version}-Android.apk"
+          payload = {
+              "schema": 1,
+              "latestVersion": version,
+              "fullUrl": f"{base}/{full_name}",
+              "fullSha256": os.environ["FULL_SHA"],
+              "patches": {},
+          }
+          patch_name = os.environ.get("PATCH_NAME", "")
+          previous = os.environ.get("PREVIOUS_VERSION", "")
+          if patch_name and Path(patch_name).is_file() and previous:
+              patch = Path(patch_name)
+              payload["patches"][previous] = {
+                  "url": f"{base}/{patch.name}",
+                  "size": patch.stat().st_size,
+                  "sha256": hashlib.sha256(patch.read_bytes()).hexdigest(),
+              }
+          Path("qingxu-android-update.json").write_text(
+              json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
+              encoding="utf-8",
+          )
+          PY
       - uses: actions/upload-artifact@v7
         with:
           name: qingxu-${{ needs.version.outputs.version }}-android
           retention-days: 7
-          path: apps/flutter/Qingxu-${{ needs.version.outputs.version }}-Android.apk
+          path: |
+            apps/flutter/Qingxu-${{ needs.version.outputs.version }}-Android.apk
+            apps/flutter/Qingxu-*-to-${{ needs.version.outputs.version }}-Android.bpatch
+            apps/flutter/qingxu-android-update.json
 
   apple-macos:
     needs: version

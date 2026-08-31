@@ -101,6 +101,7 @@ class TaskController extends ChangeNotifier {
           'inbox': '收集箱',
           'today': '今天',
           'pomodoro': '番茄钟',
+          'rss': 'RSS',
           'settings': '设置',
         }[activeView] ??
         '今天';

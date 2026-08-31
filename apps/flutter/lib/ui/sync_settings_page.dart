@@ -14,6 +14,11 @@ class SyncSettingsPage extends StatefulWidget {
     required this.onThemeModeChanged,
     this.embedded = false,
     this.onMenu,
+    this.onAISettings,
+    this.aiDetail,
+    this.onWeatherSettings,
+    this.weatherDetail,
+    this.onCheckUpdates,
     super.key,
   });
 
@@ -22,6 +27,11 @@ class SyncSettingsPage extends StatefulWidget {
   final ValueChanged<ThemeMode> onThemeModeChanged;
   final bool embedded;
   final VoidCallback? onMenu;
+  final VoidCallback? onAISettings;
+  final String? aiDetail;
+  final VoidCallback? onWeatherSettings;
+  final String? weatherDetail;
+  final VoidCallback? onCheckUpdates;
 
   @override
   State<SyncSettingsPage> createState() => _SyncSettingsPageState();
@@ -114,6 +124,29 @@ class _SyncSettingsPageState extends State<SyncSettingsPage> {
           ],
         ),
         const SizedBox(height: 26),
+        if (widget.onAISettings != null || widget.onWeatherSettings != null) ...[
+          const _SectionLabel(title: '智能与内容'),
+          const SizedBox(height: 9),
+          _SettingsGroup(
+            children: [
+              if (widget.onAISettings != null)
+                _SettingsTile(
+                  icon: Icons.auto_awesome_outlined,
+                  title: 'AI 服务',
+                  subtitle: widget.aiDetail ?? '选择服务并填写密钥',
+                  onTap: widget.onAISettings!,
+                ),
+              if (widget.onWeatherSettings != null)
+                _SettingsTile(
+                  icon: Icons.cloud_outlined,
+                  title: '每日一句与天气',
+                  subtitle: widget.weatherDetail ?? '本地缓存，离线可用',
+                  onTap: widget.onWeatherSettings!,
+                ),
+            ],
+          ),
+          const SizedBox(height: 26),
+        ],
         const _SectionLabel(title: '数据'),
         const SizedBox(height: 9),
         _SettingsGroup(
@@ -140,6 +173,21 @@ class _SyncSettingsPageState extends State<SyncSettingsPage> {
             height: 1.5,
           ),
         ),
+        if (widget.onCheckUpdates != null) ...[
+          const SizedBox(height: 26),
+          const _SectionLabel(title: '关于'),
+          const SizedBox(height: 9),
+          _SettingsGroup(
+            children: [
+              _SettingsTile(
+                icon: Icons.system_update_alt_rounded,
+                title: '检查更新',
+                subtitle: '优先增量更新，失败自动下载完整 APK',
+                onTap: widget.onCheckUpdates!,
+              ),
+            ],
+          ),
+        ],
       ],
     );
   }

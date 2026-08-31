@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../state/task_controller.dart';
+import 'android_flowtime_shell.dart';
 import 'design_system.dart';
 import 'pomodoro_page.dart';
 import 'sidebar.dart';
@@ -42,6 +43,8 @@ class _AppShellState extends State<AppShell> {
   Widget build(BuildContext context) {
     final useWindowsWidget =
         !kIsWeb && defaultTargetPlatform == TargetPlatform.windows;
+    final useAndroidFlowtime =
+        !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
     return CallbackShortcuts(
       bindings: {
         const SingleActivator(LogicalKeyboardKey.keyN, control: true):
@@ -57,6 +60,12 @@ class _AppShellState extends State<AppShell> {
         autofocus: true,
         child: useWindowsWidget
             ? WindowsWidgetShell(
+                controller: widget.controller,
+                themeMode: widget.themeMode,
+                onThemeModeChanged: widget.onThemeModeChanged,
+              )
+            : useAndroidFlowtime
+            ? AndroidFlowtimeShell(
                 controller: widget.controller,
                 themeMode: widget.themeMode,
                 onThemeModeChanged: widget.onThemeModeChanged,

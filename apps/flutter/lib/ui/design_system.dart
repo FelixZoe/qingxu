@@ -173,12 +173,14 @@ class QingxuPageHeader extends StatelessWidget {
       final palette = QingxuPalette.of(context);
       final gutter = QingxuLayout.gutterFor(constraints.maxWidth);
       final desktop = qingxuIsDesktop && constraints.maxWidth >= 760;
+      final android =
+          !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
       return Padding(
         padding: EdgeInsets.fromLTRB(
           gutter,
-          desktop ? 42 : 30,
+          desktop ? 42 : (android ? 28 : 30),
           gutter,
-          desktop ? 28 : 24,
+          desktop ? 28 : (android ? 30 : 24),
         ),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.center,
@@ -194,10 +196,12 @@ class QingxuPageHeader extends StatelessWidget {
                       color: palette.ink,
                       fontSize: desktop
                           ? 34
-                          : (constraints.maxWidth < 700 ? 34 : 40),
+                          : (android
+                                ? 32
+                                : (constraints.maxWidth < 700 ? 34 : 40)),
                       height: 1.12,
-                      fontWeight: FontWeight.w600,
-                      letterSpacing: desktop ? -0.7 : -1.1,
+                      fontWeight: android ? FontWeight.w800 : FontWeight.w600,
+                      letterSpacing: android ? -0.8 : (desktop ? -0.7 : -1.1),
                     ),
                   ),
                   const SizedBox(height: 6),
@@ -207,8 +211,8 @@ class QingxuPageHeader extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       color: palette.muted,
-                      fontSize: 13,
-                      height: 1.3,
+                      fontSize: android ? 15 : 13,
+                      height: android ? 1.35 : 1.3,
                     ),
                   ),
                 ],
@@ -238,14 +242,18 @@ class QingxuSurface extends StatelessWidget {
   Widget build(BuildContext context) {
     final palette = QingxuPalette.of(context);
     final dark = Theme.of(context).brightness == Brightness.dark;
+    final android =
+        !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: palette.surface,
-        borderRadius: BorderRadius.circular(radius),
-        border: Border.all(
-          color: palette.border.withValues(alpha: dark ? 0.9 : 0.75),
-        ),
-        boxShadow: dark
+        color: android ? palette.surfaceRaised : palette.surface,
+        borderRadius: BorderRadius.circular(android ? 20 : radius),
+        border: android
+            ? null
+            : Border.all(
+                color: palette.border.withValues(alpha: dark ? 0.9 : 0.75),
+              ),
+        boxShadow: dark || android
             ? null
             : const [
                 BoxShadow(
