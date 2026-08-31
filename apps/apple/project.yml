@@ -89,6 +89,9 @@ targets:
       - path: macOS
       - path: ../flutter/macos/Runner/Assets.xcassets
         buildPhase: resources
+    dependencies:
+      - target: QingxumacOSWidgets
+        embed: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: one.darker.qingxu
@@ -103,3 +106,26 @@ targets:
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         LSApplicationCategoryType: public.app-category.productivity
+        CFBundleURLTypes:
+          - CFBundleURLName: one.darker.qingxu
+            CFBundleURLSchemes: [qingxu]
+  QingxumacOSWidgets:
+    type: app-extension
+    platform: macOS
+    sources:
+      - path: macOSWidgets
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: one.darker.qingxu.macos.widgets
+        PRODUCT_NAME: QingxumacOSWidgets
+        CODE_SIGN_ENTITLEMENTS: Configuration/QingxumacOSWidgets.entitlements
+        APPLICATION_EXTENSION_API_ONLY: YES
+        SKIP_INSTALL: YES
+    info:
+      path: Generated/QingxumacOSWidgets-Info.plist
+      properties:
+        CFBundleDisplayName: 清序桌面小组件
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension

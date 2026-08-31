@@ -3,11 +3,12 @@ import SwiftUI
 @main
 struct QingxumacOSApp: App {
   @StateObject private var store = AppStore()
+  @StateObject private var floatingPanel = MacFloatingPanelController()
   @AppStorage("qingxu.appearance") private var appearance = AppearanceMode.system.rawValue
 
   var body: some Scene {
     WindowGroup {
-      MacRootView()
+      MacRootView(floatingPanel: floatingPanel)
         .environmentObject(store)
         .preferredColorScheme(AppearanceMode(rawValue: appearance)?.colorScheme)
         .frame(minWidth: 860, minHeight: 600)
@@ -24,6 +25,8 @@ struct QingxumacOSApp: App {
 }
 
 private struct MacRootView: View {
+  @EnvironmentObject private var store: AppStore
+  @ObservedObject var floatingPanel: MacFloatingPanelController
   @State private var selection: AppTab? = .inbox
 
   private var sidebarTabs: [AppTab] {
@@ -48,6 +51,9 @@ private struct MacRootView: View {
       }
     }
     .tint(QingxuPalette.accent)
+    .onAppear {
+      floatingPanel.present(store: store)
+    }
   }
 }
 
