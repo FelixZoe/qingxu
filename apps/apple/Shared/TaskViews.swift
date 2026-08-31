@@ -31,6 +31,7 @@ struct TaskListScreen: View {
   @EnvironmentObject private var store: AppStore
   @Environment(\.openURL) private var openURL
   let scope: TaskScope
+  @StateObject private var ambientStore = TodayAmbientStore()
 
   @State private var searchText = ""
   @State private var editor: TaskEditorRoute?
@@ -164,6 +165,13 @@ struct TaskListScreen: View {
       .animation(.easeOut(duration: 0.22), value: capture?.id)
       #endif
       .onDisappear { undoDismissTask?.cancel() }
+      .task {
+        if scope == .today { await ambientStore.load() }
+      }
+      .onReceive(NotificationCenter.default.publisher(for: QingxuAmbientPreferencesStore.didChange)) { _ in
+        guard scope == .today else { return }
+        Task { await ambientStore.load(force: true) }
+      }
     }
   }
 
@@ -311,6 +319,17 @@ struct TaskListScreen: View {
 
         ScrollView {
           LazyVStack(spacing: 0) {
+            if ambientStore.quote != nil || ambientStore.weather != nil || ambientStore.isLoading {
+              TodayAmbientStrip(
+                weather: ambientStore.weather,
+                quote: ambientStore.quote,
+                isLoading: ambientStore.isLoading,
+                refresh: { Task { await ambientStore.load(force: true) } }
+              )
+              .padding(.horizontal, 24)
+              .padding(.bottom, 14)
+            }
+
             if tasks.isEmpty {
               TodayEmptyState()
                 .frame(maxWidth: .infinity)
@@ -1349,6 +1368,82 @@ private struct TodayTaskScrollConfigurator: UIViewRepresentable {
       guard abs(scrollView.contentOffset.y - top) > 0.5 else { return }
       scrollView.setContentOffset(CGPoint(x: scrollView.contentOffset.x, y: top), animated: false)
     }
+  }
+}
+
+private struct TodayAmbientStrip: View {
+  let weather: QingxuWeatherSnapshot?
+  let quote: QingxuQuoteSnapshot?
+  let isLoading: Bool
+  let refresh: () -> Void
+
+  var body: some View {
+    Button(action: refresh) {
+      HStack(spacing: 14) {
+        VStack(alignment: .leading, spacing: 5) {
+          if let quote {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+              Image(systemName: "quote.opening")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(QingxuPalette.accent)
+              Text(quote.text)
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(QingxuPalette.ink)
+                .lineLimit(2)
+            }
+            Text("— \(quote.source)")
+              .font(.caption2)
+              .foregroundStyle(QingxuPalette.quiet)
+              .padding(.leading, 21)
+          } else if isLoading {
+            HStack(spacing: 9) {
+              ProgressView().controlSize(.small)
+              Text("正在准备今天的一句话")
+                .font(.subheadline)
+                .foregroundStyle(QingxuPalette.quiet)
+            }
+          }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+
+        if let weather {
+          HStack(spacing: 8) {
+            Image(systemName: weatherSymbol(weather.icon, text: weather.text))
+              .font(.system(size: 18, weight: .medium))
+            VStack(alignment: .trailing, spacing: 1) {
+              Text("\(weather.temperature)°")
+                .font(.headline.monospacedDigit())
+              Text(weather.text)
+                .font(.caption2)
+                .foregroundStyle(QingxuPalette.quiet)
+            }
+          }
+          .foregroundStyle(QingxuPalette.ink)
+          .padding(.leading, 12)
+        }
+      }
+      .padding(.horizontal, 16)
+      .padding(.vertical, 13)
+      .frame(maxWidth: .infinity, minHeight: 64)
+      .background(QingxuPalette.surface, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+      .overlay {
+        RoundedRectangle(cornerRadius: 20, style: .continuous)
+          .stroke(QingxuPalette.separator.opacity(0.72), lineWidth: 0.6)
+      }
+    }
+    .buttonStyle(.plain)
+    .accessibilityLabel("刷新天气和每日一句")
+  }
+
+  private func weatherSymbol(_ icon: String, text: String) -> String {
+    if text.contains("雷") { return "cloud.bolt.rain.fill" }
+    if text.contains("雨") { return "cloud.rain.fill" }
+    if text.contains("雪") { return "cloud.snow.fill" }
+    if text.contains("雾") || text.contains("霾") { return "cloud.fog.fill" }
+    if text.contains("阴") { return "cloud.fill" }
+    if text.contains("云") { return "cloud.sun.fill" }
+    if ["150", "151", "152", "153"].contains(icon) { return "moon.stars.fill" }
+    return "sun.max.fill"
   }
 }
 

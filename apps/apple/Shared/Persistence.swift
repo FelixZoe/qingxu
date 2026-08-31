@@ -122,6 +122,52 @@ enum SecureAIAPIKey {
   }
 }
 
+enum SecureWeatherAPIKey {
+  private static let account = "qingxu.weather.api-key.v1"
+
+  static func read() -> String {
+    let query: [String: Any] = [
+      kSecClass as String: kSecClassGenericPassword,
+      kSecAttrAccount as String: account,
+      kSecReturnData as String: true,
+      kSecMatchLimit as String: kSecMatchLimitOne,
+    ]
+    var result: CFTypeRef?
+    guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
+          let data = result as? Data,
+          let value = String(data: data, encoding: .utf8)
+    else { return "" }
+    return value
+  }
+
+  static func write(_ apiKey: String) throws {
+    let base: [String: Any] = [
+      kSecClass as String: kSecClassGenericPassword,
+      kSecAttrAccount as String: account,
+    ]
+    SecItemDelete(base as CFDictionary)
+    let normalized = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !normalized.isEmpty else { return }
+    var item = base
+    item[kSecValueData as String] = Data(normalized.utf8)
+    #if os(iOS)
+    item[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+    #endif
+    let status = SecItemAdd(item as CFDictionary, nil)
+    guard status == errSecSuccess else {
+      throw NSError(domain: NSOSStatusErrorDomain, code: Int(status))
+    }
+  }
+
+  static func clear() {
+    let query: [String: Any] = [
+      kSecClass as String: kSecClassGenericPassword,
+      kSecAttrAccount as String: account,
+    ]
+    SecItemDelete(query as CFDictionary)
+  }
+}
+
 
 enum QingxuInstallPrivacy {
   private static let launchMarker = "qingxu.install.didLaunch.v1"
@@ -136,6 +182,7 @@ enum QingxuInstallPrivacy {
     if !QingxuFiles.hasPersistedInstallState {
       SecureSyncToken.clear()
       SecureAIAPIKey.clear()
+      SecureWeatherAPIKey.clear()
     }
     defaults.set(true, forKey: launchMarker)
     #endif

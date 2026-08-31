@@ -61,6 +61,15 @@ struct SettingsScreen: View {
               )
             }
             SettingsDivider()
+            NavigationLink { AmbientSettingsView() } label: {
+              SettingsDestinationRow(
+                symbol: "cloud.sun.fill",
+                title: "天气与每日一句",
+                detail: ambientDetail,
+                tint: QingxuPalette.accent
+              )
+            }
+            SettingsDivider()
             NavigationLink { AISettingsView().environmentObject(store) } label: {
               SettingsDestinationRow(
                 symbol: "sparkles",
@@ -134,6 +143,12 @@ struct SettingsScreen: View {
     case .selfHosted, .openAI, .deepSeek: return store.aiSettings.mode.title
     case .compatible: return "自定义服务"
     }
+  }
+
+  private var ambientDetail: String {
+    let preferences = QingxuAmbientPreferencesStore.load()
+    if preferences.weatherConfigured { return preferences.cityName.isEmpty ? "已配置" : preferences.cityName }
+    return preferences.quoteEnabled ? "每日一句已开启" : "未配置"
   }
 }
 
@@ -746,6 +761,198 @@ struct SyncSettingsView: View {
       message = "设置已保存。"
     } catch {
       message = "保存失败：\(error.localizedDescription)"
+    }
+  }
+}
+
+private struct AmbientSettingsView: View {
+  @State private var preferences = QingxuAmbientPreferencesStore.load()
+  @State private var apiKey = SecureWeatherAPIKey.read()
+  @State private var testing = false
+  @State private var message = ""
+  @State private var preview: QingxuWeatherSnapshot?
+  @State private var quotePreview: QingxuQuoteSnapshot?
+
+  var body: some View {
+    ScrollView {
+      VStack(spacing: 22) {
+        SettingsGroup(title: "今日首页") {
+          PreferenceToggleRow(
+            symbol: "quote.opening", title: "每日一句", detail: "每天更新一次，轻点首页文字可手动刷新",
+            tint: QingxuPalette.accent, isOn: $preferences.quoteEnabled
+          )
+          SettingsDivider()
+          PreferenceToggleRow(
+            symbol: "cloud.sun.fill", title: "天气", detail: "使用自己的和风天气开发凭据",
+            tint: QingxuPalette.accent, isOn: $preferences.weatherEnabled
+          )
+        }
+
+        if preferences.weatherEnabled {
+          SettingsGroup(title: "和风天气") {
+            AmbientFieldRow(title: "API Host") {
+              TextField("abc123.re.qweatherapi.com", text: $preferences.weatherHost)
+                #if os(iOS)
+                .textInputAutocapitalization(.never)
+                #endif
+                .autocorrectionDisabled()
+                .multilineTextAlignment(.trailing)
+            }
+            SettingsDivider()
+            AmbientFieldRow(title: "API Key") {
+              SecureField("必填", text: $apiKey)
+                #if os(iOS)
+                .textInputAutocapitalization(.never)
+                #endif
+                .autocorrectionDisabled()
+                .multilineTextAlignment(.trailing)
+            }
+            SettingsDivider()
+            AmbientFieldRow(title: "Location ID") {
+              TextField("101010100", text: $preferences.locationID)
+                #if os(iOS)
+                .keyboardType(.numberPad)
+                #endif
+                .multilineTextAlignment(.trailing)
+            }
+            SettingsDivider()
+            AmbientFieldRow(title: "城市名称") {
+              TextField("北京", text: $preferences.cityName)
+                .multilineTextAlignment(.trailing)
+            }
+          }
+
+          Button {
+            Task { await testWeather() }
+          } label: {
+            HStack(spacing: 10) {
+              if testing { ProgressView().tint(QingxuPalette.onAccent) }
+              Text(testing ? "正在连接…" : "测试天气连接")
+                .font(.body.weight(.semibold))
+            }
+            .foregroundStyle(QingxuPalette.onAccent)
+            .frame(maxWidth: .infinity)
+            .frame(height: 52)
+            .background(QingxuPalette.actionGradient, in: Capsule())
+          }
+          .buttonStyle(.plain)
+          .disabled(testing)
+        }
+
+        if let preview {
+          AmbientPreviewCard(weather: preview, quote: quotePreview)
+        } else if let quotePreview {
+          AmbientPreviewCard(weather: nil, quote: quotePreview)
+        }
+
+        if !message.isEmpty {
+          Text(message)
+            .font(.footnote)
+            .foregroundStyle(QingxuPalette.quiet)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 7)
+        }
+
+        Text("和风天气需要在控制台创建项目并填写专属 API Host 与 Key。Location ID 默认是北京；每日一句由 Hitokoto 提供，不需要密钥。密钥只保存在系统钥匙串中。")
+          .font(.footnote)
+          .foregroundStyle(QingxuPalette.quiet)
+          .frame(maxWidth: .infinity, alignment: .leading)
+          .padding(.horizontal, 7)
+      }
+      .padding(18)
+      .padding(.bottom, 80)
+    }
+    .qingxuScreen()
+    .navigationTitle("天气与每日一句")
+    #if os(iOS)
+    .navigationBarTitleDisplayMode(.inline)
+    #endif
+    .toolbar {
+      ToolbarItem(placement: .confirmationAction) {
+        Button("保存") { save() }.fontWeight(.semibold)
+      }
+    }
+    .task {
+      if preferences.quoteEnabled {
+        quotePreview = try? await QingxuQuoteClient().fetch()
+      }
+    }
+  }
+
+  private func save() {
+    do {
+      try SecureWeatherAPIKey.write(apiKey)
+      try QingxuAmbientPreferencesStore.save(preferences)
+      message = "设置已保存，今日首页会自动刷新。"
+    } catch {
+      message = "保存失败：\(error.localizedDescription)"
+    }
+  }
+
+  @MainActor
+  private func testWeather() async {
+    testing = true
+    defer { testing = false }
+    do {
+      preview = try await QingxuWeatherClient().fetch(preferences: preferences, apiKey: apiKey)
+      message = "连接成功：\(preview?.cityName ?? "") \(preview?.temperature ?? "")° \(preview?.text ?? "")"
+    } catch {
+      message = error.localizedDescription
+    }
+  }
+}
+
+private struct AmbientFieldRow<Content: View>: View {
+  let title: String
+  let content: Content
+
+  init(title: String, @ViewBuilder content: () -> Content) {
+    self.title = title
+    self.content = content()
+  }
+
+  var body: some View {
+    HStack(spacing: 16) {
+      Text(title).foregroundStyle(QingxuPalette.ink)
+      Spacer(minLength: 12)
+      content
+        .foregroundStyle(QingxuPalette.quiet)
+        .frame(maxWidth: 210)
+    }
+    .padding(.horizontal, 18)
+    .frame(minHeight: 58)
+  }
+}
+
+private struct AmbientPreviewCard: View {
+  let weather: QingxuWeatherSnapshot?
+  let quote: QingxuQuoteSnapshot?
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 12) {
+      HStack {
+        Text("首页预览").font(.headline)
+        Spacer()
+        if let weather {
+          Text("\(weather.cityName)  \(weather.temperature)°  \(weather.text)")
+            .font(.subheadline.weight(.medium))
+        }
+      }
+      if let quote {
+        Text("“\(quote.text)”")
+          .font(.subheadline)
+          .foregroundStyle(QingxuPalette.ink)
+        Text("— \(quote.source)")
+          .font(.caption)
+          .foregroundStyle(QingxuPalette.quiet)
+      }
+    }
+    .padding(18)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(QingxuPalette.surface, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+    .overlay {
+      RoundedRectangle(cornerRadius: 22, style: .continuous)
+        .stroke(QingxuPalette.separator.opacity(0.65), lineWidth: 0.6)
     }
   }
 }
