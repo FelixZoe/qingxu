@@ -30,19 +30,15 @@ class WindowsWidgetShell extends StatefulWidget {
 
 class _WindowsWidgetShellState extends State<WindowsWidgetShell>
     with tray.TrayListener, WindowListener {
-  static const _collapsedSize = Size(166, 52);
-  static const _expandedSize = Size(166, 286);
+  static const _collapsedSize = Size(96, 46);
+  static const _expandedSize = Size(320, 50);
   static const _settingsSize = Size(320, 480);
 
   Timer? _ticker;
-  Timer? _expandTimer;
-  Timer? _collapseTimer;
-  Timer? _transitionTimer;
   bool _showSettings = false;
   bool _expanded = false;
-  bool _pointerInside = false;
-  bool _resizing = false;
-  int _windowRequest = 0;
+  bool _hovered = false;
+  int _boundsAnimation = 0;
 
   @override
   void initState() {
@@ -69,9 +65,7 @@ class _WindowsWidgetShellState extends State<WindowsWidgetShell>
   @override
   void dispose() {
     _ticker?.cancel();
-    _expandTimer?.cancel();
-    _collapseTimer?.cancel();
-    _transitionTimer?.cancel();
+    _boundsAnimation++;
     widget.controller.removeListener(_refresh);
     windowManager.removeListener(this);
     tray.trayManager.removeListener(this);
@@ -147,10 +141,10 @@ class _WindowsWidgetShellState extends State<WindowsWidgetShell>
       setState(() {
         _showSettings = false;
         _expanded = false;
-        _pointerInside = false;
+        _hovered = false;
       });
     }
-    await _resize(_collapsedSize);
+    await _setAnchoredSize(_collapsedSize);
     await windowManager.show();
     await windowManager.focus();
   }
@@ -162,87 +156,79 @@ class _WindowsWidgetShellState extends State<WindowsWidgetShell>
     await windowManager.close();
   }
 
-  Future<void> _resize(Size size) async {
-    await windowManager.setSize(size);
-    await windowManager.setAlignment(Alignment.topRight);
+  Future<void> _setAnchoredSize(Size size) async {
+    final current = await windowManager.getBounds();
+    await windowManager.setBounds(
+      Rect.fromLTWH(
+        current.right - size.width,
+        current.top,
+        size.width,
+        size.height,
+      ),
+    );
   }
 
-  Future<void> _expand() async {
-    _expandTimer?.cancel();
-    _collapseTimer?.cancel();
-    if (_expanded || _showSettings || !_pointerInside) return;
-    final request = ++_windowRequest;
-    _resizing = true;
-    if (mounted) setState(() => _expanded = true);
-    await _resize(_expandedSize);
-    if (!mounted || request != _windowRequest) return;
-    _transitionTimer?.cancel();
-    _transitionTimer = Timer(const Duration(milliseconds: 220), () {
-      _resizing = false;
-      if (!_pointerInside) _scheduleCollapse();
-    });
+  Future<void> _animateAnchoredSize(
+    Size size, {
+    Duration duration = const Duration(milliseconds: 240),
+  }) async {
+    final animation = ++_boundsAnimation;
+    final start = await windowManager.getBounds();
+    if (animation != _boundsAnimation) return;
+    final target = Rect.fromLTWH(
+      start.right - size.width,
+      start.top,
+      size.width,
+      size.height,
+    );
+    final stopwatch = Stopwatch()..start();
+    while (animation == _boundsAnimation) {
+      final raw = stopwatch.elapsedMicroseconds / duration.inMicroseconds;
+      final progress = raw.clamp(0.0, 1.0);
+      final eased = Curves.easeInOutCubic.transform(progress);
+      await windowManager.setBounds(
+        Rect.fromLTRB(
+          lerpDouble(start.left, target.left, eased)!,
+          lerpDouble(start.top, target.top, eased)!,
+          lerpDouble(start.right, target.right, eased)!,
+          lerpDouble(start.bottom, target.bottom, eased)!,
+        ),
+      );
+      if (progress >= 1) break;
+      await Future<void>.delayed(const Duration(milliseconds: 12));
+    }
   }
 
-  void _scheduleExpand() {
-    _expandTimer?.cancel();
-    _collapseTimer?.cancel();
-    if (_expanded || _showSettings) return;
-    _expandTimer = Timer(const Duration(milliseconds: 150), () {
-      if (mounted && _pointerInside && !_showSettings) {
-        unawaited(_expand());
-      }
-    });
-  }
-
-  void _scheduleCollapse() {
-    _expandTimer?.cancel();
-    _collapseTimer?.cancel();
-    if (_showSettings || _resizing) return;
-    _collapseTimer = Timer(const Duration(milliseconds: 680), () async {
-      if (!mounted || _showSettings || _pointerInside || _resizing) return;
-      final request = ++_windowRequest;
-      _resizing = true;
-      setState(() => _expanded = false);
-      if (mounted &&
-          request == _windowRequest &&
-          !_showSettings &&
-          !_pointerInside) {
-        await _resize(_collapsedSize);
-      }
-      _transitionTimer?.cancel();
-      _transitionTimer = Timer(const Duration(milliseconds: 180), () {
-        _resizing = false;
-      });
-    });
+  Future<void> _toggleExpanded() async {
+    if (_showSettings) return;
+    final next = !_expanded;
+    setState(() => _expanded = next);
+    await _animateAnchoredSize(next ? _expandedSize : _collapsedSize);
   }
 
   Future<void> _openSettings() async {
-    _expandTimer?.cancel();
-    _collapseTimer?.cancel();
-    _transitionTimer?.cancel();
-    _resizing = false;
-    ++_windowRequest;
     await windowManager.show();
-    await _resize(_settingsSize);
     if (mounted) {
       setState(() {
         _showSettings = true;
         _expanded = false;
       });
     }
+    await _animateAnchoredSize(
+      _settingsSize,
+      duration: const Duration(milliseconds: 260),
+    );
     await windowManager.focus();
   }
 
   Future<void> _closeSettings() async {
-    _transitionTimer?.cancel();
-    ++_windowRequest;
     if (mounted) {
       setState(() {
         _showSettings = false;
         _expanded = false;
       });
     }
-    await _resize(_collapsedSize);
+    await _animateAnchoredSize(_collapsedSize);
   }
 
   List<TaskItem> get _todayTasks {
@@ -267,24 +253,16 @@ class _WindowsWidgetShellState extends State<WindowsWidgetShell>
     return tasks;
   }
 
-  void _addTask(String title) {
-    if (title.trim().isEmpty) return;
-    widget.controller.selectView('today');
-    widget.controller.addTask(title.trim());
-  }
-
   @override
   Widget build(BuildContext context) {
     return Material(
       type: MaterialType.transparency,
       child: MouseRegion(
         onEnter: (_) {
-          _pointerInside = true;
-          _scheduleExpand();
+          if (!_hovered) setState(() => _hovered = true);
         },
         onExit: (_) {
-          _pointerInside = false;
-          _scheduleCollapse();
+          if (_hovered) setState(() => _hovered = false);
         },
         child: Stack(
           children: [
@@ -298,36 +276,21 @@ class _WindowsWidgetShellState extends State<WindowsWidgetShell>
                 onThemeModeChanged: widget.onThemeModeChanged,
                 onClose: () => unawaited(_closeSettings()),
               )
-            else if (!_expanded)
-              Center(
-                child: RepaintBoundary(
-                  child: _TimerCapsule(
-                    controller: widget.controller,
-                    expanded: false,
-                  ),
-                ),
-              )
             else
-              Padding(
-                padding: const EdgeInsets.fromLTRB(6, 2, 6, 6),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    RepaintBoundary(
-                      child: _TimerCapsule(
-                        controller: widget.controller,
-                        expanded: true,
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    _TodayPanel(
+              Align(
+                alignment: Alignment.centerRight,
+                child: Padding(
+                  padding: const EdgeInsets.all(2),
+                  child: RepaintBoundary(
+                    child: _HoverDrop(
                       controller: widget.controller,
                       tasks: _todayTasks,
-                      onAdd: _addTask,
-                      height: 222,
-                      maxTasks: 5,
+                      expanded: _expanded,
+                      hovered: _hovered,
+                      onToggleExpanded: () => unawaited(_toggleExpanded()),
+                      onSettings: () => unawaited(_openSettings()),
                     ),
-                  ],
+                  ),
                 ),
               ),
           ],
@@ -615,119 +578,200 @@ class _SyncDot extends StatelessWidget {
   }
 }
 
-class _TimerCapsule extends StatelessWidget {
-  const _TimerCapsule({required this.controller, required this.expanded});
+class _HoverDrop extends StatelessWidget {
+  const _HoverDrop({
+    required this.controller,
+    required this.tasks,
+    required this.expanded,
+    required this.hovered,
+    required this.onToggleExpanded,
+    required this.onSettings,
+  });
 
   final TaskController controller;
+  final List<TaskItem> tasks;
   final bool expanded;
+  final bool hovered;
+  final VoidCallback onToggleExpanded;
+  final VoidCallback onSettings;
 
   @override
   Widget build(BuildContext context) {
     final palette = QingxuPalette.of(context);
+    final dark = Theme.of(context).brightness == Brightness.dark;
     final state = controller.pomodoro;
     final remaining = controller.pomodoroRemainingSeconds;
     final total = state.configuredDurationFor(state.mode).inSeconds;
     final running = state.status == PomodoroStatus.running;
     final progress = total == 0 ? 0.0 : (remaining / total).clamp(0.0, 1.0);
-    final mode = switch (state.mode) {
-      PomodoroMode.focus => '专注',
-      PomodoroMode.shortBreak => '短休',
-      PomodoroMode.longBreak => '长休',
-    };
+    final task = tasks.firstOrNull;
 
-    return DragToMoveArea(
-      child: _FrostedSurface(
-        key: const ValueKey('windows-timer-capsule'),
-        width: expanded ? 154 : 158,
-        height: 44,
-        radius: 22,
-        shadow: false,
-        padding: const EdgeInsets.fromLTRB(6, 5, 9, 5),
-        child: Row(
-          children: [
-            SizedBox(
-              width: 34,
-              height: 34,
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  CircularProgressIndicator(
-                    value: progress,
-                    strokeWidth: 2.2,
-                    strokeCap: StrokeCap.round,
-                    backgroundColor: palette.border.withValues(alpha: 0.72),
-                    valueColor: AlwaysStoppedAnimation(palette.accent),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final reveal = ((constraints.maxWidth - 92) / 224).clamp(0.0, 1.0);
+        final radius = BorderRadius.circular(22);
+        return GestureDetector(
+          key: const ValueKey('windows-timer-pill'),
+          behavior: HitTestBehavior.opaque,
+          onTap: onToggleExpanded,
+          onPanStart: (_) => windowManager.startDragging(),
+          child: ClipRRect(
+            borderRadius: radius,
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 140),
+                curve: Curves.easeOut,
+                decoration: BoxDecoration(
+                  color: palette.surfaceRaised.withValues(
+                    alpha: hovered
+                        ? (dark ? 0.82 : 0.86)
+                        : (dark ? 0.68 : 0.74),
                   ),
-                  IconButton(
-                    tooltip: running ? '暂停' : '开始',
-                    visualDensity: VisualDensity.compact,
-                    onPressed: controller.togglePomodoro,
-                    icon: Icon(
-                      running ? Icons.pause_rounded : Icons.play_arrow_rounded,
-                      size: 16,
-                      color: palette.accentStrong,
+                  borderRadius: radius,
+                  border: Border.all(
+                    color: palette.border.withValues(
+                      alpha: hovered ? 0.82 : 0.58,
                     ),
                   ),
-                ],
+                ),
+                child: Stack(
+                  children: [
+                    Positioned(
+                      left: 0,
+                      right: 92,
+                      top: 0,
+                      bottom: 0,
+                      child: IgnorePointer(
+                        ignoring: reveal < 0.92,
+                        child: Opacity(
+                          opacity: reveal,
+                          child: Row(
+                            children: [
+                              SizedBox(
+                                width: 32,
+                                child: IconButton(
+                                  tooltip: task == null ? '今天没有任务' : '完成任务',
+                                  padding: EdgeInsets.zero,
+                                  visualDensity: VisualDensity.compact,
+                                  onPressed: task == null
+                                      ? null
+                                      : () => controller.toggleTask(task),
+                                  icon: Icon(
+                                    Icons.circle_outlined,
+                                    size: 14,
+                                    color: palette.faint,
+                                  ),
+                                ),
+                              ),
+                              Expanded(
+                                child: Text(
+                                  task == null
+                                      ? '今天没有任务'
+                                      : tasks.length > 1
+                                      ? '${task.title}  +${tasks.length - 1}'
+                                      : task.title,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    color: task == null
+                                        ? palette.muted
+                                        : palette.ink,
+                                    fontSize: 11.5,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ),
+                              SizedBox(
+                                width: 32,
+                                child: IconButton(
+                                  tooltip: running ? '暂停番茄钟' : '开始番茄钟',
+                                  padding: EdgeInsets.zero,
+                                  visualDensity: VisualDensity.compact,
+                                  onPressed: controller.togglePomodoro,
+                                  icon: Icon(
+                                    running
+                                        ? Icons.pause_rounded
+                                        : Icons.play_arrow_rounded,
+                                    size: 17,
+                                    color: palette.ink,
+                                  ),
+                                ),
+                              ),
+                              SizedBox(
+                                width: 32,
+                                child: IconButton(
+                                  tooltip: '设置',
+                                  padding: EdgeInsets.zero,
+                                  visualDensity: VisualDensity.compact,
+                                  onPressed: onSettings,
+                                  icon: Icon(
+                                    Icons.tune_rounded,
+                                    size: 14,
+                                    color: palette.muted,
+                                  ),
+                                ),
+                              ),
+                              Container(
+                                width: 1,
+                                height: 20,
+                                color: palette.border.withValues(alpha: 0.68),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      right: 0,
+                      top: 0,
+                      bottom: 0,
+                      width: 92,
+                      child: Tooltip(
+                        message: expanded ? '点击收起' : '点击展开',
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            SizedBox.square(
+                              dimension: 15,
+                              child: CircularProgressIndicator(
+                                value: progress,
+                                strokeWidth: 2,
+                                strokeCap: StrokeCap.round,
+                                backgroundColor: palette.border.withValues(
+                                  alpha: 0.72,
+                                ),
+                                valueColor: AlwaysStoppedAnimation(
+                                  running
+                                      ? palette.accentStrong
+                                      : palette.faint,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 7),
+                            Text(
+                              _formatSeconds(remaining),
+                              style: TextStyle(
+                                color: palette.ink,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                letterSpacing: -0.2,
+                                fontFeatures: const [
+                                  FontFeature.tabularFigures(),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  PopupMenuButton<PomodoroMode>(
-                    tooltip: '切换计时模式',
-                    initialValue: state.mode,
-                    onSelected: controller.selectPomodoroMode,
-                    itemBuilder: (context) => const [
-                      PopupMenuItem(
-                        value: PomodoroMode.focus,
-                        child: Text('专注'),
-                      ),
-                      PopupMenuItem(
-                        value: PomodoroMode.shortBreak,
-                        child: Text('短休'),
-                      ),
-                      PopupMenuItem(
-                        value: PomodoroMode.longBreak,
-                        child: Text('长休'),
-                      ),
-                    ],
-                    child: Text(
-                      mode,
-                      style: TextStyle(
-                        color: palette.muted,
-                        fontSize: 8.5,
-                        height: 1,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    _formatSeconds(remaining),
-                    style: TextStyle(
-                      color: palette.ink,
-                      fontSize: 18,
-                      height: 1,
-                      fontWeight: FontWeight.w600,
-                      letterSpacing: -0.35,
-                      fontFeatures: const [FontFeature.tabularFigures()],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            if (expanded)
-              _OrbButton(
-                tooltip: '重置',
-                icon: Icons.replay_rounded,
-                onPressed: controller.resetPomodoro,
-              ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 
@@ -735,39 +779,6 @@ class _TimerCapsule extends StatelessWidget {
     final minutes = (value ~/ 60).toString().padLeft(2, '0');
     final seconds = (value % 60).toString().padLeft(2, '0');
     return '$minutes:$seconds';
-  }
-}
-
-class _OrbButton extends StatelessWidget {
-  const _OrbButton({
-    required this.tooltip,
-    required this.icon,
-    required this.onPressed,
-  });
-
-  final String tooltip;
-  final IconData icon;
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    final palette = QingxuPalette.of(context);
-    return Tooltip(
-      message: tooltip,
-      child: Material(
-        color: palette.accentSoft,
-        shape: const CircleBorder(),
-        child: InkWell(
-          customBorder: const CircleBorder(),
-          onTap: onPressed,
-          child: SizedBox(
-            width: 28,
-            height: 28,
-            child: Icon(icon, size: 15, color: palette.accentStrong),
-          ),
-        ),
-      ),
-    );
   }
 }
 
