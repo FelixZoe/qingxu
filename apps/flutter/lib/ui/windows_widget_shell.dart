@@ -305,8 +305,8 @@ class _TodayPanel extends StatefulWidget {
     required this.controller,
     required this.tasks,
     required this.onAdd,
-    this.height = 224,
-    this.maxTasks = 4,
+    required this.height,
+    required this.maxTasks,
   });
 
   final TaskController controller;
@@ -853,20 +853,16 @@ class _FloatingSettings extends StatelessWidget {
 class _FrostedSurface extends StatelessWidget {
   const _FrostedSurface({
     required this.child,
-    this.width,
     this.height,
     this.radius = 20,
     this.padding = EdgeInsets.zero,
-    this.shadow = true,
     super.key,
   });
 
   final Widget child;
-  final double? width;
   final double? height;
   final double radius;
   final EdgeInsetsGeometry padding;
-  final bool shadow;
 
   @override
   Widget build(BuildContext context) {
@@ -878,7 +874,6 @@ class _FrostedSurface extends StatelessWidget {
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
         child: Container(
-          width: width,
           height: height,
           padding: padding,
           decoration: BoxDecoration(
@@ -889,17 +884,15 @@ class _FrostedSurface extends StatelessWidget {
             border: Border.all(
               color: palette.border.withValues(alpha: dark ? 0.62 : 0.54),
             ),
-            boxShadow: shadow
-                ? [
-                    BoxShadow(
-                      color: Colors.black.withValues(
-                        alpha: dark ? 0.11 : 0.045,
-                      ),
-                      blurRadius: 6,
-                      offset: const Offset(0, 1),
-                    ),
-                  ]
-                : const [],
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(
+                  alpha: dark ? 0.11 : 0.045,
+                ),
+                blurRadius: 6,
+                offset: const Offset(0, 1),
+              ),
+            ],
           ),
           child: child,
         ),
