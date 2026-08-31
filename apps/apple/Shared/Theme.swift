@@ -25,65 +25,65 @@ enum AppearanceMode: String, CaseIterable, Identifiable {
 }
 
 enum QingxuPalette {
-  /// 温润纸墨：只依靠明度、留白和字重建立重点，不使用彩色装饰。
+  /// 参考 FlowTime 的系统层级，收敛为一套低饱和冷白、深墨和单一蓝色强调。
   static let background = Color.adaptive(
-    lightHex: 0xF5F4F0,
-    darkHex: 0x0D0E0F
+    lightHex: 0xFAFAFA,
+    darkHex: 0x121214
   )
   static let secondaryBackground = Color.adaptive(
-    lightHex: 0xECEAE5,
-    darkHex: 0x141517
+    lightHex: 0xF2F2F7,
+    darkHex: 0x18181B
   )
   static let surface = Color.adaptive(
-    lightHex: 0xFEFDFC,
-    darkHex: 0x191A1C
+    lightHex: 0xFFFFFF,
+    darkHex: 0x1E1E22
   )
   static let elevatedSurface = Color.adaptive(
-    lightHex: 0xFAF9F6,
-    darkHex: 0x202124
+    lightHex: 0xF7F7F9,
+    darkHex: 0x2A2A2E
   )
   static let accent = Color.adaptive(
-    lightHex: 0x252629,
-    darkHex: 0xF2F1ED
+    lightHex: 0x3478F6,
+    darkHex: 0x6D9EFF
   )
   static let onAccent = Color.adaptive(
     lightHex: 0xFFFFFF,
-    darkHex: 0x101011
+    darkHex: 0x0B1324
   )
   static let selected = Color.adaptive(
-    lightHex: 0xE5E3DE,
-    darkHex: 0x2A2B2E
+    lightHex: 0xE9EFFD,
+    darkHex: 0x26324B
   )
   static let ink = Color.adaptive(
-    lightHex: 0x1E1F22,
-    darkHex: 0xF4F4F2
+    lightHex: 0x1C1C1E,
+    darkHex: 0xF0F0F5
   )
   static let quiet = Color.adaptive(
-    lightHex: 0x696B70,
-    darkHex: 0xB6B6B2
+    lightHex: 0x73737A,
+    darkHex: 0x98989D
   )
   static let faint = Color.adaptive(
-    lightHex: 0x96989C,
-    darkHex: 0x7C7D80
+    lightHex: 0xA8A8AE,
+    darkHex: 0x6C6C72
   )
   static let separator = Color.adaptive(
-    lightHex: 0xDCDAD5,
-    darkHex: 0x303135
+    lightHex: 0xE5E5EA,
+    darkHex: 0x3A3A3E
   )
   static let success = Color.adaptive(
-    lightHex: 0x3F4247,
-    darkHex: 0xD7D7D3
+    lightHex: 0x2E7D64,
+    darkHex: 0x65BFA1
   )
   static let warning = Color.adaptive(
-    lightHex: 0x5A5B60,
-    darkHex: 0xC8C8C4
+    lightHex: 0x7A6640,
+    darkHex: 0xC9AE72
   )
   static let danger = Color.adaptive(
-    lightHex: 0x333438,
-    darkHex: 0xE0E0DC
+    lightHex: 0xA3484F,
+    darkHex: 0xD9898F
   )
   static let scrim = Color.adaptive(
-    lightHex: 0x242536,
+    lightHex: 0x161925,
     darkHex: 0x000000
   )
 
@@ -94,7 +94,7 @@ enum QingxuPalette {
   )
 
   static let actionGradient = LinearGradient(
-    colors: [accent, accent],
+    colors: [accent, accent.opacity(0.90)],
     startPoint: .topLeading,
     endPoint: .bottomTrailing
   )
