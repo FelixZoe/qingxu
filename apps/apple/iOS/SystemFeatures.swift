@@ -71,7 +71,7 @@ enum SystemFeatures {
       let seconds = pomodoro.focusHistory
         .filter { $0.completed && calendar.isDate($0.endedAt, inSameDayAs: date) }
         .reduce(0) { $0 + $1.durationSeconds }
-      switch seconds {
+      return switch seconds {
       case 0: 0
       case 1..<(25 * 60): 1
       case (25 * 60)..<(60 * 60): 2

@@ -115,7 +115,7 @@ final class IOSSystemFeaturesBridge {
       let seconds = datedRecords
         .filter { calendar.isDate($0.date, inSameDayAs: date) }
         .reduce(0) { $0 + $1.seconds }
-      switch seconds {
+      return switch seconds {
       case 0: 0
       case 1..<(25 * 60): 1
       case (25 * 60)..<(60 * 60): 2
