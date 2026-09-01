@@ -343,8 +343,8 @@ jobs:
           channel: stable
           cache: true
       - run: flutter pub get
-      - name: Configure stable Android release signing
-        if: needs.version.outputs.should_release == 'true'
+      - name: Detect and configure stable Android release signing
+        id: android-signing
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
@@ -352,10 +352,15 @@ jobs:
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           set -euo pipefail
-          test -n "$ANDROID_KEYSTORE_BASE64"
-          test -n "$ANDROID_KEYSTORE_PASSWORD"
-          test -n "$ANDROID_KEY_ALIAS"
-          test -n "$ANDROID_KEY_PASSWORD"
+          if [[ "${{ needs.version.outputs.should_release }}" != "true" ]]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [[ -z "$ANDROID_KEYSTORE_BASE64" || -z "$ANDROID_KEYSTORE_PASSWORD" || -z "$ANDROID_KEY_ALIAS" || -z "$ANDROID_KEY_PASSWORD" ]]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Android stable signing secrets are incomplete. Android release assets will be skipped; iOS, Windows, macOS and server releases will continue."
+            exit 0
+          fi
           printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > android/app/qingxu-release.jks
           cat > android/key.properties <<EOF
           storeFile=qingxu-release.jks
@@ -364,12 +369,15 @@ jobs:
           keyPassword=$ANDROID_KEY_PASSWORD
           EOF
           echo "ANDROID_KEY_PROPERTIES=$PWD/android/key.properties" >> "$GITHUB_ENV"
+          echo "configured=true" >> "$GITHUB_OUTPUT"
       - name: Build Android APK
+        if: needs.version.outputs.should_release != 'true' || steps.android-signing.outputs.configured == 'true'
         run: flutter build apk --release --build-name "$APP_VERSION" --build-number "$BUILD_NUMBER"
       - name: Package Android APK
+        if: needs.version.outputs.should_release != 'true' || steps.android-signing.outputs.configured == 'true'
         run: cp build/app/outputs/flutter-apk/app-release.apk "Qingxu-${APP_VERSION}-Android.apk"
       - name: Generate Android incremental update assets
-        if: needs.version.outputs.should_release == 'true'
+        if: needs.version.outputs.should_release == 'true' && steps.android-signing.outputs.configured == 'true'
         run: |
           set -euo pipefail
           full="Qingxu-${APP_VERSION}-Android.apk"
@@ -421,6 +429,7 @@ jobs:
           )
           PY
       - uses: actions/upload-artifact@v7
+        if: needs.version.outputs.should_release != 'true' || steps.android-signing.outputs.configured == 'true'
         with:
           name: qingxu-${{ needs.version.outputs.version }}-android
           retention-days: 7
