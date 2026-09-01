@@ -87,11 +87,48 @@ final class IOSSystemFeaturesBridge {
       remainingSeconds: remainingSeconds,
       totalSeconds: totalSeconds,
       todayCompleted: todayCompleted,
-      dailyGoal: dailyGoal
+      dailyGoal: dailyGoal,
+      focusHeatmap: focusHeatmap(pomodoro["focusHistory"] as? [[String: Any]] ?? [])
     )
     Task { @MainActor in
       await self.updateLiveActivity(state)
     }
+  }
+
+  private func focusHeatmap(_ records: [[String: Any]], weeks: Int = 18) -> [Int] {
+    var calendar = Calendar.autoupdatingCurrent
+    calendar.timeZone = .autoupdatingCurrent
+    let today = calendar.startOfDay(for: .now)
+    let dayCount = weeks * 7
+    let firstDay = calendar.date(byAdding: .day, value: -(dayCount - 1), to: today) ?? today
+
+    let datedRecords: [(date: Date, seconds: Int)] = records.compactMap { record in
+      guard record["completed"] as? Bool == true,
+            let value = record["endedAt"] as? String,
+            let date = parseISODate(value)
+      else { return nil }
+      return (date, record["durationSeconds"] as? Int ?? 0)
+    }
+
+    return (0..<dayCount).map { offset in
+      let date = calendar.date(byAdding: .day, value: offset, to: firstDay) ?? firstDay
+      let seconds = datedRecords
+        .filter { calendar.isDate($0.date, inSameDayAs: date) }
+        .reduce(0) { $0 + $1.seconds }
+      switch seconds {
+      case 0: 0
+      case 1..<(25 * 60): 1
+      case (25 * 60)..<(60 * 60): 2
+      case (60 * 60)..<(120 * 60): 3
+      default: 4
+      }
+    }
+  }
+
+  private func parseISODate(_ value: String) -> Date? {
+    let fractional = ISO8601DateFormatter()
+    fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    return fractional.date(from: value) ?? ISO8601DateFormatter().date(from: value)
   }
 
   @available(iOS 16.2, *)

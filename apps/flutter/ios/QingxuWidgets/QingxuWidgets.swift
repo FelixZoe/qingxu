@@ -8,13 +8,13 @@ private let qingxuAppGroup = "group.one.darker.qingxu"
 private enum QingxuWidgetPalette {
   static let background = Color(uiColor: UIColor { traits in
     traits.userInterfaceStyle == .dark
-      ? UIColor(red: 0.043, green: 0.043, blue: 0.047, alpha: 1)
-      : UIColor(red: 0.969, green: 0.969, blue: 0.961, alpha: 1)
+      ? UIColor(red: 0.071, green: 0.071, blue: 0.078, alpha: 1)
+      : UIColor(red: 0.980, green: 0.980, blue: 0.980, alpha: 1)
   })
   static let accent = Color(uiColor: UIColor { traits in
     traits.userInterfaceStyle == .dark
-      ? UIColor(red: 0.945, green: 0.945, blue: 0.933, alpha: 1)
-      : UIColor(red: 0.125, green: 0.129, blue: 0.141, alpha: 1)
+      ? UIColor(red: 0.427, green: 0.620, blue: 1.000, alpha: 1)
+      : UIColor(red: 0.204, green: 0.471, blue: 0.965, alpha: 1)
   })
 }
 
@@ -315,22 +315,17 @@ struct QingxuLiveActivity: Widget {
             .padding(.trailing, 2)
         }
         DynamicIslandExpandedRegion(.bottom) {
-          VStack(spacing: 7) {
-            ProgressView(
-              value: min(
-                1,
-                Double(context.state.todayCompleted) / Double(max(1, context.state.dailyGoal))
-              )
-            )
-            .tint(QingxuWidgetPalette.accent)
+          VStack(spacing: 6) {
             HStack(spacing: 8) {
-              Text("今日 \(context.state.todayCompleted)/\(context.state.dailyGoal)")
+              Text("近 18 周专注")
               Spacer(minLength: 8)
-              Text(nextPhaseTitle(context.state.mode))
+              Text("今日 \(context.state.todayCompleted)/\(context.state.dailyGoal)")
             }
             .font(.system(size: 11, weight: .medium))
             .foregroundStyle(.secondary)
             .lineLimit(1)
+
+            FocusHeatmapStrip(values: context.state.focusHeatmap)
           }
           .frame(maxWidth: .infinity)
           .padding(.horizontal, 4)
@@ -376,6 +371,43 @@ struct QingxuLiveActivity: Widget {
 
   private func nextPhaseTitle(_ mode: String) -> String {
     mode == "focus" ? "接下来休息" : "接下来专注"
+  }
+}
+
+private struct FocusHeatmapStrip: View {
+  let values: [Int]
+  private let columns = 18
+  private let rows = 7
+
+  var body: some View {
+    HStack(spacing: 3) {
+      ForEach(0..<columns, id: \.self) { column in
+        VStack(spacing: 2) {
+          ForEach(0..<rows, id: \.self) { row in
+            RoundedRectangle(cornerRadius: 1.2, style: .continuous)
+              .fill(color(for: value(at: column * rows + row)))
+              .frame(width: 7, height: 4)
+          }
+        }
+      }
+    }
+    .frame(maxWidth: .infinity)
+    .accessibilityElement(children: .ignore)
+    .accessibilityLabel("近十八周专注热力图")
+  }
+
+  private func value(at index: Int) -> Int {
+    values.indices.contains(index) ? min(4, max(0, values[index])) : 0
+  }
+
+  private func color(for level: Int) -> Color {
+    switch level {
+    case 1: return Color(red: 0.39, green: 0.78, blue: 0.54).opacity(0.48)
+    case 2: return Color(red: 0.27, green: 0.73, blue: 0.45).opacity(0.72)
+    case 3: return Color(red: 0.16, green: 0.62, blue: 0.36)
+    case 4: return Color(red: 0.08, green: 0.43, blue: 0.24)
+    default: return Color.white.opacity(0.10)
+    }
   }
 }
 

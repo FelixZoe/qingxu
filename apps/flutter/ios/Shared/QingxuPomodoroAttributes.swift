@@ -14,6 +14,7 @@ struct QingxuPomodoroAttributes: ActivityAttributes {
     var totalSeconds: Int
     var todayCompleted: Int
     var dailyGoal: Int
+    var focusHeatmap: [Int]
   }
 
   var title: String

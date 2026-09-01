@@ -52,10 +52,33 @@ enum SystemFeatures {
         remainingSeconds: pomodoro.remaining(at: .now),
         totalSeconds: pomodoro.duration(for: pomodoro.mode),
         todayCompleted: pomodoro.completedFocusCount(),
-        dailyGoal: pomodoro.dailyFocusGoal
+        dailyGoal: pomodoro.dailyFocusGoal,
+        focusHeatmap: focusHeatmap(pomodoro)
       ),
       staleDate: pomodoro.endsAt
     )
+  }
+
+  private static func focusHeatmap(_ pomodoro: PomodoroState, weeks: Int = 18) -> [Int] {
+    var calendar = Calendar.autoupdatingCurrent
+    calendar.timeZone = .autoupdatingCurrent
+    let today = calendar.startOfDay(for: .now)
+    let dayCount = weeks * 7
+    let firstDay = calendar.date(byAdding: .day, value: -(dayCount - 1), to: today) ?? today
+
+    return (0..<dayCount).map { offset in
+      let date = calendar.date(byAdding: .day, value: offset, to: firstDay) ?? firstDay
+      let seconds = pomodoro.focusHistory
+        .filter { $0.completed && calendar.isDate($0.endedAt, inSameDayAs: date) }
+        .reduce(0) { $0 + $1.durationSeconds }
+      switch seconds {
+      case 0: 0
+      case 1..<(25 * 60): 1
+      case (25 * 60)..<(60 * 60): 2
+      case (60 * 60)..<(120 * 60): 3
+      default: 4
+      }
+    }
   }
 
   private static func updateLiveActivity(_ pomodoro: PomodoroState) {
