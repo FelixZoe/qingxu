@@ -45,6 +45,12 @@ class _WindowsWidgetShellState extends State<WindowsWidgetShell>
     windowManager.addListener(this);
     tray.trayManager.addListener(this);
     unawaited(_initializeTray());
+    if (Platform.environment['QINGXU_PREVIEW_EXPANDED'] == '1') {
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        await _setAnchoredSize(_expandedSize);
+        if (mounted) setState(() => _expanded = true);
+      });
+    }
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
       widget.controller.advancePomodoroIfNeeded();
       if (mounted) setState(() {});

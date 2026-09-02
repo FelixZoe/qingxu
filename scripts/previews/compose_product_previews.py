@@ -166,6 +166,29 @@ def contact_sheet(images: dict[str, Image.Image], output: Path) -> None:
     sheet.save(output, quality=95, optimize=True)
 
 
+def contain(image: Image.Image, size: tuple[int, int]) -> Image.Image:
+    copy = image.copy()
+    copy.thumbnail(size, Image.Resampling.LANCZOS)
+    return copy
+
+
+def clean_windows_preview(source: Image.Image) -> Image.Image:
+    width = max(960, source.width * 3)
+    height = max(300, source.height * 3)
+    result = Image.new("RGB", (width, height), (16, 18, 23))
+    scaled = contain(source, (width - 96, height - 96))
+    x = (width - scaled.width) // 2
+    y = (height - scaled.height) // 2
+    mask = Image.new("L", scaled.size, 0)
+    ImageDraw.Draw(mask).rounded_rectangle(
+        (0, 0, scaled.width, scaled.height),
+        radius=max(18, scaled.height // 2),
+        fill=255,
+    )
+    result.paste(scaled, (x, y), mask)
+    return result
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--ios", type=Path, required=True)
@@ -179,7 +202,7 @@ def main() -> None:
         "iOS": load(args.ios),
         "Android": load(args.android),
         "macOS": load(args.macos),
-        "Windows": load(args.windows),
+        "Windows": clean_windows_preview(load(args.windows)),
     }
     output = args.output_dir
     output.mkdir(parents=True, exist_ok=True)

@@ -36,20 +36,14 @@ try {
   }
   if ($null -eq $rect) { throw 'Qingxu window was not ready.' }
 
-  $centerX = [int](($rect.Left + $rect.Right) / 2)
-  $centerY = [int](($rect.Top + $rect.Bottom) / 2)
-  [QingxuPreviewNative]::SetCursorPos($centerX, $centerY) | Out-Null
-  [QingxuPreviewNative]::mouse_event(0x0002, 0, 0, 0, [UIntPtr]::Zero)
-  [QingxuPreviewNative]::mouse_event(0x0004, 0, 0, 0, [UIntPtr]::Zero)
-  Start-Sleep -Seconds 3
+  Start-Sleep -Seconds 4
 
   $rect = Get-QingxuWindowRect $process
   if ($null -eq $rect) { throw 'Qingxu window disappeared before capture.' }
-  $padding = 28
-  $left = [Math]::Max(0, $rect.Left - $padding)
-  $top = [Math]::Max(0, $rect.Top - $padding)
-  $width = [Math]::Max(160, ($rect.Right - $rect.Left) + ($padding * 2))
-  $height = [Math]::Max(160, ($rect.Bottom - $rect.Top) + ($padding * 2))
+  $left = [Math]::Max(0, $rect.Left)
+  $top = [Math]::Max(0, $rect.Top)
+  $width = [Math]::Max(1, $rect.Right - $rect.Left)
+  $height = [Math]::Max(1, $rect.Bottom - $rect.Top)
   $bitmap = New-Object System.Drawing.Bitmap $width, $height
   $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
   try {
