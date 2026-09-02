@@ -1,0 +1,210 @@
+name: Product Previews
+
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows: ["Build and Release"]
+    types: [completed]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: qingxu-product-previews
+  cancel-in-progress: true
+
+jobs:
+  android:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Build preview APK
+        working-directory: apps/flutter
+        run: |
+          flutter pub get
+          flutter build apk --debug
+      - name: Capture Android emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          profile: pixel_7
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
+          disable-animations: false
+          script: |
+            mkdir -p preview
+            adb shell cmd uimode night yes
+            adb shell settings put system font_scale 1.0
+            adb install -r apps/flutter/build/app/outputs/flutter-apk/app-debug.apk
+            adb shell am force-stop one.darker.qingxu
+            adb shell monkey -p one.darker.qingxu -c android.intent.category.LAUNCHER 1
+            sleep 16
+            adb exec-out screencap -p > preview/android.png
+      - uses: actions/upload-artifact@v7
+        with:
+          name: preview-android
+          path: preview/android.png
+          if-no-files-found: error
+
+  ios:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: macos-15
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+      - name: Prepare Xcode project
+        working-directory: apps/apple
+        run: |
+          brew install xcodegen
+          xcodegen generate
+      - name: Build and capture iOS Simulator
+        working-directory: apps/apple
+        run: |
+          set -euo pipefail
+          mkdir -p ../../preview
+          udid="$(xcrun simctl list devices available -j | python3 -c 'import json,sys; data=json.load(sys.stdin); devices=[d for values in data["devices"].values() for d in values if d.get("isAvailable") and d["name"].startswith("iPhone")]; preferred=next((d for d in devices if "16 Pro" in d["name"]), devices[0]); print(preferred["udid"])')"
+          xcrun simctl boot "$udid" || true
+          open -a Simulator
+          xcrun simctl bootstatus "$udid" -b
+          xcrun simctl ui "$udid" appearance dark
+          xcrun simctl status_bar "$udid" override --time 9:41 --batteryState charged --batteryLevel 92 --wifiBars 3 --cellularBars 4
+          xcodebuild \
+            -project QingxuApple.xcodeproj \
+            -scheme QingxuiOS \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination "id=$udid" \
+            -derivedDataPath .preview-ios \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            build
+          app="$(find .preview-ios/Build/Products -path '*iphonesimulator/Qingxu.app' -print -quit)"
+          test -n "$app"
+          xcrun simctl install "$udid" "$app"
+          xcrun simctl launch "$udid" one.darker.qingxu
+          sleep 8
+          xcrun simctl openurl "$udid" qingxu://today
+          sleep 4
+          xcrun simctl io "$udid" screenshot ../../preview/ios.png
+      - uses: actions/upload-artifact@v7
+        with:
+          name: preview-ios
+          path: preview/ios.png
+          if-no-files-found: error
+
+  macos:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+      - name: Build and capture macOS app
+        working-directory: apps/apple
+        run: |
+          set -euo pipefail
+          brew install xcodegen
+          xcodegen generate
+          xcodebuild \
+            -project QingxuApple.xcodeproj \
+            -scheme QingxumacOS \
+            -configuration Debug \
+            -derivedDataPath .preview-macos \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            build
+          app="$(find .preview-macos/Build/Products -path '*/Qingxu.app' -print -quit)"
+          test -n "$app"
+          open -na "$app"
+          sleep 10
+          osascript -e 'tell application "System Events" to tell process "Qingxu" to set frontmost to true' || true
+          osascript -e 'tell application "System Events" to tell process "Qingxu" to set size of front window to {1280, 800}' || true
+          osascript -e 'tell application "System Events" to tell process "Qingxu" to set position of front window to {120, 90}' || true
+          sleep 3
+          mkdir -p ../../preview
+          screencapture -x ../../preview/macos.png
+      - uses: actions/upload-artifact@v7
+        with:
+          name: preview-macos
+          path: preview/macos.png
+          if-no-files-found: error
+
+  windows:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+      - name: Download latest portable Windows build
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          New-Item -ItemType Directory -Force -Path .preview-download | Out-Null
+          gh release download --pattern '*Windows-Portable.zip' --dir .preview-download
+          $archive = Get-ChildItem -LiteralPath .preview-download -Filter '*Windows-Portable.zip' | Select-Object -First 1
+          if ($null -eq $archive) { throw 'Latest Windows portable archive was not found.' }
+          Expand-Archive -LiteralPath $archive.FullName -DestinationPath .preview-windows -Force
+      - name: Capture expanded Windows overlay
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem -LiteralPath .preview-windows -Recurse -Filter 'Qingxu.exe' | Select-Object -First 1
+          if ($null -eq $exe) { throw 'Qingxu.exe was not found.' }
+          & .\scripts\previews\capture_windows.ps1 -Executable $exe.FullName -Output "$PWD\preview\windows.png"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: preview-windows
+          path: preview/windows.png
+          if-no-files-found: error
+
+  publish:
+    needs: [android, ios, macos, windows]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: preview-*
+          path: captured
+          merge-multiple: true
+      - name: Compose high-resolution previews
+        run: |
+          python3 -m pip install --disable-pip-version-check pillow
+          python3 scripts/previews/compose_product_previews.py \
+            --ios captured/ios.png \
+            --android captured/android.png \
+            --macos captured/macos.png \
+            --windows captured/windows.png \
+            --output-dir product-previews
+      - uses: actions/upload-artifact@v7
+        with:
+          name: qingxu-product-previews
+          path: product-previews/*.png
+          if-no-files-found: error
+      - name: Replace preview assets in the latest Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="$(gh release view --json tagName --jq .tagName)"
+          gh release upload "$tag" product-previews/*.png --clobber
