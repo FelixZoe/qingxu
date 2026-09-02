@@ -32,6 +32,8 @@ enum SystemFeatures {
       TimeInterval(-pomodoro.remainingSeconds)
     )
     defaults?.set(countUpDisplayStart, forKey: "pomodoroStartedAt")
+    defaults?.set(focusHeatmap(pomodoro), forKey: "focusHeatmapLevels")
+    defaults?.set(Date.now, forKey: "widgetSnapshotUpdatedAt")
     WidgetCenter.shared.reloadAllTimelines()
     updateLiveActivity(pomodoro)
   }

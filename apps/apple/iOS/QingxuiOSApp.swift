@@ -99,6 +99,7 @@ private struct iOSRootView: View {
     }
     .onChange(of: scenePhase) { phase in
       if phase == .active {
+        consumePendingWidgetDestination()
         Task {
           await store.syncNow()
           await rssStore.syncNow()
@@ -130,7 +131,18 @@ private struct iOSRootView: View {
     }
     .onAppear {
       if !inboxEnabled, selection == .inbox { selection = .today }
+      consumePendingWidgetDestination()
       RSSBackgroundRefresh.schedule()
+    }
+  }
+
+  private func consumePendingWidgetDestination() {
+    let defaults = UserDefaults(suiteName: "group.one.darker.qingxu")
+    guard let rawValue = defaults?.string(forKey: "pendingWidgetDestination") else { return }
+    defaults?.removeObject(forKey: "pendingWidgetDestination")
+    switch rawValue {
+    case "pomodoro": selection = pomodoroEnabled ? .pomodoro : .today
+    default: selection = .today
     }
   }
 

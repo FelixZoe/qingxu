@@ -73,6 +73,11 @@ final class IOSSystemFeaturesBridge {
       defaults.set(todayCompleted, forKey: "pomodoroTodayCompleted")
       defaults.set(endsAt, forKey: "pomodoroEndsAt")
       defaults.set(displayStartedAt, forKey: "pomodoroStartedAt")
+      defaults.set(
+        focusHeatmap(pomodoro["focusHistory"] as? [[String: Any]] ?? []),
+        forKey: "focusHeatmapLevels"
+      )
+      defaults.set(Date.now, forKey: "widgetSnapshotUpdatedAt")
     }
     WidgetCenter.shared.reloadAllTimelines()
 

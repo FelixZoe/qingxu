@@ -36,6 +36,7 @@ enum SystemFeatures {
     if let data = try? JSONEncoder().encode(heatmap) {
       defaults.set(data, forKey: "focusHeatmap")
     }
+    defaults.set(now, forKey: "widgetSnapshotUpdatedAt")
     WidgetCenter.shared.reloadAllTimelines()
   }
 }

@@ -1,4 +1,5 @@
 import Foundation
+import WidgetKit
 
 struct QingxuAmbientPreferences: Codable, Equatable {
   var quoteEnabled = true
@@ -33,6 +34,7 @@ struct QingxuQuoteSnapshot: Codable, Equatable {
 
 enum QingxuAmbientPreferencesStore {
   static let didChange = Notification.Name("qingxu.ambient-preferences.changed")
+  static let appGroup = "group.one.darker.qingxu"
   private static let preferencesKey = "qingxu.ambient.preferences.v1"
 
   static func load() -> QingxuAmbientPreferences {
@@ -220,12 +222,16 @@ final class TodayAmbientStore: ObservableObject {
   }
 
   private func cached<T: Decodable>(_ type: T.Type, key: String) -> T? {
-    guard let data = UserDefaults.standard.data(forKey: key) else { return nil }
+    let data = UserDefaults.standard.data(forKey: key)
+      ?? UserDefaults(suiteName: QingxuAmbientPreferencesStore.appGroup)?.data(forKey: key)
+    guard let data else { return nil }
     return try? JSONDecoder().decode(type, from: data)
   }
 
   private func cache<T: Encodable>(_ value: T, key: String) {
     guard let data = try? JSONEncoder().encode(value) else { return }
     UserDefaults.standard.set(data, forKey: key)
+    UserDefaults(suiteName: QingxuAmbientPreferencesStore.appGroup)?.set(data, forKey: key)
+    WidgetCenter.shared.reloadAllTimelines()
   }
 }

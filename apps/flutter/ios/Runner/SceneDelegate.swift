@@ -2,6 +2,8 @@ import Flutter
 import UIKit
 
 class SceneDelegate: FlutterSceneDelegate {
+  private static let appGroup = "group.one.darker.qingxu"
+
   override func scene(
     _ scene: UIScene,
     willConnectTo session: UISceneSession,
@@ -33,6 +35,20 @@ class SceneDelegate: FlutterSceneDelegate {
       let controller = window?.rootViewController as? QingxuTabBarController,
       let appDelegate = UIApplication.shared.delegate as? AppDelegate
     else { return }
+    controller.select(tab)
+    appDelegate.navigationBridge.userSelected(tab)
+  }
+
+  override func sceneDidBecomeActive(_ scene: UIScene) {
+    super.sceneDidBecomeActive(scene)
+    guard
+      let defaults = UserDefaults(suiteName: Self.appGroup),
+      let rawValue = defaults.string(forKey: "pendingWidgetDestination"),
+      let tab = QingxuTab(rawValue: rawValue),
+      let controller = window?.rootViewController as? QingxuTabBarController,
+      let appDelegate = UIApplication.shared.delegate as? AppDelegate
+    else { return }
+    defaults.removeObject(forKey: "pendingWidgetDestination")
     controller.select(tab)
     appDelegate.navigationBridge.userSelected(tab)
   }

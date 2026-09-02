@@ -30,6 +30,25 @@ class MainActivity : FlutterActivity() {
                 else -> result.notImplemented()
             }
         }
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            "one.darker.qingxu/system-features"
+        ).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "updateSnapshot" -> {
+                    @Suppress("UNCHECKED_CAST")
+                    val payload = call.arguments as? Map<String, Any?>
+                    if (payload == null) {
+                        result.error("invalid_snapshot", "小组件数据为空", null)
+                    } else {
+                        QingxuWidgetStore.save(this, payload)
+                        QingxuWidgetRenderer.updateAll(this)
+                        result.success(null)
+                    }
+                }
+                else -> result.notImplemented()
+            }
+        }
     }
 
     private fun installApk(path: String): Boolean {

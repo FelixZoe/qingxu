@@ -48,13 +48,19 @@ jobs:
               version="${existing_tag#v}"
             else
               latest_tag="$(git tag --list 'v*' --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n 1 || true)"
-              base="$current"
-              if [[ -n "$latest_tag" ]]; then
+              if [[ -z "$latest_tag" ]]; then
+                version="$current"
+              else
                 latest="${latest_tag#v}"
-                base="$(printf '%s\n%s\n' "$current" "$latest" | sort -V | tail -n 1)"
+                newest="$(printf '%s\n%s\n' "$current" "$latest" | sort -V | tail -n 1)"
+                if [[ "$newest" == "$current" && "$current" != "$latest" ]]; then
+                  # A manually prepared source version is already the next release.
+                  version="$current"
+                else
+                  IFS=. read -r major minor patch <<< "$latest"
+                  version="$major.$minor.$((patch + 1))"
+                fi
               fi
-              IFS=. read -r major minor patch <<< "$base"
-              version="$major.$minor.$((patch + 1))"
             fi
             should_release=true
           else
@@ -585,7 +591,7 @@ jobs:
           sed -i -E "s/^version:.*/version: ${APP_VERSION}+${BUILD_NUMBER}/" apps/flutter/pubspec.yaml
           sed -i -E "s/^([[:space:]]*)MARKETING_VERSION:.*/\1MARKETING_VERSION: \"${APP_VERSION}\"/" apps/apple/project.yml
           sed -i -E "s/^([[:space:]]*)CURRENT_PROJECT_VERSION:.*/\1CURRENT_PROJECT_VERSION: \"${BUILD_NUMBER}\"/" apps/apple/project.yml
-          sed -i -E "s/^#define MyAppVersion .*/#define MyAppVersion \"${APP_VERSION}\"/" scripts/windows/Qingxu.iss
+          sed -i -E "s/^([[:space:]]*)#define MyAppVersion .*/\1#define MyAppVersion \"${APP_VERSION}\"/" scripts/windows/Qingxu.iss
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"

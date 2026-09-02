@@ -1,6 +1,6 @@
 ﻿#define MyAppName "清序"
 #ifndef MyAppVersion
-  #define MyAppVersion "0.1.1"
+  #define MyAppVersion "0.1.51"
 #endif
 #define MyAppPublisher "FelixZoe"
 #define MyAppURL "https://github.com/FelixZoe/qingxu"
@@ -77,7 +77,9 @@ DisableReadyPage=no
 DisableFinishedPage=no
 
 CloseApplications=yes
+CloseApplicationsFilter={#MyAppExeName}
 RestartApplications=no
+RestartIfNeededByRun=no
 DirExistsWarning=auto
 SetupLogging=yes
 Uninstallable=yes

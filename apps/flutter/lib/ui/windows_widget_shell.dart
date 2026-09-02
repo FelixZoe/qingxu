@@ -30,15 +30,13 @@ class WindowsWidgetShell extends StatefulWidget {
 
 class _WindowsWidgetShellState extends State<WindowsWidgetShell>
     with tray.TrayListener, WindowListener {
-  static const _collapsedSize = Size(96, 46);
-  static const _expandedSize = Size(320, 50);
+  static const _collapsedSize = Size(62, 62);
+  static const _expandedSize = Size(320, 62);
   static const _settingsSize = Size(320, 480);
 
   Timer? _ticker;
   bool _showSettings = false;
   bool _expanded = false;
-  bool _hovered = false;
-  int _boundsAnimation = 0;
 
   @override
   void initState() {
@@ -65,7 +63,6 @@ class _WindowsWidgetShellState extends State<WindowsWidgetShell>
   @override
   void dispose() {
     _ticker?.cancel();
-    _boundsAnimation++;
     widget.controller.removeListener(_refresh);
     windowManager.removeListener(this);
     tray.trayManager.removeListener(this);
@@ -141,7 +138,6 @@ class _WindowsWidgetShellState extends State<WindowsWidgetShell>
       setState(() {
         _showSettings = false;
         _expanded = false;
-        _hovered = false;
       });
     }
     await _setAnchoredSize(_collapsedSize);
@@ -168,56 +164,30 @@ class _WindowsWidgetShellState extends State<WindowsWidgetShell>
     );
   }
 
-  Future<void> _animateAnchoredSize(
-    Size size, {
-    Duration duration = const Duration(milliseconds: 240),
-  }) async {
-    final animation = ++_boundsAnimation;
-    final start = await windowManager.getBounds();
-    if (animation != _boundsAnimation) return;
-    final target = Rect.fromLTWH(
-      start.right - size.width,
-      start.top,
-      size.width,
-      size.height,
-    );
-    final stopwatch = Stopwatch()..start();
-    while (animation == _boundsAnimation) {
-      final raw = stopwatch.elapsedMicroseconds / duration.inMicroseconds;
-      final progress = raw.clamp(0.0, 1.0);
-      final eased = Curves.easeInOutCubic.transform(progress);
-      await windowManager.setBounds(
-        Rect.fromLTRB(
-          lerpDouble(start.left, target.left, eased)!,
-          lerpDouble(start.top, target.top, eased)!,
-          lerpDouble(start.right, target.right, eased)!,
-          lerpDouble(start.bottom, target.bottom, eased)!,
-        ),
-      );
-      if (progress >= 1) break;
-      await Future<void>.delayed(const Duration(milliseconds: 12));
-    }
-  }
-
   Future<void> _toggleExpanded() async {
     if (_showSettings) return;
     final next = !_expanded;
-    setState(() => _expanded = next);
-    await _animateAnchoredSize(next ? _expandedSize : _collapsedSize);
+    if (next) {
+      await _setAnchoredSize(_expandedSize);
+      if (mounted) setState(() => _expanded = true);
+      return;
+    }
+    setState(() => _expanded = false);
+    await Future<void>.delayed(const Duration(milliseconds: 280));
+    if (mounted && !_expanded && !_showSettings) {
+      await _setAnchoredSize(_collapsedSize);
+    }
   }
 
   Future<void> _openSettings() async {
     await windowManager.show();
+    await _setAnchoredSize(_settingsSize);
     if (mounted) {
       setState(() {
         _showSettings = true;
         _expanded = false;
       });
     }
-    await _animateAnchoredSize(
-      _settingsSize,
-      duration: const Duration(milliseconds: 260),
-    );
     await windowManager.focus();
   }
 
@@ -228,7 +198,8 @@ class _WindowsWidgetShellState extends State<WindowsWidgetShell>
         _expanded = false;
       });
     }
-    await _animateAnchoredSize(_collapsedSize);
+    await Future<void>.delayed(const Duration(milliseconds: 220));
+    await _setAnchoredSize(_collapsedSize);
   }
 
   List<TaskItem> get _todayTasks {
@@ -257,44 +228,35 @@ class _WindowsWidgetShellState extends State<WindowsWidgetShell>
   Widget build(BuildContext context) {
     return Material(
       type: MaterialType.transparency,
-      child: MouseRegion(
-        onEnter: (_) {
-          if (!_hovered) setState(() => _hovered = true);
-        },
-        onExit: (_) {
-          if (_hovered) setState(() => _hovered = false);
-        },
-        child: Stack(
-          children: [
-            const Positioned.fill(
-              child: DragToMoveArea(child: SizedBox.expand()),
-            ),
-            if (_showSettings)
-              _FloatingSettings(
-                controller: widget.controller,
-                themeMode: widget.themeMode,
-                onThemeModeChanged: widget.onThemeModeChanged,
-                onClose: () => unawaited(_closeSettings()),
-              )
-            else
-              Align(
-                alignment: Alignment.centerRight,
-                child: Padding(
-                  padding: const EdgeInsets.all(2),
-                  child: RepaintBoundary(
-                    child: _HoverDrop(
-                      controller: widget.controller,
-                      tasks: _todayTasks,
-                      expanded: _expanded,
-                      hovered: _hovered,
-                      onToggleExpanded: () => unawaited(_toggleExpanded()),
-                      onSettings: () => unawaited(_openSettings()),
-                    ),
+      child: Stack(
+        children: [
+          const Positioned.fill(
+            child: DragToMoveArea(child: SizedBox.expand()),
+          ),
+          if (_showSettings)
+            _FloatingSettings(
+              controller: widget.controller,
+              themeMode: widget.themeMode,
+              onThemeModeChanged: widget.onThemeModeChanged,
+              onClose: () => unawaited(_closeSettings()),
+            )
+          else
+            Align(
+              alignment: Alignment.centerRight,
+              child: Padding(
+                padding: const EdgeInsets.all(2),
+                child: RepaintBoundary(
+                  child: _HoverDrop(
+                    controller: widget.controller,
+                    tasks: _todayTasks,
+                    expanded: _expanded,
+                    onToggleExpanded: () => unawaited(_toggleExpanded()),
+                    onSettings: () => unawaited(_openSettings()),
                   ),
                 ),
               ),
-          ],
-        ),
+            ),
+        ],
       ),
     );
   }
@@ -583,7 +545,6 @@ class _HoverDrop extends StatelessWidget {
     required this.controller,
     required this.tasks,
     required this.expanded,
-    required this.hovered,
     required this.onToggleExpanded,
     required this.onSettings,
   });
@@ -591,7 +552,6 @@ class _HoverDrop extends StatelessWidget {
   final TaskController controller;
   final List<TaskItem> tasks;
   final bool expanded;
-  final bool hovered;
   final VoidCallback onToggleExpanded;
   final VoidCallback onSettings;
 
@@ -606,172 +566,172 @@ class _HoverDrop extends StatelessWidget {
     final progress = total == 0 ? 0.0 : (remaining / total).clamp(0.0, 1.0);
     final task = tasks.firstOrNull;
 
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final reveal = ((constraints.maxWidth - 92) / 224).clamp(0.0, 1.0);
-        final radius = BorderRadius.circular(22);
-        return GestureDetector(
-          key: const ValueKey('windows-timer-pill'),
-          behavior: HitTestBehavior.opaque,
-          onTap: onToggleExpanded,
-          onPanStart: (_) => windowManager.startDragging(),
-          child: ClipRRect(
-            borderRadius: radius,
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 140),
-                curve: Curves.easeOut,
-                decoration: BoxDecoration(
-                  color: palette.surfaceRaised.withValues(
-                    alpha: hovered
-                        ? (dark ? 0.82 : 0.86)
-                        : (dark ? 0.68 : 0.74),
-                  ),
-                  borderRadius: radius,
-                  border: Border.all(
-                    color: palette.border.withValues(
-                      alpha: hovered ? 0.82 : 0.58,
+    return AnimatedContainer(
+      width: expanded ? 316 : 58,
+      duration: const Duration(milliseconds: 280),
+      curve: Curves.easeOutCubic,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final reveal = ((constraints.maxWidth - 58) / 258).clamp(0.0, 1.0);
+          final radius = BorderRadius.circular(29);
+          return GestureDetector(
+            key: const ValueKey('windows-timer-pill'),
+            behavior: HitTestBehavior.opaque,
+            onTap: onToggleExpanded,
+            onPanStart: (_) => windowManager.startDragging(),
+            child: ClipRRect(
+              borderRadius: radius,
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: palette.surfaceRaised.withValues(
+                      alpha: dark ? 0.68 : 0.74,
+                    ),
+                    borderRadius: radius,
+                    border: Border.all(
+                      color: palette.border.withValues(
+                        alpha: 0.58,
+                      ),
                     ),
                   ),
-                ),
-                child: Stack(
-                  children: [
-                    Positioned(
-                      left: 0,
-                      right: 92,
-                      top: 0,
-                      bottom: 0,
-                      child: IgnorePointer(
-                        ignoring: reveal < 0.92,
-                        child: Opacity(
-                          opacity: reveal,
-                          child: Row(
+                  child: Stack(
+                    children: [
+                      Positioned(
+                        left: 0,
+                        right: 58,
+                        top: 0,
+                        bottom: 0,
+                        child: IgnorePointer(
+                          ignoring: reveal < 0.92,
+                          child: Opacity(
+                            opacity: reveal,
+                            child: Row(
+                              children: [
+                                SizedBox(
+                                  width: 32,
+                                  child: IconButton(
+                                    tooltip: task == null ? '今天没有任务' : '完成任务',
+                                    padding: EdgeInsets.zero,
+                                    visualDensity: VisualDensity.compact,
+                                    onPressed: task == null
+                                        ? null
+                                        : () => controller.toggleTask(task),
+                                    icon: Icon(
+                                      Icons.circle_outlined,
+                                      size: 14,
+                                      color: palette.faint,
+                                    ),
+                                  ),
+                                ),
+                                Expanded(
+                                  child: Text(
+                                    task == null
+                                        ? '今天没有任务'
+                                        : tasks.length > 1
+                                            ? '${task.title}  +${tasks.length - 1}'
+                                            : task.title,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      color: task == null
+                                          ? palette.muted
+                                          : palette.ink,
+                                      fontSize: 11.5,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ),
+                                SizedBox(
+                                  width: 32,
+                                  child: IconButton(
+                                    tooltip: running ? '暂停番茄钟' : '开始番茄钟',
+                                    padding: EdgeInsets.zero,
+                                    visualDensity: VisualDensity.compact,
+                                    onPressed: controller.togglePomodoro,
+                                    icon: Icon(
+                                      running
+                                          ? Icons.pause_rounded
+                                          : Icons.play_arrow_rounded,
+                                      size: 17,
+                                      color: palette.ink,
+                                    ),
+                                  ),
+                                ),
+                                SizedBox(
+                                  width: 32,
+                                  child: IconButton(
+                                    tooltip: '设置',
+                                    padding: EdgeInsets.zero,
+                                    visualDensity: VisualDensity.compact,
+                                    onPressed: onSettings,
+                                    icon: Icon(
+                                      Icons.tune_rounded,
+                                      size: 14,
+                                      color: palette.muted,
+                                    ),
+                                  ),
+                                ),
+                                Container(
+                                  width: 1,
+                                  height: 20,
+                                  color: palette.border.withValues(alpha: 0.68),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                      Positioned(
+                        right: 0,
+                        top: 0,
+                        bottom: 0,
+                        width: 58,
+                        child: Tooltip(
+                          message: expanded ? '点击收起' : '点击展开',
+                          child: Stack(
+                            alignment: Alignment.center,
                             children: [
-                              SizedBox(
-                                width: 32,
-                                child: IconButton(
-                                  tooltip: task == null ? '今天没有任务' : '完成任务',
-                                  padding: EdgeInsets.zero,
-                                  visualDensity: VisualDensity.compact,
-                                  onPressed: task == null
-                                      ? null
-                                      : () => controller.toggleTask(task),
-                                  icon: Icon(
-                                    Icons.circle_outlined,
-                                    size: 14,
-                                    color: palette.faint,
+                              SizedBox.square(
+                                dimension: 44,
+                                child: CircularProgressIndicator(
+                                  value: progress,
+                                  strokeWidth: 2.2,
+                                  strokeCap: StrokeCap.round,
+                                  backgroundColor: palette.border.withValues(
+                                    alpha: 0.72,
                                   ),
-                                ),
-                              ),
-                              Expanded(
-                                child: Text(
-                                  task == null
-                                      ? '今天没有任务'
-                                      : tasks.length > 1
-                                      ? '${task.title}  +${tasks.length - 1}'
-                                      : task.title,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    color: task == null
-                                        ? palette.muted
-                                        : palette.ink,
-                                    fontSize: 11.5,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                              ),
-                              SizedBox(
-                                width: 32,
-                                child: IconButton(
-                                  tooltip: running ? '暂停番茄钟' : '开始番茄钟',
-                                  padding: EdgeInsets.zero,
-                                  visualDensity: VisualDensity.compact,
-                                  onPressed: controller.togglePomodoro,
-                                  icon: Icon(
+                                  valueColor: AlwaysStoppedAnimation(
                                     running
-                                        ? Icons.pause_rounded
-                                        : Icons.play_arrow_rounded,
-                                    size: 17,
-                                    color: palette.ink,
+                                        ? palette.accentStrong
+                                        : palette.faint,
                                   ),
                                 ),
                               ),
-                              SizedBox(
-                                width: 32,
-                                child: IconButton(
-                                  tooltip: '设置',
-                                  padding: EdgeInsets.zero,
-                                  visualDensity: VisualDensity.compact,
-                                  onPressed: onSettings,
-                                  icon: Icon(
-                                    Icons.tune_rounded,
-                                    size: 14,
-                                    color: palette.muted,
-                                  ),
+                              Text(
+                                _formatSeconds(remaining),
+                                style: TextStyle(
+                                  color: palette.ink,
+                                  fontSize: 9.5,
+                                  fontWeight: FontWeight.w600,
+                                  letterSpacing: -0.35,
+                                  fontFeatures: const [
+                                    FontFeature.tabularFigures(),
+                                  ],
                                 ),
-                              ),
-                              Container(
-                                width: 1,
-                                height: 20,
-                                color: palette.border.withValues(alpha: 0.68),
                               ),
                             ],
                           ),
                         ),
                       ),
-                    ),
-                    Positioned(
-                      right: 0,
-                      top: 0,
-                      bottom: 0,
-                      width: 92,
-                      child: Tooltip(
-                        message: expanded ? '点击收起' : '点击展开',
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            SizedBox.square(
-                              dimension: 15,
-                              child: CircularProgressIndicator(
-                                value: progress,
-                                strokeWidth: 2,
-                                strokeCap: StrokeCap.round,
-                                backgroundColor: palette.border.withValues(
-                                  alpha: 0.72,
-                                ),
-                                valueColor: AlwaysStoppedAnimation(
-                                  running
-                                      ? palette.accentStrong
-                                      : palette.faint,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 7),
-                            Text(
-                              _formatSeconds(remaining),
-                              style: TextStyle(
-                                color: palette.ink,
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
-                                letterSpacing: -0.2,
-                                fontFeatures: const [
-                                  FontFeature.tabularFigures(),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),
-          ),
-        );
-      },
+          );
+        },
+      ),
     );
   }
 

@@ -15,7 +15,11 @@ final class IOSSystemFeatures {
     required int todayTaskCount,
     required List<String> todayTaskTitles,
   }) {
-    if (kIsWeb || defaultTargetPlatform != TargetPlatform.iOS) return;
+    if (kIsWeb ||
+        (defaultTargetPlatform != TargetPlatform.iOS &&
+            defaultTargetPlatform != TargetPlatform.android)) {
+      return;
+    }
     unawaited(
       _channel
           .invokeMethod<void>('updateSnapshot', {

@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_focus_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/widget_background"
+    android:gravity="center_vertical"
+    android:orientation="vertical"
+    android:padding="18dp">
+
+    <TextView
+        android:id="@+id/widget_focus_title"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:fontFamily="sans"
+        android:text="专注"
+        android:textColor="@color/widget_accent"
+        android:textSize="13sp"
+        android:textStyle="bold" />
+
+    <Chronometer
+        android:id="@+id/widget_focus_timer"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:fontFamily="sans"
+        android:includeFontPadding="false"
+        android:textColor="@color/widget_text_primary"
+        android:textSize="34sp" />
+
+    <TextView
+        android:id="@+id/widget_focus_static_time"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:fontFamily="sans"
+        android:includeFontPadding="false"
+        android:text="25:00"
+        android:textColor="@color/widget_text_primary"
+        android:textSize="34sp" />
+
+    <TextView
+        android:id="@+id/widget_focus_status"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="准备开始"
+        android:textColor="@color/widget_text_secondary"
+        android:textSize="11sp" />
+</LinearLayout>

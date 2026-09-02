@@ -3,6 +3,18 @@ import WidgetKit
 
 private let suiteName = "group.one.darker.qingxu"
 
+private struct MacWidgetWeather: Decodable {
+  let cityName: String
+  let temperature: String
+  let text: String
+  let humidity: String
+}
+
+private struct MacWidgetQuote: Decodable {
+  let text: String
+  let source: String
+}
+
 private struct QingxuWidgetEntry: TimelineEntry {
   let date: Date
   let taskCount: Int
@@ -16,6 +28,9 @@ private struct QingxuWidgetEntry: TimelineEntry {
   let goal: Int
   let completed: Int
   let heatmap: [String: Int]
+  let weather: MacWidgetWeather?
+  let quote: MacWidgetQuote?
+  let snapshotUpdatedAt: Date?
 }
 
 private struct QingxuWidgetProvider: TimelineProvider {
@@ -44,7 +59,10 @@ private struct QingxuWidgetProvider: TimelineProvider {
       startedAt: nil,
       goal: 4,
       completed: 2,
-      heatmap: [:]
+      heatmap: [:],
+      weather: MacWidgetWeather(cityName: "上海", temperature: "23", text: "晴", humidity: "52"),
+      quote: MacWidgetQuote(text: "把今天真正重要的事做好。", source: "清序"),
+      snapshotUpdatedAt: .now
     )
   }
 
@@ -64,8 +82,16 @@ private struct QingxuWidgetProvider: TimelineProvider {
       startedAt: defaults?.object(forKey: "pomodoroStartedAt") as? Date,
       goal: max(1, defaults?.integer(forKey: "dailyFocusGoal") ?? 4),
       completed: defaults?.integer(forKey: "dailyFocusCompleted") ?? 0,
-      heatmap: heatmap
+      heatmap: heatmap,
+      weather: decode(MacWidgetWeather.self, data: defaults?.data(forKey: "qingxu.ambient.weather-cache.v1")),
+      quote: decode(MacWidgetQuote.self, data: defaults?.data(forKey: "qingxu.ambient.quote-cache.v1")),
+      snapshotUpdatedAt: defaults?.object(forKey: "widgetSnapshotUpdatedAt") as? Date
     )
+  }
+
+  private func decode<T: Decodable>(_ type: T.Type, data: Data?) -> T? {
+    guard let data else { return nil }
+    return try? JSONDecoder().decode(type, from: data)
   }
 }
 
@@ -73,7 +99,11 @@ private struct WidgetSurface<Content: View>: View {
   @ViewBuilder let content: () -> Content
 
   var body: some View {
-    if #available(macOSApplicationExtension 14.0, *) {
+    if #available(macOSApplicationExtension 26.0, *) {
+      content()
+        .glassEffect(.regular, in: .rect(cornerRadius: 22))
+        .containerBackground(Color.clear, for: .widget)
+    } else if #available(macOSApplicationExtension 14.0, *) {
       content()
         .containerBackground(.fill.tertiary, for: .widget)
     } else {
@@ -81,6 +111,104 @@ private struct WidgetSurface<Content: View>: View {
         .padding()
         .background(Color(nsColor: .windowBackgroundColor))
     }
+  }
+}
+
+private struct MacOverviewWidgetView: View {
+  let entry: QingxuWidgetEntry
+
+  var body: some View {
+    WidgetSurface {
+      HStack(spacing: 18) {
+        VStack(alignment: .leading, spacing: 9) {
+          Label("今天", systemImage: "sun.horizon.fill")
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(.blue)
+          Text("\(entry.taskCount)")
+            .font(.system(size: 40, weight: .semibold, design: .rounded))
+            .monospacedDigit()
+          Text(entry.taskTitles.first ?? (entry.taskCount == 0 ? "今天已清空" : "项待办"))
+            .font(.caption.weight(.medium))
+            .foregroundStyle(.secondary)
+            .lineLimit(2)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+
+        Divider()
+
+        VStack(alignment: .leading, spacing: 9) {
+          HStack {
+            Label(modeTitle, systemImage: "timer")
+              .font(.caption.weight(.semibold))
+            Spacer()
+            Text("\(entry.completed)/\(entry.goal)")
+              .font(.caption2.weight(.semibold).monospacedDigit())
+              .foregroundStyle(.secondary)
+          }
+          timerText
+            .font(.system(size: 30, weight: .medium, design: .rounded).monospacedDigit())
+            .lineLimit(1)
+          Text(entry.status == "running" ? "正在同步计时" : "准备下一次专注")
+            .font(.caption2)
+            .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+      }
+      .padding(16)
+    }
+    .widgetURL(URL(string: "qingxu://today"))
+  }
+
+  private var modeTitle: String {
+    switch entry.mode {
+    case "shortBreak": return "短暂休息"
+    case "longBreak": return "长休息"
+    default: return "专注"
+    }
+  }
+
+  @ViewBuilder
+  private var timerText: some View {
+    if entry.status == "running", entry.direction == "countdown", let endsAt = entry.endsAt {
+      Text(timerInterval: entry.date...endsAt, countsDown: true)
+    } else if entry.status == "running", entry.direction == "countUp", let startedAt = entry.startedAt {
+      Text(timerInterval: startedAt...Date.distantFuture, countsDown: false)
+    } else {
+      Text(String(format: "%02d:%02d", max(0, entry.remaining) / 60, max(0, entry.remaining) % 60))
+    }
+  }
+}
+
+private struct MacAmbientWidgetView: View {
+  let entry: QingxuWidgetEntry
+
+  var body: some View {
+    WidgetSurface {
+      VStack(alignment: .leading, spacing: 10) {
+        HStack(alignment: .firstTextBaseline) {
+          Text(entry.weather.map { "\($0.temperature)°" } ?? "--°")
+            .font(.system(size: 34, weight: .medium, design: .rounded))
+          VStack(alignment: .leading, spacing: 1) {
+            Text(entry.weather?.text ?? "天气待刷新").font(.caption.weight(.semibold))
+            Text(entry.weather?.cityName ?? "打开清序刷新")
+              .font(.caption2)
+              .foregroundStyle(.secondary)
+          }
+          Spacer()
+          Image(systemName: "quote.opening").foregroundStyle(.blue)
+        }
+        Spacer(minLength: 0)
+        Text(entry.quote?.text ?? "把今天真正重要的事做好。")
+          .font(.subheadline.weight(.medium))
+          .lineLimit(2)
+        Text(entry.quote.map { "— \($0.source)" } ?? "— 清序")
+          .font(.caption2)
+          .foregroundStyle(.secondary)
+          .lineLimit(1)
+      }
+      .padding(16)
+    }
+    .widgetURL(URL(string: "qingxu://today"))
   }
 }
 
@@ -326,6 +454,32 @@ struct MacFocusHeatmapWidget: Widget {
   }
 }
 
+struct MacOverviewWidget: Widget {
+  let kind = "QingxuMacOverview"
+
+  var body: some WidgetConfiguration {
+    StaticConfiguration(kind: kind, provider: QingxuWidgetProvider()) { entry in
+      MacOverviewWidgetView(entry: entry)
+    }
+    .configurationDisplayName("今日总览")
+    .description("同时查看任务、实时计时与今日专注目标。")
+    .supportedFamilies([.systemMedium])
+  }
+}
+
+struct MacAmbientWidget: Widget {
+  let kind = "QingxuMacAmbient"
+
+  var body: some WidgetConfiguration {
+    StaticConfiguration(kind: kind, provider: QingxuWidgetProvider()) { entry in
+      MacAmbientWidgetView(entry: entry)
+    }
+    .configurationDisplayName("天气与一言")
+    .description("在桌面安静地查看天气与每日一句。")
+    .supportedFamilies([.systemMedium])
+  }
+}
+
 @main
 struct QingxumacOSWidgetBundle: WidgetBundle {
   var body: some Widget {
@@ -333,5 +487,7 @@ struct QingxumacOSWidgetBundle: WidgetBundle {
     MacFocusTimerWidget()
     MacDailyGoalWidget()
     MacFocusHeatmapWidget()
+    MacOverviewWidget()
+    MacAmbientWidget()
   }
 }
