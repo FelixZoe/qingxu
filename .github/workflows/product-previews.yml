@@ -14,7 +14,7 @@ env:
 
 concurrency:
   group: qingxu-product-previews
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   android:
@@ -46,17 +46,55 @@ jobs:
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 36
+          target: google_apis
           arch: x86_64
           profile: pixel_7
-          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
-          disable-animations: false
+          cores: 4
+          ram-size: 4096M
+          heap-size: 768M
+          force-avd-creation: false
+          emulator-boot-timeout: 900
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot-load -no-snapshot-save -noaudio -no-boot-anim -camera-back none -camera-front none
+          disable-animations: true
           script: |
+            set -euo pipefail
             mkdir -p preview
+            apk="apps/flutter/build/app/outputs/flutter-apk/app-debug.apk"
+            package="one.darker.qingxu"
+
+            adb wait-for-device
+            for attempt in $(seq 1 60); do
+              if [ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = "1" ] \
+                && adb shell pm path android >/dev/null 2>&1; then
+                break
+              fi
+              if [ "$attempt" -eq 60 ]; then
+                echo "Android package service did not become ready." >&2
+                exit 1
+              fi
+              sleep 3
+            done
+
             adb shell cmd uimode night yes
             adb shell settings put system font_scale 1.0
-            adb install -r apps/flutter/build/app/outputs/flutter-apk/app-debug.apk
-            adb shell am force-stop one.darker.qingxu
-            adb shell monkey -p one.darker.qingxu -c android.intent.category.LAUNCHER 1
+
+            installed=false
+            for attempt in 1 2 3; do
+              if adb install --no-streaming -r -t "$apk"; then
+                installed=true
+                break
+              fi
+              echo "APK install attempt $attempt failed; reconnecting ADB." >&2
+              adb kill-server || true
+              adb start-server
+              adb wait-for-device
+              sleep $((attempt * 5))
+            done
+            test "$installed" = true
+            adb shell pm path "$package" >/dev/null
+
+            adb shell am force-stop "$package"
+            adb shell monkey -p "$package" -c android.intent.category.LAUNCHER 1
             sleep 16
             adb exec-out screencap -p > preview/android.png
             printf '%s\n' "$PREVIEW_REF" > preview/android.sha
