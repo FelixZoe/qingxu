@@ -43,6 +43,7 @@ void main() {
               ),
             ],
             serverTime: '2026-08-22T12:00:00.000Z',
+            revision: 42,
           );
         },
       );
@@ -66,6 +67,10 @@ void main() {
         '整理今天真正重要的三件事',
       );
       expect(controller.lastServerTime, '2026-08-22T12:00:00.000Z');
+      expect(
+        jsonDecode(settingsStorage.value!) as Map,
+        containsPair('revision', 42),
+      );
 
       final restored = TaskController(
         storage: taskStorage,

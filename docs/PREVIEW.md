@@ -1,6 +1,6 @@
 # 四端实时预览
 
-清序的预览图来自真实应用进程，不使用手工绘制的假界面。`Product Previews` 工作流会启动 iOS Simulator、Android Emulator、macOS 应用和 Windows 悬浮窗，截取高清图片并覆盖上传到最新 GitHub Release。
+清序的预览图来自真实应用进程，不使用手工绘制的假界面。`Product Previews` 工作流会以同一个提交 SHA 启动 iOS Simulator、Android Emulator、macOS 应用和 Windows 悬浮窗，截取高清图片并覆盖上传到最新 GitHub Release。
 
 ## 没有 Android 手机
 
@@ -28,8 +28,10 @@ flutter run -d <模拟器 ID>
 
 ## 产物
 
-- `qingxu-product-hero.png`：README/产品站顶部四端主视觉，2048×1152。
-- `qingxu-platform-previews.png`：iOS、Android、macOS、Windows 四端总览。
+- `qingxu-product-hero.png`：README/产品站顶部四端主视觉，3840×2160。
+- `qingxu-platform-previews.png`：iOS、Android、macOS、Windows 四端 3840×2880 总览。
 - `qingxu-preview-<平台>.png`：未经重绘的原始应用截图。
+
+每个平台 artifact 还包含 `preview-<平台>.sha`。发布阶段只有在四个 SHA 完全相同时才合成并上传主视觉，避免把不同版本的界面拼到一起。
 
 工作流只公开应用界面，不会读取或写入个人同步地址、同步密钥、AI 密钥或天气 API 密钥。

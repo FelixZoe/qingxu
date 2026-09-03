@@ -2,7 +2,7 @@
 
 清序采用“两套客户端实现、一份同步协议、一个轻量服务端”的结构。Apple 平台使用 SwiftUI，Android 与 Windows 使用 Flutter；所有客户端共享 Go 服务端的 JSON 协议。
 
-返回：[项目首页](../README.md) · [产品范围](PRODUCT.md) · [同步协议](SYNC_PROTOCOL.md)
+返回：[项目首页](../README.md) · [产品范围](PRODUCT.md) · [设计规范](DESIGN.md) · [同步协议](SYNC_PROTOCOL.md)
 
 ## 系统全景
 
@@ -70,6 +70,7 @@ iOS 主应用与 `QingxuWidgets` 扩展通过 `group.one.darker.qingxu` App Grou
 - **RSS**：一个单例 LWW 文档，保存订阅、分类与文章阅读状态；正文只在本机缓存。
 - **实时通知**：前台客户端通过 `/v1/changes` 等待修订号变化，变化后再调用 `/v1/sync`。
 - **容错**：5 分钟完整同步用于重连兜底，不替代变更通知。
+- **恢复**：客户端持久化最近修订号；进程重启后从该位置继续等待，断线使用带抖动的指数退避。
 
 当前模型是文档级 LWW，不是逐字段 CRDT。两个设备同时修改同一任务时，时间更新的完整任务获胜。
 

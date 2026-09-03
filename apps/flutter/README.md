@@ -2,7 +2,7 @@
 
 `apps/flutter` 是清序的 Android 与 Windows 客户端。正式 iOS 和 macOS 客户端位于 [`apps/apple`](../apple/README.md)，不使用 Flutter 引擎。
 
-返回：[项目首页](../../README.md) · [系统架构](../../docs/ARCHITECTURE.md) · [同步协议](../../docs/SYNC_PROTOCOL.md)
+返回：[项目首页](../../README.md) · [设计规范](../../docs/DESIGN.md) · [系统架构](../../docs/ARCHITECTURE.md) · [同步协议](../../docs/SYNC_PROTOCOL.md)
 
 ## 平台定位
 
@@ -69,7 +69,7 @@ Release 工作流会在 Windows 产物中补齐 VC Runtime，生成便携 ZIP �
 
 - 本地任务写入平台应用数据目录。
 - 同步密钥写入 `flutter_secure_storage`。
-- `TaskController` 负责本地状态、持久化、同步防抖与变更通知。
+- `TaskController` 负责本地状态、修订号持久化、同步防抖、变更通知与带抖动的断线退避。
 - Android/Windows 与 Apple 客户端使用相同的任务、番茄钟和 RSS 同步文档。
 
 协议细节见 [同步协议 v1](../../docs/SYNC_PROTOCOL.md)，服务器搭建见 [部署说明](../../docs/DEPLOYMENT.md)。

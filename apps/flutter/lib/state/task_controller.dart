@@ -192,6 +192,7 @@ class TaskController extends ChangeNotifier {
         final decoded = Map<String, Object?>.from(
           jsonDecode(encoded) as Map<dynamic, dynamic>,
         );
+        _lastRevision = (decoded['revision'] as num?)?.toInt() ?? 0;
         legacyToken = decoded['token'] as String?;
         _syncSettings = SyncSettings.fromJson(decoded);
       } on Object {
@@ -228,7 +229,7 @@ class TaskController extends ChangeNotifier {
       }
       if (safeToRemoveLegacyToken) {
         try {
-          await _syncSettingsStorage.save(jsonEncode(_syncSettings.toJson()));
+          await _persistSyncSettingsSnapshot();
         } on Object {
           securityWarning ??= '旧配置清理失败，请重新保存同步设置';
         }
@@ -497,7 +498,7 @@ class TaskController extends ChangeNotifier {
     try {
       await _secureTokenStorage.write(normalized.token);
       try {
-        await _syncSettingsStorage.save(jsonEncode(normalized.toJson()));
+        await _persistSyncSettingsSnapshot(settings: normalized);
       } on Object {
         try {
           await _secureTokenStorage.write(previous.token);
@@ -616,7 +617,11 @@ class TaskController extends ChangeNotifier {
               remotePomodoro.updatedAt.isAtSameMomentAs(_pomodoro.updatedAt))) {
         _pomodoro = remotePomodoro;
       }
-      await Future.wait([_persistTasks(), _persistPomodoro()]);
+      await Future.wait([
+        _persistTasks(),
+        _persistPomodoro(),
+        _persistSyncSettingsSnapshot(),
+      ]);
       _lastSyncedAt = DateTime.now();
       _lastServerTime = response.serverTime;
       _syncActivity = SyncActivity.success;
@@ -738,6 +743,7 @@ class TaskController extends ChangeNotifier {
   }
 
   Future<void> _watchChanges(SyncChangeClient client, int generation) async {
+    var failureCount = 0;
     while (!_disposed && generation == _changeFeedGeneration) {
       try {
         final change = await client.waitForChanges(
@@ -745,6 +751,7 @@ class TaskController extends ChangeNotifier {
           since: _lastRevision,
         );
         if (_disposed || generation != _changeFeedGeneration) return;
+        failureCount = 0;
         final isNewRevision = change.revision > _lastRevision;
         if (change.changed && isNewRevision) {
           final succeeded = await syncNow();
@@ -753,13 +760,28 @@ class TaskController extends ChangeNotifier {
           }
         } else if (isNewRevision) {
           _lastRevision = change.revision;
+          await _persistSyncSettingsSnapshot();
         }
       } on Object {
         if (_disposed || generation != _changeFeedGeneration) return;
-        await Future<void>.delayed(const Duration(seconds: 3));
+        failureCount = (failureCount + 1).clamp(1, 5);
+        final baseMilliseconds = 1000 * (1 << (failureCount - 1));
+        final jitterMilliseconds =
+            DateTime.now().millisecondsSinceEpoch % 251;
+        await Future<void>.delayed(
+          Duration(milliseconds: baseMilliseconds + jitterMilliseconds),
+        );
       }
     }
   }
+
+  Future<void> _persistSyncSettingsSnapshot({SyncSettings? settings}) =>
+      _syncSettingsStorage.save(
+        jsonEncode({
+          ...(settings ?? _syncSettings).toJson(),
+          'revision': _lastRevision,
+        }),
+      );
 
   void _setSyncError(String message) {
     _syncActivity = SyncActivity.error;

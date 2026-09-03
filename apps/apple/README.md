@@ -2,7 +2,7 @@
 
 `apps/apple` 包含清序的 SwiftUI iOS 与 macOS 客户端。两端复用任务、番茄钟、RSS、本地存储和同步实现，不包含 Flutter 引擎。
 
-返回：[项目首页](../../README.md) · [系统架构](../../docs/ARCHITECTURE.md) · [iOS 签名](../../docs/IOS_PRIVATE_SIGNING.md)
+返回：[项目首页](../../README.md) · [设计规范](../../docs/DESIGN.md) · [系统架构](../../docs/ARCHITECTURE.md) · [iOS 签名](../../docs/IOS_PRIVATE_SIGNING.md)
 
 ## 支持范围
 

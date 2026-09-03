@@ -494,7 +494,9 @@ final class AppStore: ObservableObject {
       } catch {
         guard !Task.isCancelled, generation == changeFeedGeneration else { return }
         failureCount = min(failureCount + 1, 5)
-        try? await Task.sleep(for: .seconds(1 << failureCount))
+        let baseMilliseconds = 1_000 * (1 << (failureCount - 1))
+        let jitterMilliseconds = Int.random(in: 0...min(750, baseMilliseconds / 4))
+        try? await Task.sleep(for: .milliseconds(baseMilliseconds + jitterMilliseconds))
       }
     }
   }

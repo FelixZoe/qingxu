@@ -10,7 +10,8 @@
   <a href="https://todo.darker.one">产品预览</a> ·
   <a href="https://github.com/FelixZoe/qingxu/releases/latest">下载最新版</a> ·
   <a href="https://github.com/FelixZoe/qingxu/actions/workflows/build-release.yml">构建状态</a> ·
-  <a href="docs/DEPLOYMENT.md">部署同步服务</a>
+  <a href="docs/DEPLOYMENT.md">部署同步服务</a> ·
+  <a href="docs/DESIGN.md">设计规范</a>
 </p>
 
 <p align="center">
@@ -32,7 +33,7 @@
 - **任务管理**：今天、可选收集箱、项目、备注、开始时间、截止时间、完成与恢复；已完成任务保留下沉并显示删除线。
 - **自然日历**：周视图与月视图连续展开，日期、节日和任务列表保持在同一页面。
 - **番茄钟与正计时**：自定义专注、休息、长休息和每日目标；自动切换阶段，并用年度热力图沉淀专注记录。
-- **实时多端同步**：任务、番茄钟和 RSS 阅读状态自动同步；在线设备通过低占用变更通知及时刷新。
+- **实时多端同步**：任务、番茄钟和 RSS 阅读状态自动同步；前台在线设备通过低占用变更通知及时刷新，重启后从已保存修订继续。
 - **Apple 系统能力**：iOS 锁屏实时活动、灵动岛、主屏幕小组件和锁屏小组件；macOS 使用原生 SwiftUI。
 - **原生 RSS 阅读**：来源分类、未读、收藏、搜索、OPML、离线缓存、阅读进度、正文阅读、翻译和 AI 摘要。
 - **AI 助手**：RSS 摘要、原文翻译和轻量任务规划；可使用自托管代理或直接配置 OpenAI、DeepSeek 等兼容接口。
@@ -122,6 +123,8 @@ echo "$TOKEN"
 4. 前台设备通过 `/v1/changes` 等待修订号变化；只有发生变化时才拉取完整状态。
 5. 5 分钟完整同步仅用于断线容错，不进行高频全量轮询。
 
+断线重连使用带抖动的指数退避，避免多台设备同时反复请求。iOS 被系统挂起或强制结束后不能维持普通网络连接；回到前台会立即补同步，系统实时活动本身仍按绝对结束时间显示倒计时。
+
 协议细节见 [同步协议 v1](docs/SYNC_PROTOCOL.md)。
 
 ## 项目结构
@@ -184,6 +187,7 @@ go vet ./...
 ## 文档
 
 - [产品范围](docs/PRODUCT.md)
+- [跨端设计规范](docs/DESIGN.md)
 - [系统架构](docs/ARCHITECTURE.md)
 - [同步协议 v1](docs/SYNC_PROTOCOL.md)
 - [自托管部署](docs/DEPLOYMENT.md)
