@@ -400,7 +400,7 @@ jobs:
               old_apk="$(find previous -maxdepth 1 -name 'Qingxu-*-Android.apk' -print -quit)"
               if [[ -n "$old_apk" ]]; then
                 patch_name="Qingxu-${previous_version}-to-${APP_VERSION}-Android.bpatch"
-                dart run binary_patch create "$old_apk" "$full" "$patch_name"
+                dart run tool/create_binary_patch.dart "$old_apk" "$full" "$patch_name"
               fi
             fi
           fi
