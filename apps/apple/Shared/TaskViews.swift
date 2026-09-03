@@ -7,7 +7,7 @@ enum TaskScope {
   var title: String { self == .inbox ? "收集箱" : "今天" }
   var emptyTitle: String { self == .inbox ? "收集箱已清空" : "今天没有任务" }
   var emptyDetail: String { self == .inbox ? "随时记录任务和想法" : "留一点时间给自己" }
-  var symbol: String { self == .inbox ? "tray" : "sun.horizon" }
+  var symbol: String { self == .inbox ? "tray" : "calendar" }
 }
 
 private struct TaskEditorRoute: Identifiable {
@@ -262,7 +262,7 @@ struct TaskListScreen: View {
         move: { moveRoute = TaskMoveRoute(task: task) },
         delete: { deleteImmediately(task) }
       ) {
-        TaskRow(task: task, style: .todayPanel, scheduleLabel: selectedDateLabel) {
+        TaskRow(task: task, style: .todayPanel, scheduleLabel: nil) {
           let completing = task.status != .completed
           withAnimation(.easeInOut(duration: 0.2)) { store.toggleTask(task) }
           if completing {
@@ -340,13 +340,13 @@ struct TaskListScreen: View {
                 todayTaskRows
               }
               .padding(.horizontal, 20)
-              .padding(.top, 18)
-              .padding(.bottom, 10)
+              .padding(.top, 12)
+              .padding(.bottom, 8)
               .background(
                 QingxuPalette.surface,
                 in: RoundedRectangle(cornerRadius: 24, style: .continuous)
               )
-              .padding(.horizontal, 24)
+              .padding(.horizontal, 20)
             }
 
             Color.clear.frame(height: tasks.isEmpty ? 360 : 118)
@@ -575,7 +575,7 @@ private struct TaskRow: View {
   let toggle: () -> Void
 
   var body: some View {
-    HStack(alignment: .top, spacing: 13) {
+    HStack(alignment: task.notes.isEmpty ? .center : .top, spacing: 13) {
       Button(action: toggle) {
         if style == .todayPanel {
           ZStack {
@@ -629,7 +629,7 @@ private struct TaskRow: View {
       }
     }
     .padding(.horizontal, style == .todayPanel ? 0 : 16)
-    .padding(.vertical, style == .todayPanel ? 14 : 13)
+    .padding(.vertical, 13)
     .opacity(task.status == .completed ? 0.72 : 1)
     .background {
       if style == .card {
@@ -1309,37 +1309,42 @@ private struct TodayTaskScrollConfigurator: UIViewRepresentable {
       case .began:
         direction = nil
         startExpansion = expansion.wrappedValue
-        lastTranslation = translation
+        lastTranslation = 0
+        let top = -scrollView.adjustedContentInset.top
+        let atTop = scrollView.contentOffset.y <= top + 6
+        let velocity = recognizer.velocity(in: scrollView).y
+        if velocity > 0, atTop, expansion.wrappedValue < 0.999 {
+          direction = .expand
+          keepListAtTop(scrollView)
+        } else if velocity < 0, expansion.wrappedValue > 0.001 {
+          direction = .collapse
+          keepListAtTop(scrollView)
+        }
 
       case .changed:
-        let step = translation - lastTranslation
-        lastTranslation = translation
-
         if direction == nil {
           let top = -scrollView.adjustedContentInset.top
-          let atTop = scrollView.contentOffset.y <= top + 1
-          if step > 0.5, atTop, expansion.wrappedValue < 0.999 {
+          let atTop = scrollView.contentOffset.y <= top + 6
+          if translation > 1, atTop, expansion.wrappedValue < 0.999 {
             direction = .expand
             startExpansion = expansion.wrappedValue
-          } else if step < -0.5, expansion.wrappedValue > 0.001 {
+          } else if translation < -1, expansion.wrappedValue > 0.001 {
             direction = .collapse
             startExpansion = expansion.wrappedValue
           }
         }
         guard let direction else { return }
         keepListAtTop(scrollView)
-        let directionalDelta = direction == .expand ? max(0, step) : min(0, step)
         expansion.wrappedValue = min(
           1,
-          max(0, expansion.wrappedValue + directionalDelta / TodayCalendarMetrics.expansionDistance)
+          max(0, startExpansion + translation / TodayCalendarMetrics.expansionDistance)
         )
         if direction == .collapse, expansion.wrappedValue <= 0.001 {
           // Once the calendar is fully collapsed, release the rest of this
           // same upward gesture to the task list instead of requiring a
           // second swipe.
           self.direction = nil
-        } else if direction == .expand, expansion.wrappedValue >= 0.999 {
-          self.direction = nil
+          recognizer.setTranslation(.zero, in: scrollView)
         }
 
       case .ended, .cancelled, .failed:

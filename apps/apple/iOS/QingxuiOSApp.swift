@@ -11,8 +11,10 @@ struct QingxuiOSApp: App {
   init() {
     if #unavailable(iOS 26.0) {
       let appearance = UITabBarAppearance()
-      appearance.configureWithOpaqueBackground()
-      appearance.backgroundColor = UIColor(QingxuPalette.background)
+      appearance.configureWithTransparentBackground()
+      appearance.backgroundEffect = UIBlurEffect(style: .systemUltraThinMaterial)
+      appearance.backgroundColor = .clear
+      appearance.shadowColor = UIColor.separator.withAlphaComponent(0.18)
       UITabBar.appearance().standardAppearance = appearance
       UITabBar.appearance().scrollEdgeAppearance = appearance
     }

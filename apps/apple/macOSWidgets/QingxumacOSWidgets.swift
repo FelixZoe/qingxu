@@ -121,7 +121,7 @@ private struct MacOverviewWidgetView: View {
     WidgetSurface {
       HStack(spacing: 18) {
         VStack(alignment: .leading, spacing: 9) {
-          Label("今天", systemImage: "sun.horizon.fill")
+          Label("今天", systemImage: "calendar")
             .font(.caption.weight(.semibold))
             .foregroundStyle(.blue)
           Text("\(entry.taskCount)")

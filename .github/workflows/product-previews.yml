@@ -9,6 +9,9 @@ on:
 permissions:
   contents: write
 
+env:
+  PREVIEW_REF: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+
 concurrency:
   group: qingxu-product-previews
   cancel-in-progress: false
@@ -21,7 +24,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: main
+          ref: ${{ env.PREVIEW_REF }}
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
@@ -30,6 +33,10 @@ jobs:
         with:
           channel: stable
           cache: true
+      - name: Record latest stable Android toolchain
+        run: |
+          flutter --version
+          java -version
       - name: Build preview APK
         working-directory: apps/flutter
         run: |
@@ -38,7 +45,7 @@ jobs:
       - name: Capture Android emulator
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 35
+          api-level: 36
           arch: x86_64
           profile: pixel_7
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
@@ -52,23 +59,29 @@ jobs:
             adb shell monkey -p one.darker.qingxu -c android.intent.category.LAUNCHER 1
             sleep 16
             adb exec-out screencap -p > preview/android.png
+            printf '%s\n' "$PREVIEW_REF" > preview/android.sha
       - uses: actions/upload-artifact@v7
         with:
           name: preview-android
-          path: preview/android.png
+          path: preview/android.*
           if-no-files-found: error
 
   ios:
     if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
-    runs-on: macos-15
+    runs-on: macos-26
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: main
+          ref: ${{ env.PREVIEW_REF }}
       - uses: maxim-lobanov/setup-xcode@v1
         with:
           xcode-version: latest-stable
+      - name: Record latest stable Apple toolchain
+        run: |
+          sw_vers
+          xcodebuild -version
+          xcrun simctl list runtimes
       - name: Prepare Xcode project
         working-directory: apps/apple
         run: |
@@ -103,23 +116,28 @@ jobs:
           xcrun simctl openurl "$udid" qingxu://today
           sleep 4
           xcrun simctl io "$udid" screenshot ../../preview/ios.png
+          printf '%s\n' "$PREVIEW_REF" > ../../preview/ios.sha
       - uses: actions/upload-artifact@v7
         with:
           name: preview-ios
-          path: preview/ios.png
+          path: preview/ios.*
           if-no-files-found: error
 
   macos:
     if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
-    runs-on: macos-15
+    runs-on: macos-26
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: main
+          ref: ${{ env.PREVIEW_REF }}
       - uses: maxim-lobanov/setup-xcode@v1
         with:
           xcode-version: latest-stable
+      - name: Record latest stable Apple toolchain
+        run: |
+          sw_vers
+          xcodebuild -version
       - name: Build and capture macOS app
         working-directory: apps/apple
         run: |
@@ -144,10 +162,11 @@ jobs:
           sleep 3
           mkdir -p ../../preview
           /usr/sbin/screencapture -x ../../preview/macos.png
+          printf '%s\n' "$PREVIEW_REF" > ../../preview/macos.sha
       - uses: actions/upload-artifact@v7
         with:
           name: preview-macos
-          path: preview/macos.png
+          path: preview/macos.*
           if-no-files-found: error
 
   windows:
@@ -157,11 +176,16 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: main
+          ref: ${{ env.PREVIEW_REF }}
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
           cache: true
+      - name: Record latest stable Windows toolchain
+        shell: pwsh
+        run: |
+          flutter --version
+          Get-ComputerInfo | Select-Object WindowsProductName, WindowsVersion, OsBuildNumber
       - name: Build current Windows preview
         working-directory: apps/flutter
         shell: pwsh
@@ -175,10 +199,11 @@ jobs:
           $exe = Get-ChildItem -LiteralPath apps\flutter\build\windows -Recurse -Filter 'Qingxu.exe' | Select-Object -First 1
           if ($null -eq $exe) { throw 'Qingxu.exe was not found.' }
           & .\scripts\previews\capture_windows.ps1 -Executable $exe.FullName -Output "$PWD\preview\windows.png"
+          Set-Content -LiteralPath "$PWD\preview\windows.sha" -Value $env:PREVIEW_REF -Encoding utf8NoBOM
       - uses: actions/upload-artifact@v7
         with:
           name: preview-windows
-          path: preview/windows.png
+          path: preview/windows.*
           if-no-files-found: error
 
   publish:
@@ -188,7 +213,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: main
+          ref: ${{ env.PREVIEW_REF }}
       - uses: actions/download-artifact@v8
         with:
           pattern: preview-*
@@ -196,6 +221,9 @@ jobs:
           merge-multiple: true
       - name: Compose high-resolution previews
         run: |
+          set -euo pipefail
+          test "$(sort -u captured/*.sha | wc -l)" -eq 1
+          test "$(head -n 1 captured/ios.sha)" = "$PREVIEW_REF"
           python3 -m pip install --disable-pip-version-check pillow
           python3 scripts/previews/compose_product_previews.py \
             --ios captured/ios.png \

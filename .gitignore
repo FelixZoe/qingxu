@@ -18,3 +18,4 @@ xcuserdata/
 data/
 work/
 outputs/
+.playwright-cli/

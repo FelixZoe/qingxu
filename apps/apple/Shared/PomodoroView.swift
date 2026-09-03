@@ -205,7 +205,7 @@ struct PomodoroScreen: View {
             }
             .pickerStyle(.segmented)
             .controlSize(.small)
-            .frame(width: 184)
+            .frame(width: 156)
           }
         }
         #endif

@@ -158,7 +158,7 @@ class _WindowsWidgetShellState extends State<WindowsWidgetShell>
     await windowManager.close();
   }
 
-  Future<void> _setAnchoredSize(Size size) async {
+  Future<void> _setAnchoredSize(Size size, {bool animate = false}) async {
     final current = await windowManager.getBounds();
     await windowManager.setBounds(
       Rect.fromLTWH(
@@ -167,6 +167,7 @@ class _WindowsWidgetShellState extends State<WindowsWidgetShell>
         size.width,
         size.height,
       ),
+      animate: animate,
     );
   }
 
@@ -174,14 +175,14 @@ class _WindowsWidgetShellState extends State<WindowsWidgetShell>
     if (_showSettings) return;
     final next = !_expanded;
     if (next) {
-      await _setAnchoredSize(_expandedSize);
       if (mounted) setState(() => _expanded = true);
+      await _setAnchoredSize(_expandedSize, animate: true);
       return;
     }
     setState(() => _expanded = false);
     await Future<void>.delayed(const Duration(milliseconds: 280));
     if (mounted && !_expanded && !_showSettings) {
-      await _setAnchoredSize(_collapsedSize);
+      await _setAnchoredSize(_collapsedSize, animate: true);
     }
   }
 
@@ -588,16 +589,16 @@ class _HoverDrop extends StatelessWidget {
             child: ClipRRect(
               borderRadius: radius,
               child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+                filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
                 child: Container(
                   decoration: BoxDecoration(
                     color: palette.surfaceRaised.withValues(
-                      alpha: dark ? 0.68 : 0.74,
+                      alpha: dark ? 0.56 : 0.64,
                     ),
                     borderRadius: radius,
                     border: Border.all(
                       color: palette.border.withValues(
-                        alpha: 0.58,
+                        alpha: 0.42,
                       ),
                     ),
                   ),

@@ -10,6 +10,8 @@ from PIL import Image, ImageDraw, ImageFilter, ImageFont, ImageOps
 
 
 CANVAS = (2048, 1152)
+EXPORT_CANVAS = (3840, 2160)
+EXPORT_SHEET = (3840, 2880)
 
 
 def font(size: int, bold: bool = False) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
@@ -163,7 +165,8 @@ def contact_sheet(images: dict[str, Image.Image], output: Path) -> None:
         inner = (box[0] + 14, box[1] + 14, box[2] - 14, box[3] - 14)
         rounded_paste(sheet, images[label], inner, 22)
     output.parent.mkdir(parents=True, exist_ok=True)
-    sheet.save(output, quality=95, optimize=True)
+    sheet = sheet.resize(EXPORT_SHEET, Image.Resampling.LANCZOS)
+    sheet.save(output, quality=96, optimize=True)
 
 
 def contain(image: Image.Image, size: tuple[int, int]) -> Image.Image:
@@ -212,6 +215,7 @@ def main() -> None:
     windows_card(hero, images["Windows"])
     phone(hero, images["iOS"], (1330, 240, 1668, 1018), "iOS")
     phone(hero, images["Android"], (1652, 314, 1952, 1004), "Android")
+    hero = hero.resize(EXPORT_CANVAS, Image.Resampling.LANCZOS)
     hero.save(output / "qingxu-product-hero.png", quality=96, optimize=True)
 
     contact_sheet(images, output / "qingxu-platform-previews.png")

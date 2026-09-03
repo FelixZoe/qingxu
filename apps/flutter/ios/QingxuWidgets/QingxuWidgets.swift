@@ -161,25 +161,14 @@ private struct QingxuWidgetSurface<Content: View>: View {
   }
 
   var body: some View {
-    if #available(iOSApplicationExtension 26.0, *) {
-      content
-        .padding(16)
-        .glassEffect(.regular, in: .rect(cornerRadius: 22))
-        .qingxuWidgetBackground(.clear)
-    } else {
-      content
-        .padding(16)
-        .qingxuWidgetBackground(QingxuWidgetPalette.background)
-    }
+    content.padding(16)
   }
 }
 
 private extension View {
   @ViewBuilder
   func qingxuWidgetBackground(_ color: Color) -> some View {
-    if #available(iOSApplicationExtension 26.0, *) {
-      containerBackground(for: .widget) { Color.clear }
-    } else if #available(iOSApplicationExtension 17.0, *) {
+    if #available(iOSApplicationExtension 17.0, *) {
       containerBackground(for: .widget) { color }
     } else {
       background(color)
@@ -215,7 +204,7 @@ private struct TodayWidgetView: View {
       QingxuWidgetSurface {
         VStack(alignment: .leading, spacing: 10) {
           HStack(spacing: 8) {
-            Image(systemName: "sun.horizon.fill")
+            Image(systemName: "calendar")
               .foregroundStyle(QingxuWidgetPalette.accent)
             Text(entry.date, format: .dateTime.month().day())
               .font(.caption.weight(.semibold))
@@ -589,39 +578,36 @@ struct QingxuLiveActivity: Widget {
     } dynamicIsland: { context in
       DynamicIsland {
         DynamicIslandExpandedRegion(.leading) {
-          HStack(spacing: 7) {
-            Image(systemName: context.state.mode == "focus" ? "timer" : "cup.and.saucer.fill")
-              .font(.system(size: 15, weight: .semibold))
-              .foregroundStyle(QingxuWidgetPalette.accent)
-            Text(modeTitle(context.state.mode))
-              .font(.system(size: 14, weight: .semibold))
-          }
-          .lineLimit(1)
-          .padding(.leading, 2)
+          Image(systemName: context.state.mode == "focus" ? "timer" : "cup.and.saucer.fill")
+            .font(.system(size: 16, weight: .semibold))
+            .foregroundStyle(QingxuWidgetPalette.accent)
+            .frame(width: 28, height: 28)
         }
         DynamicIslandExpandedRegion(.trailing) {
           liveTimer(context.state)
-            .font(.system(size: 22, weight: .semibold, design: .rounded).monospacedDigit())
+            .font(.system(size: 19, weight: .semibold, design: .rounded).monospacedDigit())
             .lineLimit(1)
-            .minimumScaleFactor(0.78)
+            .minimumScaleFactor(0.72)
+            .frame(width: 66, alignment: .trailing)
             .id(context.state.phaseID)
-            .padding(.trailing, 2)
         }
         DynamicIslandExpandedRegion(.bottom) {
-          VStack(spacing: 6) {
+          VStack(spacing: 7) {
             HStack(spacing: 8) {
-              Text("近 18 周专注")
+              Text(modeTitle(context.state.mode))
+                .font(.system(size: 13, weight: .semibold))
               Spacer(minLength: 8)
               Text("今日 \(context.state.todayCompleted)/\(context.state.dailyGoal)")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(.secondary)
             }
-            .font(.system(size: 11, weight: .medium))
-            .foregroundStyle(.secondary)
             .lineLimit(1)
 
             FocusHeatmapStrip(values: context.state.focusHeatmap)
           }
           .frame(maxWidth: .infinity)
-          .padding(.horizontal, 4)
+          .padding(.horizontal, 2)
+          .padding(.bottom, 2)
         }
       } compactLeading: {
         Image(systemName: context.state.mode == "focus" ? "timer" : "cup.and.saucer.fill")
@@ -630,10 +616,10 @@ struct QingxuLiveActivity: Widget {
           .frame(width: 12)
       } compactTrailing: {
         liveTimer(context.state)
-          .font(.system(size: 11, weight: .medium, design: .monospaced))
+          .font(.system(size: 10.5, weight: .medium, design: .monospaced))
           .lineLimit(1)
-          .minimumScaleFactor(0.8)
-          .frame(width: 38, alignment: .trailing)
+          .minimumScaleFactor(0.72)
+          .frame(width: 34, alignment: .trailing)
           .id(context.state.phaseID)
       } minimal: {
         Image(systemName: context.state.mode == "focus" ? "timer" : "cup.and.saucer.fill")

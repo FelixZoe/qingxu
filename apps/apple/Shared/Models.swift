@@ -369,7 +369,7 @@ enum AppTab: String, CaseIterable, Identifiable, Hashable {
   var symbol: String {
     switch self {
     case .inbox: "tray"
-    case .today: "sun.horizon"
+    case .today: "calendar"
     case .pomodoro: "timer"
     case .rss: "dot.radiowaves.left.and.right"
     case .settings: "gearshape"

@@ -103,8 +103,8 @@ enum QingxuPalette {
 enum QingxuType {
   static let screenTitle = Font.system(size: 34, weight: .bold)
   static let sectionTitle = Font.system(size: 20, weight: .semibold)
-  static let rowTitle = Font.system(size: 18, weight: .medium)
-  static let rowTitleCompleted = Font.system(size: 18, weight: .regular)
+  static let rowTitle = Font.system(size: 17, weight: .semibold)
+  static let rowTitleCompleted = Font.system(size: 17, weight: .regular)
   static let body = Font.system(size: 16, weight: .regular)
   static let metadata = Font.system(size: 13, weight: .regular)
 }
