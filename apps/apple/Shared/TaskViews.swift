@@ -51,6 +51,7 @@ struct TaskListScreen: View {
   #if os(iOS)
   @State private var calendarExpansion: CGFloat = 0
   @State private var calendarDragStart: CGFloat?
+  @State private var calendarTaskDays = Set<Date>()
   #endif
 
   private var tasks: [TaskItem] {
@@ -166,7 +167,13 @@ struct TaskListScreen: View {
       #endif
       .onDisappear { undoDismissTask?.cancel() }
       .task {
-        if scope == .today { await ambientStore.load() }
+        if scope == .today {
+          refreshCalendarTaskDays()
+          await ambientStore.load()
+        }
+      }
+      .onChange(of: store.tasks) { _ in
+        if scope == .today { refreshCalendarTaskDays() }
       }
       .onReceive(NotificationCenter.default.publisher(for: QingxuAmbientPreferencesStore.didChange)) { _ in
         guard scope == .today else { return }
@@ -219,6 +226,15 @@ struct TaskListScreen: View {
   @ViewBuilder
   private var taskRows: some View {
     ForEach(tasks) { task in
+      if task.id == firstCompletedTaskID {
+        Text("已完成")
+          .font(.caption.weight(.semibold))
+          .foregroundStyle(QingxuPalette.quiet)
+          .textCase(nil)
+          .listRowInsets(.init(top: 14, leading: 22, bottom: 2, trailing: 20))
+          .listRowBackground(Color.clear)
+          .listRowSeparator(.hidden)
+      }
       TaskRow(
         task: task,
         style: scope == .today ? .todayPanel : .card,
@@ -258,6 +274,13 @@ struct TaskListScreen: View {
   @ViewBuilder
   private var todayTaskRows: some View {
     ForEach(tasks) { task in
+      if task.id == firstCompletedTaskID {
+        Text("已完成")
+          .font(.caption.weight(.semibold))
+          .foregroundStyle(QingxuPalette.quiet)
+          .padding(.top, 6)
+          .padding(.leading, 4)
+      }
       TaskSwipeContainer(
         move: { moveRoute = TaskMoveRoute(task: task) },
         delete: { deleteImmediately(task) }
@@ -288,12 +311,8 @@ struct TaskListScreen: View {
           }
         }
       }
-
-      if task.id != tasks.last?.id {
-        Divider()
-          .overlay(QingxuPalette.separator.opacity(0.68))
-          .padding(.leading, 36)
-      }
+      .background(QingxuPalette.secondaryBackground.opacity(0.72))
+      .clipShape(RoundedRectangle(cornerRadius: 17, style: .continuous))
     }
   }
   #endif
@@ -307,7 +326,8 @@ struct TaskListScreen: View {
           expansion: $calendarExpansion,
           showsFestivals: showFestivalLabels,
           showsTaskIndicators: showTaskIndicators,
-          weekStartsMonday: weekStartsMonday
+          weekStartsMonday: weekStartsMonday,
+          taskDays: calendarTaskDays
         )
         .padding(.horizontal, 20)
         .frame(maxWidth: .infinity)
@@ -335,7 +355,7 @@ struct TaskListScreen: View {
                 .frame(maxWidth: .infinity)
                 .padding(.top, 64)
             } else {
-              VStack(alignment: .leading, spacing: 0) {
+              VStack(alignment: .leading, spacing: 8) {
                 TodayTaskPanelHeader(title: selectedDateLabel)
                 todayTaskRows
               }
@@ -367,6 +387,20 @@ struct TaskListScreen: View {
       .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
       .clipped()
     }
+  }
+  #endif
+
+  private var firstCompletedTaskID: String? {
+    tasks.first(where: { $0.status == .completed })?.id
+  }
+
+  #if os(iOS)
+  private func refreshCalendarTaskDays() {
+    let calendar = Calendar.autoupdatingCurrent
+    calendarTaskDays = Set(store.tasks.lazy
+      .filter(\.isOpen)
+      .flatMap { [$0.startAt, $0.deadlineAt].compactMap { $0 } }
+      .map { calendar.startOfDay(for: $0) })
   }
   #endif
 
@@ -474,7 +508,15 @@ struct TaskListScreen: View {
   #endif
 
   private func dismissCapture() {
-    withAnimation(.easeOut(duration: 0.2)) { capture = nil }
+    #if os(iOS)
+    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+    Task { @MainActor in
+      try? await Task.sleep(for: .milliseconds(170))
+      withAnimation(.easeOut(duration: 0.2)) { capture = nil }
+    }
+    #else
+    capture = nil
+    #endif
   }
 
   #if os(iOS)
@@ -628,8 +670,8 @@ private struct TaskRow: View {
           .foregroundStyle(QingxuPalette.quiet)
       }
     }
-    .padding(.horizontal, style == .todayPanel ? 0 : 16)
-    .padding(.vertical, 13)
+    .padding(.horizontal, style == .todayPanel ? 14 : 16)
+    .padding(.vertical, style == .todayPanel ? 15 : 13)
     .opacity(task.status == .completed ? 0.72 : 1)
     .background {
       if style == .card {
@@ -1219,6 +1261,7 @@ private struct TaskQuickCaptureBar: View {
     }
     store.updateTask(updated)
     UIImpactFeedbackGenerator(style: .light).impactOccurred()
+    titleFocused = false
     onDismiss()
   }
 }
@@ -1284,7 +1327,8 @@ private struct TodayTaskScrollConfigurator: UIViewRepresentable {
     private weak var scrollView: UIScrollView?
     private var direction: TodayCalendarDragDirection?
     private var startExpansion: CGFloat = 0
-    private var lastTranslation: CGFloat = 0
+    private var pendingExpansion: CGFloat?
+    private var updateScheduled = false
 
     init(expansion: Binding<CGFloat>) {
       self.expansion = expansion
@@ -1309,14 +1353,13 @@ private struct TodayTaskScrollConfigurator: UIViewRepresentable {
       case .began:
         direction = nil
         startExpansion = expansion.wrappedValue
-        lastTranslation = 0
         let top = -scrollView.adjustedContentInset.top
         let atTop = scrollView.contentOffset.y <= top + 6
         let velocity = recognizer.velocity(in: scrollView).y
         if velocity > 0, atTop, expansion.wrappedValue < 0.999 {
           direction = .expand
           keepListAtTop(scrollView)
-        } else if velocity < 0, expansion.wrappedValue > 0.001 {
+        } else if velocity < 0, atTop, expansion.wrappedValue > 0.001 {
           direction = .collapse
           keepListAtTop(scrollView)
         }
@@ -1328,18 +1371,19 @@ private struct TodayTaskScrollConfigurator: UIViewRepresentable {
           if translation > 1, atTop, expansion.wrappedValue < 0.999 {
             direction = .expand
             startExpansion = expansion.wrappedValue
-          } else if translation < -1, expansion.wrappedValue > 0.001 {
+          } else if translation < -1, atTop, expansion.wrappedValue > 0.001 {
             direction = .collapse
             startExpansion = expansion.wrappedValue
           }
         }
         guard let direction else { return }
         keepListAtTop(scrollView)
-        expansion.wrappedValue = min(
+        let nextExpansion = min(
           1,
           max(0, startExpansion + translation / TodayCalendarMetrics.expansionDistance)
         )
-        if direction == .collapse, expansion.wrappedValue <= 0.001 {
+        scheduleExpansion(nextExpansion)
+        if direction == .collapse, nextExpansion <= 0.001 {
           // Once the calendar is fully collapsed, release the rest of this
           // same upward gesture to the task list instead of requiring a
           // second swipe.
@@ -1349,9 +1393,13 @@ private struct TodayTaskScrollConfigurator: UIViewRepresentable {
 
       case .ended, .cancelled, .failed:
         guard let direction else { return }
+        pendingExpansion = nil
         keepListAtTop(scrollView)
         let velocity = recognizer.velocity(in: scrollView).y
-        let projected = expansion.wrappedValue
+        let interactive = min(1, max(0,
+          startExpansion + translation / TodayCalendarMetrics.expansionDistance
+        ))
+        let projected = interactive
           + velocity * 0.12 / TodayCalendarMetrics.expansionDistance
         let threshold: CGFloat = direction == .expand ? 0.42 : 0.58
         let target: CGFloat = projected >= threshold ? 1 : 0
@@ -1365,6 +1413,19 @@ private struct TodayTaskScrollConfigurator: UIViewRepresentable {
 
       default:
         break
+      }
+    }
+
+    private func scheduleExpansion(_ value: CGFloat) {
+      pendingExpansion = value
+      guard !updateScheduled else { return }
+      updateScheduled = true
+      DispatchQueue.main.async { [weak self] in
+        guard let self else { return }
+        self.updateScheduled = false
+        guard let value = self.pendingExpansion else { return }
+        self.pendingExpansion = nil
+        self.expansion.wrappedValue = value
       }
     }
 
@@ -1458,7 +1519,7 @@ private struct TodayTaskPanelHeader: View {
   var body: some View {
     Text(title)
       .font(.system(size: 21, weight: .semibold, design: .rounded))
-      .foregroundStyle(QingxuPalette.quiet)
+      .foregroundStyle(QingxuPalette.ink)
       .fixedSize(horizontal: false, vertical: true)
       .padding(.bottom, 14)
       .frame(maxWidth: .infinity, alignment: .leading)
@@ -1510,6 +1571,7 @@ private struct TodayExpandableCalendar: View {
   let showsFestivals: Bool
   let showsTaskIndicators: Bool
   let weekStartsMonday: Bool
+  let taskDays: Set<Date>
 
   private let rowHeight = TodayCalendarMetrics.rowHeight
   private var weekdays: [String] {
@@ -1574,7 +1636,8 @@ private struct TodayExpandableCalendar: View {
           days: days,
           selection: $selection,
           showsFestivals: showsFestivals,
-          showsTaskIndicators: showsTaskIndicators
+          showsTaskIndicators: showsTaskIndicators,
+          taskDays: taskDays
         )
         .equatable()
         .offset(y: gridOffset)
@@ -1587,11 +1650,11 @@ private struct TodayExpandableCalendar: View {
 }
 
 private struct TodayCalendarGrid: View, Equatable {
-  @EnvironmentObject private var store: AppStore
   let days: [Date]
   @Binding var selection: Date
   let showsFestivals: Bool
   let showsTaskIndicators: Bool
+  let taskDays: Set<Date>
 
   private let rowHeight = TodayCalendarMetrics.rowHeight
 
@@ -1607,11 +1670,11 @@ private struct TodayCalendarGrid: View, Equatable {
       && lhs.selection == rhs.selection
       && lhs.showsFestivals == rhs.showsFestivals
       && lhs.showsTaskIndicators == rhs.showsTaskIndicators
+      && lhs.taskDays == rhs.taskDays
   }
 
   var body: some View {
-    let markedDays = taskDays
-
+    let markedDays = showsTaskIndicators ? taskDays : []
     LazyVGrid(
       columns: Array(repeating: GridItem(.flexible(), spacing: 0), count: 7),
       spacing: 0
@@ -1624,14 +1687,6 @@ private struct TodayCalendarGrid: View, Equatable {
       }
     }
     .animation(.easeOut(duration: 0.16), value: selection)
-  }
-
-  private var taskDays: Set<Date> {
-    guard showsTaskIndicators else { return [] }
-    return Set(store.tasks.lazy
-      .filter(\.isOpen)
-      .flatMap { [$0.startAt, $0.deadlineAt].compactMap { $0 } }
-      .map { calendar.startOfDay(for: $0) })
   }
 
   private func dayCell(_ day: Date, hasTasks: Bool) -> some View {

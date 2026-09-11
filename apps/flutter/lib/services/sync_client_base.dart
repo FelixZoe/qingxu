@@ -45,9 +45,10 @@ abstract interface class SyncChangeClient {
 }
 
 class SyncException implements Exception {
-  const SyncException(this.message);
+  const SyncException(this.message, {this.retryable = false});
 
   final String message;
+  final bool retryable;
 
   @override
   String toString() => message;

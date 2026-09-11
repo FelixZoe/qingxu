@@ -7,7 +7,7 @@
 <p align="center">本地优先、简体中文、支持自托管同步的个人任务与专注应用。</p>
 
 <p align="center">
-  <a href="https://todo.darker.one">产品预览</a> ·
+  <a href="https://todo.darker.one">开发与部署文档</a> ·
   <a href="https://github.com/FelixZoe/qingxu/releases/latest">下载最新版</a> ·
   <a href="https://github.com/FelixZoe/qingxu/actions/workflows/build-release.yml">构建状态</a> ·
   <a href="docs/DEPLOYMENT.md">部署同步服务</a> ·
@@ -139,7 +139,7 @@ docs/                产品、架构、协议、部署与签名文档
 .github/workflows/   测试、四端构建、Docker 和自动 Release
 ```
 
-`todo.darker.one` 是介绍、预览和下载入口，不是浏览器版任务客户端；站点源码与本仓库分离。
+`todo.darker.one` 是基于 VitePress 的开发与部署文档站，不是浏览器版任务客户端；源码位于 [`docs/`](docs/)。
 
 ## 开发
 

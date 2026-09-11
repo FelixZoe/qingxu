@@ -21,14 +21,7 @@ struct SettingsScreen: View {
               )
             }
             SettingsDivider()
-            NavigationLink { AppearanceSettingsView() } label: {
-              SettingsDestinationRow(
-                symbol: "paintpalette.fill",
-                title: "外观",
-                detail: AppearanceMode(rawValue: appearance)?.title ?? "跟随系统",
-                tint: QingxuPalette.accent
-              )
-            }
+            AppearanceInlineRow(appearance: $appearance)
             #if os(iOS)
             SettingsDivider()
             NavigationLink { NotificationAndFeedbackSettingsView() } label: {
@@ -158,65 +151,56 @@ private struct AppUpdateSettingsView: View {
   @Environment(\.openURL) private var openURL
 
   var body: some View {
-    Form {
-      Section("当前版本") {
-        LabeledContent("版本", value: "v\(updateChecker.currentVersion)")
-        LabeledContent("构建", value: updateChecker.currentBuild)
-      }
-
-      Section("更新状态") {
-        updateStatus
-        Button {
-          Task {
-            if let release = await updateChecker.check(force: true) {
-              openURL(release.iOSAsset?.browserDownloadURL ?? release.htmlURL)
+    ScrollView {
+      VStack(spacing: 22) {
+        VStack(alignment: .leading, spacing: 16) {
+          HStack(alignment: .firstTextBaseline) {
+            VStack(alignment: .leading, spacing: 5) {
+              Text("清序").font(.title2.weight(.semibold))
+              Text("v\(updateChecker.currentVersion) · 构建 \(updateChecker.currentBuild)")
+                .font(.subheadline).foregroundStyle(QingxuPalette.quiet)
             }
+            Spacer()
+            Image(systemName: "checkmark.seal")
+              .font(.title2).foregroundStyle(QingxuPalette.accent)
           }
-        } label: {
-          if case .checking = updateChecker.state {
-            HStack(spacing: 10) {
-              ProgressView()
-              Text("正在检查…")
-            }
-          } else {
-            Label("检查更新", systemImage: "arrow.clockwise")
-          }
+          updateStatus
         }
-        .disabled(isChecking)
-      }
+        .padding(20)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(QingxuPalette.surface, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
 
-      if let release = updateChecker.availableRelease {
-        Section("v\(release.version)") {
-          if !release.body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            Text(release.body)
-              .font(.subheadline)
-              .foregroundStyle(QingxuPalette.quiet)
-              .textSelection(.enabled)
-          }
-
-          if let asset = release.iOSAsset {
-            Button {
-              openURL(asset.browserDownloadURL)
-            } label: {
-              Label("下载新版 IPA", systemImage: "arrow.down.circle.fill")
+        if let release = updateChecker.availableRelease {
+          VStack(alignment: .leading, spacing: 12) {
+            Text("v\(release.version) 更新内容").font(.headline)
+            if !release.body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+              Text(release.body)
+                .font(.subheadline).foregroundStyle(QingxuPalette.quiet)
+                .textSelection(.enabled)
             }
           }
-
-          Button {
-            openURL(release.htmlURL)
-          } label: {
-            Label("打开 GitHub Release", systemImage: "safari")
-          }
+          .padding(20)
+          .frame(maxWidth: .infinity, alignment: .leading)
+          .background(QingxuPalette.surface, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
         }
-      }
 
-      Section {
-        Text("覆盖安装必须保持 Bundle ID 为 one.darker.qingxu，并使用与当前安装版本相同的签名身份。满足这两个条件时，重新签名并安装新版 IPA 会保留任务、设置与同步配置。")
-          .font(.footnote)
-          .foregroundStyle(QingxuPalette.quiet)
-      } header: {
-        Text("覆盖安装")
+        Button { Task { await checkAndOpenIfNeeded() } } label: {
+          HStack(spacing: 10) {
+            if isChecking { ProgressView().tint(QingxuPalette.onAccent) }
+            Text(updateChecker.availableRelease == nil ? "检查更新" : "下载并覆盖安装")
+              .font(.body.weight(.semibold))
+          }
+          .foregroundStyle(QingxuPalette.onAccent)
+          .frame(maxWidth: .infinity).frame(height: 52)
+          .background(QingxuPalette.accent, in: Capsule())
+        }
+        .buttonStyle(.plain).disabled(isChecking)
+
+        Text("覆盖安装需保持应用标识与签名身份一致。下载后直接用同一 Apple ID 或证书重新签名安装，任务和本机设置会保留。")
+          .font(.footnote).foregroundStyle(QingxuPalette.quiet)
+          .frame(maxWidth: .infinity, alignment: .leading)
       }
+      .padding(18).padding(.bottom, 80)
     }
     .qingxuScreen()
     .navigationTitle("软件更新")
@@ -246,6 +230,18 @@ private struct AppUpdateSettingsView: View {
   private var isChecking: Bool {
     if case .checking = updateChecker.state { return true }
     return false
+  }
+
+  @MainActor
+  private func checkAndOpenIfNeeded() async {
+    let release: QingxuRelease?
+    if let available = updateChecker.availableRelease {
+      release = available
+    } else {
+      release = await updateChecker.check(force: true)
+    }
+    guard let release else { return }
+    openURL(release.iOSAsset?.browserDownloadURL ?? release.htmlURL)
   }
 }
 #endif
@@ -330,6 +326,31 @@ private struct SettingsValueRow: View {
   }
 }
 
+private struct AppearanceInlineRow: View {
+  @Binding var appearance: String
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 12) {
+      HStack(spacing: 14) {
+        SettingsRowGlyph(symbol: "paintpalette.fill")
+        Text("外观")
+          .font(.body.weight(.medium))
+          .foregroundStyle(QingxuPalette.ink)
+        Spacer()
+      }
+      Picker("外观", selection: $appearance) {
+        ForEach(AppearanceMode.allCases) { mode in
+          Text(mode.title).tag(mode.rawValue)
+        }
+      }
+      .pickerStyle(.segmented)
+    }
+    .padding(.horizontal, 16)
+    .padding(.vertical, 14)
+  }
+
+}
+
 private struct PreferenceToggleRow: View {
   let symbol: String
   let title: String
@@ -398,93 +419,70 @@ private struct FeatureModulesSettingsView: View {
   @AppStorage(QingxuPreferenceKey.inboxModule) private var inboxEnabled = true
   @AppStorage(QingxuPreferenceKey.pomodoroModule) private var pomodoroEnabled = true
   @AppStorage(QingxuPreferenceKey.rssModule) private var rssEnabled = true
+  @AppStorage(QingxuPreferenceKey.moduleOrder) private var moduleOrder = QingxuModuleOrder.defaultValue
 
   var body: some View {
-    ScrollView {
-      VStack(spacing: 22) {
-        SettingsGroup(title: "可选模块") {
-          PreferenceToggleRow(
-            symbol: "tray.fill", title: "收集箱", detail: "快速记录未安排的任务和想法",
-            tint: QingxuPalette.accent, isOn: $inboxEnabled
-          )
-          SettingsDivider()
-          PreferenceToggleRow(
-            symbol: "timer", title: "番茄钟", detail: "专注计时与实时同步",
-            tint: QingxuPalette.warning, isOn: $pomodoroEnabled
-          )
-          SettingsDivider()
-          PreferenceToggleRow(
-            symbol: "dot.radiowaves.left.and.right", title: "RSS 订阅", detail: "按来源阅读订阅内容",
-            tint: QingxuPalette.success, isOn: $rssEnabled
-          )
+    List {
+      Section {
+        ForEach(orderedTabs) { tab in
+          HStack(spacing: 14) {
+            SettingsRowGlyph(symbol: tab.symbol)
+            VStack(alignment: .leading, spacing: 3) {
+              Text(tab.title).font(.body.weight(.medium))
+              Text(moduleDetail(tab)).font(.caption).foregroundStyle(QingxuPalette.quiet)
+            }
+            Spacer()
+            if let binding = enabledBinding(for: tab) {
+              Toggle("", isOn: binding).labelsHidden().tint(QingxuPalette.accent)
+            } else {
+              Text("固定")
+                .font(.caption.weight(.medium))
+                .foregroundStyle(QingxuPalette.quiet)
+            }
+          }
+          .padding(.vertical, 5)
         }
-
-        Text("关闭可选模块后，它会从底部导航隐藏，数据不会被删除。")
-          .font(.footnote)
-          .foregroundStyle(QingxuPalette.quiet)
-          .frame(maxWidth: .infinity, alignment: .leading)
-          .padding(.horizontal, 7)
+        .onMove(perform: move)
+      } header: {
+        Text("按住右侧拖动调整底部导航顺序")
+      } footer: {
+        Text("今天与设置始终保留。关闭其他模块只会隐藏入口，不会删除数据。")
       }
-      .padding(18)
-      .padding(.bottom, 80)
     }
     .qingxuScreen()
     .navigationTitle("功能模块")
     #if os(iOS)
     .navigationBarTitleDisplayMode(.inline)
+    .environment(\.editMode, .constant(.active))
     #endif
   }
 
-}
+  private var orderedTabs: [AppTab] { QingxuModuleOrder.decode(moduleOrder) }
 
-struct AppearanceSettingsView: View {
-  @AppStorage("qingxu.appearance") private var appearance = AppearanceMode.system.rawValue
-
-  var body: some View {
-    ScrollView {
-      VStack(spacing: 22) {
-        SettingsGroup(title: "显示模式") {
-          ForEach(Array(AppearanceMode.allCases.enumerated()), id: \.element.id) { index, mode in
-            Button {
-              withAnimation(.easeInOut(duration: 0.2)) { appearance = mode.rawValue }
-            } label: {
-              HStack {
-                Image(systemName: modeSymbol(mode))
-                  .foregroundStyle(QingxuPalette.accent)
-                  .frame(width: 32)
-                Text(mode.title).foregroundStyle(QingxuPalette.ink)
-                Spacer()
-                if appearance == mode.rawValue {
-                  Image(systemName: "checkmark.circle.fill").foregroundStyle(QingxuPalette.success)
-                }
-              }
-              .padding(.horizontal, 18)
-              .frame(minHeight: 58)
-            }
-            .buttonStyle(.plain)
-            if index < AppearanceMode.allCases.count - 1 { SettingsDivider() }
-          }
-        }
-
-      }
-      .padding(18)
-      .padding(.bottom, 80)
-    }
-    .qingxuScreen()
-    .navigationTitle("外观")
-    #if os(iOS)
-    .navigationBarTitleDisplayMode(.inline)
-    #endif
+  private func move(from source: IndexSet, to destination: Int) {
+    var tabs = orderedTabs
+    tabs.move(fromOffsets: source, toOffset: destination)
+    moduleOrder = QingxuModuleOrder.encode(tabs)
   }
 
-  private func modeSymbol(_ mode: AppearanceMode) -> String {
-    switch mode {
-    case .system: "circle.lefthalf.filled"
-    case .light: "sun.max.fill"
-    case .dark: "moon.stars.fill"
+  private func enabledBinding(for tab: AppTab) -> Binding<Bool>? {
+    switch tab {
+    case .inbox: $inboxEnabled
+    case .pomodoro: $pomodoroEnabled
+    case .rss: $rssEnabled
+    case .today, .settings: nil
     }
   }
 
+  private func moduleDetail(_ tab: AppTab) -> String {
+    switch tab {
+    case .inbox: "快速收集暂未安排的任务"
+    case .today: "日历与当天任务"
+    case .pomodoro: "专注计时与统计"
+    case .rss: "按来源阅读订阅内容"
+    case .settings: "账户、同步和偏好"
+    }
+  }
 }
 
 #if os(iOS)
@@ -703,40 +701,76 @@ struct SyncSettingsView: View {
   @State private var message: String?
 
   var body: some View {
-    Form {
-      Section("服务器") {
-        TextField("https://todo.darker.one", text: $draft.serverURL)
-          #if os(iOS)
-          .textInputAutocapitalization(.never)
-          .keyboardType(.URL)
-          #endif
-        SecureField("64 位同步密钥", text: $draft.token)
-        TextField("设备名称", text: $draft.deviceName)
-        Toggle("自动同步", isOn: $draft.autoSync)
-      }
-
-      Section {
-        Button(testing ? "正在测试…" : "测试连接") {
-          Task { await test() }
+    ScrollView {
+      VStack(spacing: 22) {
+        VStack(alignment: .leading, spacing: 8) {
+          HStack {
+            Label(store.syncSettings.isConfigured ? "已连接个人服务器" : "连接个人服务器", systemImage: "server.rack")
+              .font(.headline)
+            Spacer()
+            Circle()
+              .fill(statusColor).frame(width: 9, height: 9)
+          }
+          Text("保存后会立即拉取远端数据，并持续监听其他设备的变化。")
+            .font(.subheadline).foregroundStyle(QingxuPalette.quiet)
         }
+        .padding(20).frame(maxWidth: .infinity, alignment: .leading)
+        .background(QingxuPalette.surface, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+
+        SettingsGroup(title: "连接信息") {
+          AmbientFieldRow(title: "服务器") {
+            TextField("https://todo.darker.one", text: $draft.serverURL)
+              #if os(iOS)
+              .textInputAutocapitalization(.never).keyboardType(.URL)
+              #endif
+              .autocorrectionDisabled().multilineTextAlignment(.trailing)
+          }
+          SettingsDivider()
+          AmbientFieldRow(title: "同步密钥") {
+            SecureField("64 位十六进制密钥", text: $draft.token)
+              #if os(iOS)
+              .textInputAutocapitalization(.never)
+              #endif
+              .multilineTextAlignment(.trailing)
+          }
+          SettingsDivider()
+          AmbientFieldRow(title: "设备名称") {
+            TextField("我的 iPhone", text: $draft.deviceName).multilineTextAlignment(.trailing)
+          }
+          SettingsDivider()
+          PreferenceToggleRow(
+            symbol: "bolt.horizontal.circle", title: "实时同步",
+            detail: "保持长连接，并在网络恢复后自动补传", tint: QingxuPalette.accent,
+            isOn: $draft.autoSync
+          )
+        }
+
+        Button { Task { await connectSaveAndSync() } } label: {
+          HStack(spacing: 10) {
+            if testing { ProgressView().tint(QingxuPalette.onAccent) }
+            Text(testing ? "正在验证并同步…" : "验证、保存并立即同步")
+              .font(.body.weight(.semibold))
+          }
+          .foregroundStyle(QingxuPalette.onAccent)
+          .frame(maxWidth: .infinity).frame(height: 52)
+          .background(QingxuPalette.accent, in: Capsule())
+        }
+        .buttonStyle(.plain)
         .disabled(testing || draft.validationMessage != nil)
-        Button("保存设置") { save() }
-          .disabled(draft.validationMessage != nil)
-        Button("立即同步") { Task { await store.syncNow() } }
-          .disabled(!draft.isConfigured)
-      }
 
-      if let message {
-        Section("状态") { Text(message) }
-      } else if case .failed(let error) = store.syncPhase {
-        Section("状态") { Text(error).foregroundStyle(QingxuPalette.danger) }
-      }
+        if let message {
+          Text(message).font(.footnote).foregroundStyle(message.contains("成功") ? QingxuPalette.success : QingxuPalette.danger)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        } else if case .failed(let error) = store.syncPhase {
+          Text(error).font(.footnote).foregroundStyle(QingxuPalette.danger)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
 
-      Section {
-        Text("只填写服务器根地址，不需要添加 /v1/sync。同步密钥保存在系统钥匙串中；任务、番茄钟状态与自定义时长会自动同步。")
-          .font(.footnote)
-          .foregroundStyle(QingxuPalette.quiet)
+        Text("只填写服务器根地址，不要添加 /v1/sync。密钥仅存放在系统钥匙串；重装后重新填写同一地址和密钥，即会从服务器恢复任务与番茄钟状态。")
+          .font(.footnote).foregroundStyle(QingxuPalette.quiet)
+          .frame(maxWidth: .infinity, alignment: .leading)
       }
+      .padding(18).padding(.bottom, 80)
     }
     .qingxuScreen()
     .navigationTitle("自托管同步")
@@ -744,23 +778,26 @@ struct SyncSettingsView: View {
   }
 
   @MainActor
-  private func test() async {
+  private func connectSaveAndSync() async {
     testing = true
+    message = nil
     defer { testing = false }
     do {
       try await store.testConnection(draft)
-      message = "连接成功，身份验证有效。"
+      try store.saveSyncSettings(draft)
+      let succeeded = await store.syncNow()
+      message = succeeded ? "连接成功，远端数据已同步。" : "连接已保存，但首次同步失败，请检查网络后重试。"
     } catch {
       message = error.localizedDescription
     }
   }
 
-  private func save() {
-    do {
-      try store.saveSyncSettings(draft)
-      message = "设置已保存。"
-    } catch {
-      message = "保存失败：\(error.localizedDescription)"
+  private var statusColor: Color {
+    switch store.syncPhase {
+    case .synced: QingxuPalette.success
+    case .syncing: QingxuPalette.accent
+    case .failed: QingxuPalette.danger
+    case .localOnly: QingxuPalette.faint
     }
   }
 }
@@ -964,95 +1001,49 @@ struct AISettingsView: View {
   @State private var message: String?
 
   var body: some View {
-    Form {
-      Section("连接方式") {
-        Picker("AI 服务", selection: $draft.mode) {
-          ForEach(AIConnectionMode.allCases) { mode in
-            Text(mode.title).tag(mode)
-          }
-        }
-        .pickerStyle(.menu)
-      }
-
-      switch draft.mode {
-      case .selfHosted:
-        Section("清序自托管") {
-          LabeledContent("服务器", value: store.syncSettings.normalizedServerURL)
-          LabeledContent(
-            "状态",
-            value: store.syncSettings.isConfigured ? "同步配置可用" : "需要先配置同步"
-          )
-          NavigationLink("打开同步设置") {
-            SyncSettingsView().environmentObject(store)
-          }
-        }
-      case .openAI, .deepSeek:
-        Section(draft.mode.title) {
-          SecureField("API 密钥", text: $draft.apiKey)
-            #if os(iOS)
-            .textInputAutocapitalization(.never)
-            #endif
-          LabeledContent("模型", value: draft.model)
-        }
-      case .compatible:
-        Section("自定义兼容服务") {
-          TextField("接口地址", text: $draft.baseURL)
-            #if os(iOS)
-            .textInputAutocapitalization(.never)
-            .keyboardType(.URL)
-            #endif
-          TextField("模型名称", text: $draft.model)
-            #if os(iOS)
-            .textInputAutocapitalization(.never)
-            #endif
-          SecureField("API 密钥", text: $draft.apiKey)
-            #if os(iOS)
-            .textInputAutocapitalization(.never)
-            #endif
-        }
-      }
-
-      Section {
-        Button {
-          Task { await test() }
-        } label: {
-          if testing {
-            HStack(spacing: 10) {
-              ProgressView()
-              Text("正在测试…")
+    ScrollView {
+      VStack(spacing: 22) {
+        SettingsGroup(title: "服务") {
+          AmbientFieldRow(title: "AI 服务") {
+            Picker("AI 服务", selection: $draft.mode) {
+              ForEach(AIConnectionMode.allCases) { mode in Text(mode.title).tag(mode) }
             }
-          } else {
-            Label("测试连接", systemImage: "bolt.horizontal.circle")
+            .pickerStyle(.menu)
           }
         }
+
+        SettingsGroup(title: draft.mode.title) {
+          configurationRows
+        }
+
+        Button { Task { await testAndSave() } } label: {
+          HStack(spacing: 10) {
+            if testing { ProgressView().tint(QingxuPalette.onAccent) }
+            Text(testing ? "正在测试…" : "测试并保存")
+              .font(.body.weight(.semibold))
+          }
+          .foregroundStyle(QingxuPalette.onAccent)
+          .frame(maxWidth: .infinity).frame(height: 52)
+          .background(QingxuPalette.accent, in: Capsule())
+        }
+        .buttonStyle(.plain)
         .disabled(testing || draft.validationMessage(syncSettings: store.syncSettings) != nil)
 
-        Button {
-          save()
-        } label: {
-          Label("保存 AI 设置", systemImage: "checkmark.circle")
-        }
-        .disabled(draft.validationMessage(syncSettings: store.syncSettings) != nil)
-      }
-
-      if let message {
-        Section("状态") {
+        if let message {
           Text(message)
-            .foregroundStyle(message.hasPrefix("连接成功") || message.hasPrefix("设置已保存")
-              ? QingxuPalette.success
-              : QingxuPalette.danger)
+            .font(.footnote)
+            .foregroundStyle(message.hasPrefix("连接成功") ? QingxuPalette.success : QingxuPalette.danger)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        } else if let validation = draft.validationMessage(syncSettings: store.syncSettings) {
+          Text(validation).font(.footnote).foregroundStyle(QingxuPalette.quiet)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-      } else if let validation = draft.validationMessage(syncSettings: store.syncSettings) {
-        Section("尚未完成") {
-          Text(validation).foregroundStyle(QingxuPalette.quiet)
-        }
-      }
 
-      Section {
-        Text("API 密钥只保存在本机系统钥匙串中，不写入配置文件，也不会参与多端同步。模型和摘要提示词已按服务商内置；选择自定义服务时才需要填写接口与模型。")
-          .font(.footnote)
-          .foregroundStyle(QingxuPalette.quiet)
+        Text("服务商地址、模型和 RSS 摘要提示词均已内置。通常只需选择服务并填写 API 密钥；只有自定义兼容服务需要额外填写接口和模型。密钥只保存在本机钥匙串。")
+          .font(.footnote).foregroundStyle(QingxuPalette.quiet)
+          .frame(maxWidth: .infinity, alignment: .leading)
       }
+      .padding(18).padding(.bottom, 80)
     }
     .qingxuScreen()
     .navigationTitle("AI 助手")
@@ -1065,26 +1056,56 @@ struct AISettingsView: View {
     }
   }
 
+  @ViewBuilder
+  private var configurationRows: some View {
+    switch draft.mode {
+    case .selfHosted:
+      SettingsValueRow(title: "服务器", value: store.syncSettings.isConfigured ? store.syncSettings.normalizedServerURL : "未配置")
+      SettingsDivider()
+      NavigationLink { SyncSettingsView().environmentObject(store) } label: {
+        SettingsDestinationRow(symbol: "arrow.triangle.2.circlepath", title: "同步服务器", detail: "AI 请求由自托管服务处理", tint: QingxuPalette.accent)
+      }
+    case .openAI, .deepSeek:
+      AmbientFieldRow(title: "API 密钥") {
+        SecureField("必填", text: $draft.apiKey)
+          #if os(iOS)
+          .textInputAutocapitalization(.never)
+          #endif
+          .multilineTextAlignment(.trailing)
+      }
+      SettingsDivider()
+      SettingsValueRow(title: "内置模型", value: draft.model)
+    case .compatible:
+      AmbientFieldRow(title: "接口地址") {
+        TextField("https://…/chat/completions", text: $draft.baseURL)
+          #if os(iOS)
+          .textInputAutocapitalization(.never).keyboardType(.URL)
+          #endif
+          .multilineTextAlignment(.trailing)
+      }
+      SettingsDivider()
+      AmbientFieldRow(title: "模型") {
+        TextField("模型名称", text: $draft.model).multilineTextAlignment(.trailing)
+      }
+      SettingsDivider()
+      AmbientFieldRow(title: "API 密钥") {
+        SecureField("必填", text: $draft.apiKey).multilineTextAlignment(.trailing)
+      }
+    }
+  }
+
   @MainActor
-  private func test() async {
+  private func testAndSave() async {
     testing = true
     message = nil
     defer { testing = false }
     do {
       try await store.testAIConnection(draft)
-      message = "连接成功，RSS 总结和任务规划可以使用。"
-    } catch {
-      message = error.localizedDescription
-    }
-  }
-
-  private func save() {
-    do {
       draft.summaryPrompt = ""
       try store.saveAISettings(draft)
-      message = "设置已保存。"
+      message = "连接成功，设置已保存。"
     } catch {
-      message = "保存失败：\(error.localizedDescription)"
+      message = error.localizedDescription
     }
   }
 

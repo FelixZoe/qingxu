@@ -5,7 +5,7 @@ class SyncSettings {
     this.serverUrl = defaultServerUrl,
     this.token = '',
     this.deviceName = '',
-    this.autoSync = false,
+    this.autoSync = true,
   });
 
   final String serverUrl;
@@ -44,6 +44,6 @@ class SyncSettings {
     // configuration. New writes deliberately omit it from [toJson].
     token: (json['token'] as String?) ?? '',
     deviceName: (json['deviceName'] as String?) ?? '',
-    autoSync: (json['autoSync'] as bool?) ?? false,
+    autoSync: (json['autoSync'] as bool?) ?? true,
   ).normalized();
 }

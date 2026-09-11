@@ -236,7 +236,7 @@ struct SyncSettings: Codable, Equatable {
   var serverURL = ""
   var token = ""
   var deviceName = ""
-  var autoSync = false
+  var autoSync = true
 
   var normalizedServerURL: String {
     var value = serverURL.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -263,6 +263,22 @@ struct SyncSettings: Codable, Equatable {
   enum CodingKeys: String, CodingKey {
     case serverURL = "serverUrl"
     case deviceName, autoSync
+  }
+
+  init() {}
+
+  init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    serverURL = try container.decodeIfPresent(String.self, forKey: .serverURL) ?? ""
+    deviceName = try container.decodeIfPresent(String.self, forKey: .deviceName) ?? ""
+    autoSync = try container.decodeIfPresent(Bool.self, forKey: .autoSync) ?? true
+  }
+
+  func encode(to encoder: Encoder) throws {
+    var container = encoder.container(keyedBy: CodingKeys.self)
+    try container.encode(serverURL, forKey: .serverURL)
+    try container.encode(deviceName, forKey: .deviceName)
+    try container.encode(autoSync, forKey: .autoSync)
   }
 }
 

@@ -522,7 +522,7 @@ class TaskController extends ChangeNotifier {
     if (_activeSync != null) {
       _syncQueued = normalized.autoSync && normalized.isConfigured;
     } else if (normalized.autoSync && normalized.isConfigured) {
-      _scheduleSync();
+      _scheduleSync(delay: Duration.zero);
     }
     _configureAutoPull();
     _configureChangeFeed();
@@ -724,7 +724,7 @@ class TaskController extends ChangeNotifier {
       return;
     }
     _autoPullTimer = Timer.periodic(
-      const Duration(minutes: 5),
+      const Duration(minutes: 1),
       (_) => unawaited(syncNow()),
     );
   }

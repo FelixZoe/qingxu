@@ -1,0 +1,69 @@
+name: Documentation
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/**"
+      - ".github/workflows/docs.yml"
+  pull_request:
+    paths:
+      - "docs/**"
+      - ".github/workflows/docs.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: docs/package-lock.json
+      - name: Install dependencies
+        working-directory: docs
+        run: npm ci
+      - name: Build VitePress documentation
+        working-directory: docs
+        run: npm run build
+      - uses: actions/upload-artifact@v6
+        with:
+          name: qingxu-vitepress-docs
+          path: docs/.vitepress/dist
+          if-no-files-found: error
+
+  deploy:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v7
+        with:
+          name: qingxu-vitepress-docs
+          path: site
+      - name: Configure SSH
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+      - name: Publish documentation atomically
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+        run: |
+          set -euo pipefail
+          release_name="docs-${GITHUB_SHA::12}"
+          release="/opt/1panel/www/sites/todo.darker.one/releases/$release_name"
+          target="$DEPLOY_USER@$DEPLOY_HOST"
+          ssh "$target" "sudo mkdir -p '$release'"
+          tar -C site -czf - . | ssh "$target" "sudo tar -xzf - -C '$release'"
+          ssh "$target" "cd /opt/1panel/www/sites/todo.darker.one && sudo ln -sfn 'releases/$release_name' current-next && sudo mv -Tf current-next current"

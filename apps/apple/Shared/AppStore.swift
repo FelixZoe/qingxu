@@ -380,6 +380,7 @@ final class AppStore: ObservableObject {
       return true
     } catch {
       syncPhase = .failed(error.localizedDescription)
+      scheduleSync(delay: .seconds(8))
       return false
     }
   }
@@ -518,7 +519,7 @@ final class AppStore: ObservableObject {
        displayedRemainingSeconds == 0 {
       advancePomodoro()
     }
-    let interval: TimeInterval = 5 * 60
+    let interval: TimeInterval = 60
     if syncSettings.autoSync,
        syncSettings.isConfigured,
        activeSync == nil,

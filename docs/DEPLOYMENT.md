@@ -1,8 +1,8 @@
 # 清序同步服务部署
 
-本文用于在自己的 Linux 服务器上部署清序同步与可选 AI 代理。客户端安装包从 [GitHub Releases](https://github.com/FelixZoe/qingxu/releases/latest) 获取；`todo.darker.one` 是独立预览站，不是部署后台所必需。
+本文用于在自己的 Linux 服务器上部署清序同步与可选 AI 代理。客户端安装包从 [GitHub Releases](https://github.com/FelixZoe/qingxu/releases/latest) 获取；`todo.darker.one` 是开发与部署文档站，不是同步后台所必需。
 
-返回：[项目首页](../README.md) · [系统架构](ARCHITECTURE.md) · [同步协议](SYNC_PROTOCOL.md)
+返回：[文档首页](/) · [系统架构](/ARCHITECTURE) · [同步协议](/SYNC_PROTOCOL)
 
 ## 部署结果
 

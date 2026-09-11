@@ -73,6 +73,26 @@ class SyncClient implements SyncClientBase, SyncChangeClient {
     List<TaskItem> tasks,
     PomodoroState pomodoro,
   ) async {
+    SyncException? lastError;
+    for (var attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        return await _syncOnce(settings, tasks, pomodoro);
+      } on SyncException catch (error) {
+        lastError = error;
+        if (!error.retryable || attempt == 2) rethrow;
+        await Future<void>.delayed(
+          Duration(milliseconds: attempt == 0 ? 250 : 700),
+        );
+      }
+    }
+    throw lastError ?? const SyncException('同步失败');
+  }
+
+  Future<SyncResponse> _syncOnce(
+    SyncSettings settings,
+    List<TaskItem> tasks,
+    PomodoroState pomodoro,
+  ) async {
     _requireConfiguration(settings);
     final client = _newClient();
     try {
@@ -126,11 +146,11 @@ class SyncClient implements SyncClientBase, SyncChangeClient {
     } on SyncException {
       rethrow;
     } on TimeoutException {
-      throw const SyncException('同步超时，本地数据未受影响');
+      throw const SyncException('同步超时，本地数据未受影响', retryable: true);
     } on FormatException {
       throw const SyncException('服务器返回的数据格式不正确');
     } on SocketException {
-      throw const SyncException('无法连接同步服务器，本地数据未受影响');
+      throw const SyncException('无法连接同步服务器，本地数据未受影响', retryable: true);
     } on HandshakeException {
       throw const SyncException('HTTPS 证书校验失败');
     } catch (error) {
@@ -230,7 +250,10 @@ class SyncClient implements SyncClientBase, SyncChangeClient {
         ? trimmed
         : '${trimmed.substring(0, 160)}…';
     final suffix = safeBody.isEmpty ? '' : '：$safeBody';
-    throw SyncException('$fallback（HTTP $statusCode）$suffix');
+    throw SyncException(
+      '$fallback（HTTP $statusCode）$suffix',
+      retryable: statusCode == HttpStatus.tooManyRequests || statusCode >= 500,
+    );
   }
 
   String _safeError(Object error) {

@@ -4,6 +4,7 @@ enum QingxuPreferenceKey {
   static let pomodoroModule = "qingxu.modules.pomodoro"
   static let rssModule = "qingxu.modules.rss"
   static let inboxModule = "qingxu.modules.inbox"
+  static let moduleOrder = "qingxu.modules.order"
   static let haptics = "qingxu.feedback.haptics"
   static let completionSound = "qingxu.feedback.completionSound"
   static let dailyReminder = "qingxu.reminders.daily.enabled"
@@ -11,6 +12,22 @@ enum QingxuPreferenceKey {
   static let weekStartsMonday = "qingxu.calendar.weekStartsMonday"
   static let showFestivals = "qingxu.calendar.showFestivals"
   static let showTaskIndicators = "qingxu.calendar.showTaskIndicators"
+}
+
+enum QingxuModuleOrder {
+  static let defaultValue = AppTab.allCases.map(\.rawValue).joined(separator: ",")
+
+  static func decode(_ rawValue: String) -> [AppTab] {
+    let decoded = rawValue
+      .split(separator: ",")
+      .compactMap { AppTab(rawValue: String($0)) }
+    let missing = AppTab.allCases.filter { !decoded.contains($0) }
+    return decoded + missing
+  }
+
+  static func encode(_ tabs: [AppTab]) -> String {
+    tabs.map(\.rawValue).joined(separator: ",")
+  }
 }
 
 #if os(iOS)

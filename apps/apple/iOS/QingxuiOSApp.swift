@@ -47,33 +47,18 @@ private struct iOSRootView: View {
   @AppStorage(QingxuPreferenceKey.inboxModule) private var inboxEnabled = true
   @AppStorage(QingxuPreferenceKey.pomodoroModule) private var pomodoroEnabled = true
   @AppStorage(QingxuPreferenceKey.rssModule) private var rssEnabled = true
+  @AppStorage(QingxuPreferenceKey.moduleOrder) private var moduleOrder = QingxuModuleOrder.defaultValue
 
   var body: some View {
     ZStack {
       QingxuPalette.background.ignoresSafeArea()
 
       TabView(selection: $selection) {
-        if inboxEnabled {
-          TaskListScreen(scope: .inbox)
-            .tabItem { Label(AppTab.inbox.title, systemImage: AppTab.inbox.symbol) }
-            .tag(AppTab.inbox)
+        ForEach(visibleTabs) { tab in
+          tabContent(tab)
+            .tabItem { Label(tab.title, systemImage: tab.symbol) }
+            .tag(tab)
         }
-        TaskListScreen(scope: .today)
-          .tabItem { Label(AppTab.today.title, systemImage: AppTab.today.symbol) }
-          .tag(AppTab.today)
-        if pomodoroEnabled {
-          PomodoroScreen()
-            .tabItem { Label(AppTab.pomodoro.title, systemImage: AppTab.pomodoro.symbol) }
-            .tag(AppTab.pomodoro)
-        }
-        if rssEnabled {
-          RSSScreen(store: rssStore)
-            .tabItem { Label(AppTab.rss.title, systemImage: AppTab.rss.symbol) }
-            .tag(AppTab.rss)
-        }
-        SettingsScreen()
-          .tabItem { Label(AppTab.settings.title, systemImage: AppTab.settings.symbol) }
-          .tag(AppTab.settings)
       }
       .tint(QingxuPalette.accent)
       .disabled(showingLaunchExperience)
@@ -135,6 +120,28 @@ private struct iOSRootView: View {
       if !inboxEnabled, selection == .inbox { selection = .today }
       consumePendingWidgetDestination()
       RSSBackgroundRefresh.schedule()
+    }
+  }
+
+  private var visibleTabs: [AppTab] {
+    QingxuModuleOrder.decode(moduleOrder).filter { tab in
+      switch tab {
+      case .inbox: inboxEnabled
+      case .pomodoro: pomodoroEnabled
+      case .rss: rssEnabled
+      case .today, .settings: true
+      }
+    }
+  }
+
+  @ViewBuilder
+  private func tabContent(_ tab: AppTab) -> some View {
+    switch tab {
+    case .inbox: TaskListScreen(scope: .inbox)
+    case .today: TaskListScreen(scope: .today)
+    case .pomodoro: PomodoroScreen()
+    case .rss: RSSScreen(store: rssStore)
+    case .settings: SettingsScreen()
     }
   }
 

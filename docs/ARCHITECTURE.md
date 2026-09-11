@@ -2,7 +2,7 @@
 
 清序采用“两套客户端实现、一份同步协议、一个轻量服务端”的结构。Apple 平台使用 SwiftUI，Android 与 Windows 使用 Flutter；所有客户端共享 Go 服务端的 JSON 协议。
 
-返回：[项目首页](../README.md) · [产品范围](PRODUCT.md) · [设计规范](DESIGN.md) · [同步协议](SYNC_PROTOCOL.md)
+返回：[文档首页](/) · [产品范围](/PRODUCT) · [设计规范](/DESIGN) · [同步协议](/SYNC_PROTOCOL)
 
 ## 系统全景
 

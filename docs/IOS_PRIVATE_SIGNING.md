@@ -2,7 +2,7 @@
 
 公开 Release 提供包含 Widget/Live Activity 扩展的未签名 IPA。要在真机安装，必须使用自己的 Apple 身份重新签名；若希望由 GitHub Actions 完成签名，可使用仓库中的 `Private Signed iOS` 手动工作流。
 
-返回：[项目首页](../README.md) · [Apple 客户端](../apps/apple/README.md)
+返回：[文档首页](/) · [自托管部署](/DEPLOYMENT)
 
 ## 必须保持的标识
 

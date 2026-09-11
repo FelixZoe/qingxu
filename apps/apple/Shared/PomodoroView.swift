@@ -470,7 +470,7 @@ private struct FocusMetricCard: View {
         .foregroundStyle(QingxuPalette.quiet)
       Text(value)
         .font(.system(size: 28, weight: .semibold, design: .rounded).monospacedDigit())
-        .foregroundStyle(QingxuPalette.ink)
+        .foregroundStyle(QingxuPalette.accent)
     }
     .frame(maxWidth: .infinity, alignment: .leading)
     .focusStatCard()
@@ -496,7 +496,7 @@ private struct FocusBarChart: View {
       HStack(alignment: .bottom, spacing: values.count > 40 ? 2 : 7) {
         ForEach(Array(values.enumerated()), id: \.offset) { _, value in
           Capsule()
-            .fill(value > 0 ? QingxuPalette.ink : QingxuPalette.separator.opacity(0.5))
+            .fill(value > 0 ? QingxuPalette.accent : QingxuPalette.accent.opacity(0.10))
             .frame(height: max(4, proxy.size.height * value / peak))
         }
       }
@@ -548,11 +548,11 @@ private struct FocusHeatmap: View {
 
   static func legendColor(level: Int) -> Color {
     switch level {
-    case 1: QingxuPalette.faint.opacity(0.35)
-    case 2: QingxuPalette.quiet.opacity(0.55)
-    case 3: QingxuPalette.ink.opacity(0.72)
-    case 4: QingxuPalette.ink
-    default: QingxuPalette.separator.opacity(0.36)
+    case 1: QingxuPalette.accent.opacity(0.22)
+    case 2: QingxuPalette.accent.opacity(0.42)
+    case 3: QingxuPalette.accent.opacity(0.68)
+    case 4: QingxuPalette.accent
+    default: QingxuPalette.accent.opacity(0.08)
     }
   }
 }

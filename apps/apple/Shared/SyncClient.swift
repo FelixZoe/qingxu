@@ -39,8 +39,8 @@ struct SyncClient {
 
   init() {
     let configuration = URLSessionConfiguration.default
-    configuration.timeoutIntervalForRequest = 35
-    configuration.timeoutIntervalForResource = 40
+    configuration.timeoutIntervalForRequest = 15
+    configuration.timeoutIntervalForResource = 30
     configuration.waitsForConnectivity = true
     configuration.httpMaximumConnectionsPerHost = 2
     configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
@@ -127,19 +127,38 @@ struct SyncClient {
   }
 
   private func perform(_ request: URLRequest) async throws -> Data {
-    let (data, response) = try await session.data(for: request)
-    guard let response = response as? HTTPURLResponse else {
-      throw SyncClientError.invalidResponse
-    }
-    guard 200..<300 ~= response.statusCode else {
-      if response.statusCode == 401 || response.statusCode == 403 {
-        throw SyncClientError.server(response.statusCode, "同步密钥无效或无权限")
+    var lastError: Error = SyncClientError.invalidResponse
+    for attempt in 0..<3 {
+      do {
+        let (data, response) = try await session.data(for: request)
+        guard let response = response as? HTTPURLResponse else {
+          throw SyncClientError.invalidResponse
+        }
+        if 200..<300 ~= response.statusCode { return data }
+        if response.statusCode == 401 || response.statusCode == 403 {
+          throw SyncClientError.server(response.statusCode, "同步密钥无效或无权限")
+        }
+        let body = String(data: data, encoding: .utf8)?.prefix(160) ?? ""
+        let message = body.isEmpty ? "服务器请求失败" : String(body)
+        let serverError = SyncClientError.server(response.statusCode, message)
+        guard attempt < 2, response.statusCode == 429 || response.statusCode >= 500 else {
+          throw serverError
+        }
+        lastError = serverError
+      } catch is CancellationError {
+        throw CancellationError()
+      } catch {
+        if let syncError = error as? SyncClientError,
+           case .server(let code, _) = syncError,
+           code < 500, code != 429 {
+          throw error
+        }
+        guard attempt < 2 else { throw error }
+        lastError = error
       }
-      let body = String(data: data, encoding: .utf8)?.prefix(160) ?? ""
-      let message = body.isEmpty ? "服务器请求失败" : String(body)
-      throw SyncClientError.server(response.statusCode, message)
+      try await Task.sleep(for: .milliseconds(attempt == 0 ? 250 : 700))
     }
-    return data
+    throw lastError
   }
 
   private func requireConfigured(_ settings: SyncSettings) throws {
