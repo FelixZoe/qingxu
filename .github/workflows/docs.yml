@@ -62,8 +62,9 @@ jobs:
         run: |
           set -euo pipefail
           release_name="docs-${GITHUB_SHA::12}"
-          release="/opt/1panel/www/sites/todo.darker.one/releases/$release_name"
+          deploy_root="/opt/1panel/www/sites/todo.darker.one/docs-live"
+          release="$deploy_root/releases/$release_name"
           target="$DEPLOY_USER@$DEPLOY_HOST"
-          ssh "$target" "sudo mkdir -p '$release'"
-          tar -C site -czf - . | ssh "$target" "sudo tar -xzf - -C '$release'"
-          ssh "$target" "cd /opt/1panel/www/sites/todo.darker.one && sudo ln -sfn 'releases/$release_name' current-next && sudo mv -Tf current-next current"
+          ssh "$target" "mkdir -p '$release'"
+          tar -C site -czf - . | ssh "$target" "tar -xzf - -C '$release'"
+          ssh "$target" "cd '$deploy_root' && ln -sfn 'releases/$release_name' current-next && mv -Tf current-next current"
