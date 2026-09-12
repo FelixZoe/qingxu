@@ -62,13 +62,17 @@ struct RSSScreen: View {
     )
   }
 
+  private var isRefreshing: Bool {
+    store.phase == .refreshing
+  }
+
   var body: some View {
     NavigationStack {
       ScrollView {
         LazyVStack(alignment: .leading, spacing: 0) {
           RSSContentState(
             hasSubscriptions: !store.subscriptions.isEmpty,
-            isRefreshing: store.phase == .refreshing,
+            isRefreshing: isRefreshing,
             articles: visibleArticles,
             searchText: searchText,
             filter: filter,
@@ -86,7 +90,7 @@ struct RSSScreen: View {
       .navigationTitle("")
       .navigationBarTitleDisplayMode(.inline)
       .toolbarBackground(.hidden, for: .navigationBar)
-      .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .automatic), prompt: "搜索文章、来源或作者")
+      .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "搜索文章、来源或作者")
       .refreshable { await store.refresh() }
       .task { await store.refreshIfNeeded() }
       .toolbar { toolbarContent }
@@ -224,14 +228,17 @@ struct RSSScreen: View {
           Label("导出 OPML", systemImage: "square.and.arrow.up")
         }
       } label: {
-        Group {
-          if case .refreshing = store.phase {
-            ProgressView().controlSize(.small)
-          } else {
-            Image(systemName: "ellipsis")
-          }
+        ZStack {
+          Image(systemName: "ellipsis")
+            .opacity(isRefreshing ? 0 : 1)
+          ProgressView()
+            .controlSize(.small)
+            .opacity(isRefreshing ? 1 : 0)
         }
         .frame(width: 34, height: 34)
+        .transaction { transaction in
+          transaction.animation = nil
+        }
       }
       .accessibilityLabel("RSS 管理")
     }
