@@ -55,7 +55,7 @@ export default defineConfig({
             ]
           }
         ],
-        outline: { level: [2, 3], label: '本页内容' },
+        outline: { level: 2, label: '本页内容' },
         lastUpdated: { text: '最后更新于' },
         docFooter: { prev: '上一篇', next: '下一篇' },
         footer: {
@@ -85,7 +85,7 @@ export default defineConfig({
             ]
           }
         ],
-        outline: { level: [2, 3], label: 'On this page' },
+        outline: { level: 2, label: 'On this page' },
         lastUpdated: { text: 'Last updated' },
         docFooter: { prev: 'Previous', next: 'Next' },
         footer: {
@@ -115,7 +115,7 @@ export default defineConfig({
             ]
           }
         ],
-        outline: { level: [2, 3], label: '本頁內容' },
+        outline: { level: 2, label: '本頁內容' },
         lastUpdated: { text: '最後更新於' },
         docFooter: { prev: '上一篇', next: '下一篇' },
         footer: {
