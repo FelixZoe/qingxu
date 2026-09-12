@@ -4,7 +4,7 @@ import Foundation
 import NIOCore
 import NIOSSH
 import Security
-import SwiftTerm
+@preconcurrency import SwiftTerm
 import SwiftUI
 
 #if os(iOS)
@@ -584,12 +584,14 @@ private struct RemoteServerEditor: View {
           TextField("用户名", text: $server.username)
           #endif
         }
-        Section("认证") {
+        Section {
           #if os(iOS)
           SecureField("密码", text: $password).textContentType(.password)
           #else
           SecureField("密码", text: $password)
           #endif
+        } header: {
+          Text("认证")
         } footer: {
           Text("当前版本先提供密码认证；私钥认证会作为下一步单独加入，不会把私钥写入普通配置。")
         }
