@@ -1,5 +1,16 @@
 import SwiftUI
 
+private extension View {
+  @ViewBuilder
+  func qingxuSettingsDestination() -> some View {
+    #if os(iOS)
+    toolbar(.hidden, for: .tabBar)
+    #else
+    self
+    #endif
+  }
+}
+
 struct SettingsScreen: View {
   @EnvironmentObject private var store: AppStore
   #if os(iOS)
@@ -12,7 +23,7 @@ struct SettingsScreen: View {
       ScrollView {
         LazyVStack(spacing: 22) {
           SettingsGroup(title: "效率与界面") {
-            NavigationLink { FeatureModulesSettingsView() } label: {
+            NavigationLink { FeatureModulesSettingsView().qingxuSettingsDestination() } label: {
               SettingsDestinationRow(
                 symbol: "square.grid.2x2.fill",
                 title: "功能模块",
@@ -24,7 +35,7 @@ struct SettingsScreen: View {
             AppearanceInlineRow(appearance: $appearance)
             #if os(iOS)
             SettingsDivider()
-            NavigationLink { NotificationAndFeedbackSettingsView() } label: {
+            NavigationLink { NotificationAndFeedbackSettingsView().qingxuSettingsDestination() } label: {
               SettingsDestinationRow(
                 symbol: "bell.badge.fill",
                 title: "声音、提醒与触感",
@@ -34,7 +45,7 @@ struct SettingsScreen: View {
             }
             #endif
             SettingsDivider()
-            NavigationLink { CalendarPreferencesView() } label: {
+            NavigationLink { CalendarPreferencesView().qingxuSettingsDestination() } label: {
               SettingsDestinationRow(
                 symbol: "calendar",
                 title: "日期与日历",
@@ -45,16 +56,16 @@ struct SettingsScreen: View {
           }
 
           SettingsGroup(title: "数据与系统") {
-            NavigationLink { SyncSettingsView().environmentObject(store) } label: {
+            NavigationLink { SyncSettingsView().environmentObject(store).qingxuSettingsDestination() } label: {
               SettingsDestinationRow(
-                symbol: "arrow.triangle.2.circlepath",
+                symbol: "arrow.clockwise",
                 title: "自托管同步",
                 detail: store.syncSettings.isConfigured ? store.syncPhase.title : "未配置",
                 tint: QingxuPalette.success
               )
             }
             SettingsDivider()
-            NavigationLink { AmbientSettingsView() } label: {
+            NavigationLink { AmbientSettingsView().qingxuSettingsDestination() } label: {
               SettingsDestinationRow(
                 symbol: "cloud.sun.fill",
                 title: "天气与每日一句",
@@ -63,7 +74,7 @@ struct SettingsScreen: View {
               )
             }
             SettingsDivider()
-            NavigationLink { AISettingsView().environmentObject(store) } label: {
+            NavigationLink { AISettingsView().environmentObject(store).qingxuSettingsDestination() } label: {
               SettingsDestinationRow(
                 symbol: "sparkles",
                 title: "AI 助手",
@@ -73,16 +84,7 @@ struct SettingsScreen: View {
             }
             #if os(iOS)
             SettingsDivider()
-            NavigationLink { WidgetSettingsView() } label: {
-              SettingsDestinationRow(
-                symbol: "rectangle.3.group.fill",
-                title: "小组件与灵动岛",
-                detail: "任务和专注状态",
-                tint: QingxuPalette.accent
-              )
-            }
-            SettingsDivider()
-            NavigationLink { AppUpdateSettingsView().environmentObject(updateChecker) } label: {
+            NavigationLink { AppUpdateSettingsView().environmentObject(updateChecker).qingxuSettingsDestination() } label: {
               SettingsDestinationRow(
                 symbol: "arrow.down.circle.fill",
                 title: "软件更新",
@@ -330,25 +332,41 @@ private struct AppearanceInlineRow: View {
   @Binding var appearance: String
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 12) {
-      HStack(spacing: 14) {
-        SettingsRowGlyph(symbol: "paintpalette.fill")
-        Text("外观")
-          .font(.body.weight(.medium))
-          .foregroundStyle(QingxuPalette.ink)
-        Spacer()
-      }
-      Picker("外观", selection: $appearance) {
+    HStack(spacing: 14) {
+      SettingsRowGlyph(symbol: "circle.lefthalf.filled")
+      Text("外观")
+        .font(.body.weight(.medium))
+        .foregroundStyle(QingxuPalette.ink)
+      Spacer(minLength: 12)
+      Menu {
         ForEach(AppearanceMode.allCases) { mode in
-          Text(mode.title).tag(mode.rawValue)
+          Button {
+            appearance = mode.rawValue
+          } label: {
+            if appearance == mode.rawValue {
+              Label(mode.title, systemImage: "checkmark")
+            } else {
+              Text(mode.title)
+            }
+          }
         }
+      } label: {
+        HStack(spacing: 5) {
+          Text(selectedAppearanceTitle)
+          Image(systemName: "chevron.up.chevron.down")
+            .font(.caption2.weight(.semibold))
+        }
+        .font(.subheadline.weight(.medium))
+        .foregroundStyle(QingxuPalette.quiet)
       }
-      .pickerStyle(.segmented)
     }
     .padding(.horizontal, 16)
-    .padding(.vertical, 14)
+    .frame(minHeight: 68)
   }
 
+  private var selectedAppearanceTitle: String {
+    AppearanceMode(rawValue: appearance)?.title ?? AppearanceMode.system.title
+  }
 }
 
 private struct PreferenceToggleRow: View {
@@ -377,41 +395,12 @@ private struct SettingsRowGlyph: View {
   let symbol: String
 
   var body: some View {
-    Group {
-      #if os(iOS)
-      if let asset = assetName {
-        Image(asset)
-          .resizable()
-          .renderingMode(.template)
-          .scaledToFit()
-      } else {
-        Image(systemName: symbol)
-          .resizable()
-          .scaledToFit()
-      }
-      #else
-      Image(systemName: symbol)
-        .resizable()
-        .scaledToFit()
-      #endif
-    }
+    Image(systemName: symbol)
+      .resizable()
+      .scaledToFit()
     .foregroundStyle(QingxuPalette.ink)
     .frame(width: 22, height: 22)
     .frame(width: 36, height: 36)
-  }
-
-  private var assetName: String? {
-    switch symbol {
-    case "square.grid.2x2.fill": "SettingsModules"
-    case "paintpalette.fill": "SettingsAppearance"
-    case "bell.badge.fill": "SettingsNotifications"
-    case "calendar": "SettingsCalendar"
-    case "arrow.triangle.2.circlepath": "SettingsSync"
-    case "rectangle.3.group.fill": "SettingsWidgets"
-    case "arrow.down.circle.fill": "SettingsUpdate"
-    case "chevron.left.forwardslash.chevron.right": "SettingsCode"
-    default: nil
-    }
   }
 }
 
@@ -420,6 +409,10 @@ private struct FeatureModulesSettingsView: View {
   @AppStorage(QingxuPreferenceKey.pomodoroModule) private var pomodoroEnabled = true
   @AppStorage(QingxuPreferenceKey.rssModule) private var rssEnabled = true
   @AppStorage(QingxuPreferenceKey.moduleOrder) private var moduleOrder = QingxuModuleOrder.defaultValue
+  @State private var orderedTabs = AppTab.allCases
+  #if os(iOS)
+  @State private var editMode = EditMode.active
+  #endif
 
   var body: some View {
     List {
@@ -451,18 +444,27 @@ private struct FeatureModulesSettingsView: View {
     }
     .qingxuScreen()
     .navigationTitle("功能模块")
+    .onAppear(perform: reloadOrder)
+    .onDisappear(perform: persistOrder)
     #if os(iOS)
     .navigationBarTitleDisplayMode(.inline)
-    .environment(\.editMode, .constant(.active))
+    .environment(\.editMode, $editMode)
     #endif
   }
 
-  private var orderedTabs: [AppTab] { QingxuModuleOrder.decode(moduleOrder) }
-
   private func move(from source: IndexSet, to destination: Int) {
-    var tabs = orderedTabs
-    tabs.move(fromOffsets: source, toOffset: destination)
-    moduleOrder = QingxuModuleOrder.encode(tabs)
+    orderedTabs.move(fromOffsets: source, toOffset: destination)
+  }
+
+  private func reloadOrder() {
+    orderedTabs = QingxuModuleOrder.decode(moduleOrder)
+  }
+
+  private func persistOrder() {
+    let normalizedValue = QingxuModuleOrder.encode(orderedTabs)
+    if moduleOrder != normalizedValue {
+      moduleOrder = normalizedValue
+    }
   }
 
   private func enabledBinding(for tab: AppTab) -> Binding<Bool>? {
@@ -637,62 +639,6 @@ private struct CalendarPreferencesView: View {
     #endif
   }
 }
-
-#if os(iOS)
-private struct WidgetSettingsView: View {
-  @EnvironmentObject private var store: AppStore
-  @State private var liveActivityMessage = SystemFeatures.liveActivityStatus
-  @State private var testingLiveActivity = false
-
-  var body: some View {
-    ScrollView {
-      VStack(spacing: 22) {
-        SettingsGroup(title: "实时活动诊断") {
-          Button {
-            Task { await testLiveActivity() }
-          } label: {
-            HStack {
-              VStack(alignment: .leading, spacing: 4) {
-                Text(testingLiveActivity ? "正在检测…" : "检测并重新启动实时活动")
-                  .font(.body.weight(.medium))
-                  .foregroundStyle(QingxuPalette.ink)
-                Text(liveActivityMessage)
-                  .font(.caption)
-                  .foregroundStyle(QingxuPalette.quiet)
-                  .multilineTextAlignment(.leading)
-              }
-              Spacer()
-              Image(systemName: "arrow.clockwise")
-                .foregroundStyle(QingxuPalette.accent)
-            }
-            .padding(.horizontal, 16)
-            .frame(minHeight: 72)
-          }
-          .buttonStyle(.plain)
-          .disabled(testingLiveActivity)
-        }
-        Text("长按主屏幕或锁屏添加“清序”小组件；灵动岛会在番茄钟开始后自动显示。这里仅保留可执行的实时活动检测。")
-          .font(.footnote)
-          .foregroundStyle(QingxuPalette.quiet)
-          .frame(maxWidth: .infinity, alignment: .leading)
-          .padding(.horizontal, 7)
-      }
-      .padding(18)
-      .padding(.bottom, 80)
-    }
-    .qingxuScreen()
-    .navigationTitle("小组件与灵动岛")
-    .navigationBarTitleDisplayMode(.inline)
-  }
-
-  @MainActor
-  private func testLiveActivity() async {
-    testingLiveActivity = true
-    liveActivityMessage = await store.restartLiveActivity()
-    testingLiveActivity = false
-  }
-}
-#endif
 
 struct SyncSettingsView: View {
   @EnvironmentObject private var store: AppStore
@@ -1063,7 +1009,7 @@ struct AISettingsView: View {
       SettingsValueRow(title: "服务器", value: store.syncSettings.isConfigured ? store.syncSettings.normalizedServerURL : "未配置")
       SettingsDivider()
       NavigationLink { SyncSettingsView().environmentObject(store) } label: {
-        SettingsDestinationRow(symbol: "arrow.triangle.2.circlepath", title: "同步服务器", detail: "AI 请求由自托管服务处理", tint: QingxuPalette.accent)
+        SettingsDestinationRow(symbol: "arrow.clockwise", title: "同步服务器", detail: "AI 请求由自托管服务处理", tint: QingxuPalette.accent)
       }
     case .openAI, .deepSeek:
       AmbientFieldRow(title: "API 密钥") {

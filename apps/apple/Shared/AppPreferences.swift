@@ -18,15 +18,19 @@ enum QingxuModuleOrder {
   static let defaultValue = AppTab.allCases.map(\.rawValue).joined(separator: ",")
 
   static func decode(_ rawValue: String) -> [AppTab] {
+    var seen = Set<AppTab>()
     let decoded = rawValue
       .split(separator: ",")
       .compactMap { AppTab(rawValue: String($0)) }
+      .filter { seen.insert($0).inserted }
     let missing = AppTab.allCases.filter { !decoded.contains($0) }
     return decoded + missing
   }
 
   static func encode(_ tabs: [AppTab]) -> String {
-    tabs.map(\.rawValue).joined(separator: ",")
+    decode(tabs.map(\.rawValue).joined(separator: ","))
+      .map(\.rawValue)
+      .joined(separator: ",")
   }
 }
 
