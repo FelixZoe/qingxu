@@ -952,9 +952,9 @@ private struct AmbientSettingsView: View {
   var body: some View {
     ScrollView {
       VStack(spacing: 22) {
-        SettingsGroup(title: "今日首页") {
+        SettingsGroup(title: "收集箱顶部") {
           PreferenceToggleRow(
-            symbol: "quote.opening", title: "每日一句", detail: "每天更新一次，轻点首页文字可手动刷新",
+            symbol: "quote.opening", title: "每日一句", detail: "每天更新一次，轻点收集箱顶部可手动刷新",
             tint: QingxuPalette.accent, isOn: $preferences.quoteEnabled
           )
           SettingsDivider()

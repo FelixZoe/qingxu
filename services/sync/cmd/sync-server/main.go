@@ -108,7 +108,7 @@ func loadConfig() (appConfig, error) {
 		maxBodyBytes: defaultMaxBodyBytes,
 		aiBaseURL:    envOrDefault("AI_BASE_URL", "https://api.openai.com/v1/chat/completions"),
 		aiAPIKey:     strings.TrimSpace(os.Getenv("AI_API_KEY")),
-		aiModel:      envOrDefault("AI_MODEL", "gpt-4.1-mini"),
+		aiModel:      envOrDefault("AI_MODEL", "gpt-5.6-terra"),
 	}
 	if strings.TrimSpace(config.token) == "" {
 		return appConfig{}, errors.New("SYNC_TOKEN must be set")

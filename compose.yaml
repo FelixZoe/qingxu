@@ -9,7 +9,7 @@ services:
       SYNC_MAX_BODY_BYTES: ${SYNC_MAX_BODY_BYTES:-2097152}
       AI_BASE_URL: ${AI_BASE_URL:-https://api.openai.com/v1/chat/completions}
       AI_API_KEY: ${AI_API_KEY:-}
-      AI_MODEL: ${AI_MODEL:-gpt-4.1-mini}
+      AI_MODEL: ${AI_MODEL:-gpt-5.6-terra}
       GOMEMLIMIT: ${GOMEMLIMIT:-48MiB}
     ports:
       - "${SYNC_LISTEN:-127.0.0.1:8080}:8080"

@@ -40,7 +40,7 @@ echo "$TOKEN"
 | `GOMEMLIMIT` | `48MiB` | Go 執行階段軟記憶體限制 |
 | `AI_BASE_URL` | OpenAI 相容端點 | 選用的伺服器 AI 端點 |
 | `AI_API_KEY` | 空 | 留空即停用 AI 代理 |
-| `AI_MODEL` | `gpt-4.1-mini` | 模型名稱 |
+| `AI_MODEL` | `gpt-5.6-terra` | 模型名稱 |
 
 ## HTTPS 反向代理
 

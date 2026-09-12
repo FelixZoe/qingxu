@@ -69,7 +69,7 @@ go run ./cmd/sync-server
 | `SYNC_CORS_ORIGINS` | 空 | 可选浏览器 Origin，多个值用逗号分隔 |
 | `AI_BASE_URL` | OpenAI Chat Completions | 可选 AI 上游地址 |
 | `AI_API_KEY` | 空 | 留空时 `/v1/ai` 返回未配置 |
-| `AI_MODEL` | `gpt-4.1-mini` | AI 模型名称 |
+| `AI_MODEL` | `gpt-5.6-terra` | AI 模型名称 |
 
 仓库根 Compose 会把主机 `SYNC_LISTEN` 映射到容器 8080，并将 `SYNC_DATA_DIR` 挂载为容器 `/data`；不要混淆主机变量与进程内部的 `SYNC_ADDR`、`SYNC_DATA_FILE`。
 

@@ -40,7 +40,7 @@ The health endpoint should return `{"status":"ok"}`. Save the token in a passwor
 | `GOMEMLIMIT` | `48MiB` | Go runtime soft memory limit |
 | `AI_BASE_URL` | OpenAI-compatible endpoint | Optional server-side AI endpoint |
 | `AI_API_KEY` | empty | Leave empty to disable the AI proxy |
-| `AI_MODEL` | `gpt-4.1-mini` | Model name sent to the endpoint |
+| `AI_MODEL` | `gpt-5.6-terra` | Model name sent to the endpoint |
 
 ## HTTPS reverse proxy
 

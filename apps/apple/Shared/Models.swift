@@ -312,8 +312,8 @@ enum AIConnectionMode: String, Codable, CaseIterable, Identifiable {
 
   var presetModel: String? {
     switch self {
-    case .openAI: "gpt-4.1-mini"
-    case .deepSeek: "deepseek-chat"
+    case .openAI: "gpt-5.6-terra"
+    case .deepSeek: "deepseek-flash"
     case .selfHosted, .compatible: nil
     }
   }
@@ -322,7 +322,7 @@ enum AIConnectionMode: String, Codable, CaseIterable, Identifiable {
 struct AISettings: Codable, Equatable {
   var mode: AIConnectionMode = .selfHosted
   var baseURL = "https://api.openai.com/v1/chat/completions"
-  var model = "gpt-4.1-mini"
+  var model = "gpt-5.6-terra"
   var summaryPrompt = ""
   var apiKey = ""
 

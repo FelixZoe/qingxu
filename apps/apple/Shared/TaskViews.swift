@@ -169,6 +169,8 @@ struct TaskListScreen: View {
       .task {
         if scope == .today {
           refreshCalendarTaskDays()
+        }
+        if scope == .inbox {
           await ambientStore.load()
         }
       }
@@ -176,7 +178,7 @@ struct TaskListScreen: View {
         if scope == .today { refreshCalendarTaskDays() }
       }
       .onReceive(NotificationCenter.default.publisher(for: QingxuAmbientPreferencesStore.didChange)) { _ in
-        guard scope == .today else { return }
+        guard scope == .inbox else { return }
         Task { await ambientStore.load(force: true) }
       }
     }
@@ -203,6 +205,19 @@ struct TaskListScreen: View {
 
   private var standardTaskList: some View {
     List {
+      if scope == .inbox,
+         ambientStore.quote != nil || ambientStore.weather != nil || ambientStore.isLoading {
+        InboxAmbientHeader(
+          weather: ambientStore.weather,
+          quote: ambientStore.quote,
+          isLoading: ambientStore.isLoading,
+          refresh: { Task { await ambientStore.load(force: true) } }
+        )
+        .listRowInsets(.init(top: 8, leading: 20, bottom: 12, trailing: 20))
+        .listRowBackground(Color.clear)
+        .listRowSeparator(.hidden)
+      }
+
       taskRows
 
       if tasks.isEmpty {
@@ -339,17 +354,6 @@ struct TaskListScreen: View {
 
         ScrollView {
           LazyVStack(spacing: 0) {
-            if ambientStore.quote != nil || ambientStore.weather != nil || ambientStore.isLoading {
-              TodayAmbientStrip(
-                weather: ambientStore.weather,
-                quote: ambientStore.quote,
-                isLoading: ambientStore.isLoading,
-                refresh: { Task { await ambientStore.load(force: true) } }
-              )
-              .padding(.horizontal, 24)
-              .padding(.bottom, 14)
-            }
-
             if tasks.isEmpty {
               TodayEmptyState()
                 .frame(maxWidth: .infinity)
@@ -1426,7 +1430,7 @@ private struct TodayTaskScrollConfigurator: UIViewRepresentable {
   }
 }
 
-private struct TodayAmbientStrip: View {
+private struct InboxAmbientHeader: View {
   let weather: QingxuWeatherSnapshot?
   let quote: QingxuQuoteSnapshot?
   let isLoading: Bool
@@ -1434,55 +1438,58 @@ private struct TodayAmbientStrip: View {
 
   var body: some View {
     Button(action: refresh) {
-      HStack(spacing: 14) {
-        VStack(alignment: .leading, spacing: 5) {
-          if let quote {
-            HStack(alignment: .firstTextBaseline, spacing: 6) {
-              Image(systemName: "quote.opening")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(QingxuPalette.accent)
-              Text(quote.text)
-                .font(.subheadline.weight(.medium))
-                .foregroundStyle(QingxuPalette.ink)
-                .lineLimit(2)
-            }
+      VStack(alignment: .leading, spacing: 12) {
+        if let weather {
+          HStack(alignment: .firstTextBaseline, spacing: 10) {
+            Image(systemName: weatherSymbol(weather.icon, text: weather.text))
+              .font(.system(size: 18, weight: .medium))
+            Text("\(weather.cityName) · \(weather.text)")
+              .font(.subheadline.weight(.semibold))
+            Spacer(minLength: 12)
+            Text("\(weather.temperature)°")
+              .font(.system(size: 25, weight: .medium, design: .rounded).monospacedDigit())
+          }
+          .foregroundStyle(QingxuPalette.ink)
+        }
+
+        if let quote {
+          VStack(alignment: .leading, spacing: 4) {
+            Text(quote.text)
+              .font(.subheadline)
+              .foregroundStyle(QingxuPalette.ink.opacity(0.86))
+              .lineLimit(2)
+              .fixedSize(horizontal: false, vertical: true)
             Text("— \(quote.source)")
               .font(.caption2)
               .foregroundStyle(QingxuPalette.quiet)
-              .padding(.leading, 21)
-          } else if isLoading {
-            HStack(spacing: 9) {
-              ProgressView().controlSize(.small)
-              Text("正在准备今天的一句话")
-                .font(.subheadline)
-                .foregroundStyle(QingxuPalette.quiet)
-            }
+              .contentTransition(.opacity)
+          }
+        } else if isLoading {
+          HStack(spacing: 9) {
+            ProgressView().controlSize(.small)
+            Text("正在准备天气与今日一言")
+              .font(.subheadline)
+              .foregroundStyle(QingxuPalette.quiet)
           }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
 
-        if let weather {
-          HStack(spacing: 8) {
-            Image(systemName: weatherSymbol(weather.icon, text: weather.text))
-              .font(.system(size: 18, weight: .medium))
-            VStack(alignment: .trailing, spacing: 1) {
-              Text("\(weather.temperature)°")
-                .font(.headline.monospacedDigit())
-              Text(weather.text)
-                .font(.caption2)
-                .foregroundStyle(QingxuPalette.quiet)
-            }
+        if weather != nil || quote != nil {
+          HStack(spacing: 5) {
+            Circle()
+              .fill(QingxuPalette.accent)
+              .frame(width: 5, height: 5)
+            Text("轻点刷新")
+              .font(.caption2)
+              .foregroundStyle(QingxuPalette.quiet)
           }
-          .foregroundStyle(QingxuPalette.ink)
-          .padding(.leading, 12)
         }
       }
       .padding(.horizontal, 16)
-      .padding(.vertical, 13)
-      .frame(maxWidth: .infinity, minHeight: 64)
-      .background(QingxuPalette.surface, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+      .padding(.vertical, 15)
+      .frame(maxWidth: .infinity, minHeight: 74, alignment: .leading)
+      .background(QingxuPalette.surface, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
       .overlay {
-        RoundedRectangle(cornerRadius: 20, style: .continuous)
+        RoundedRectangle(cornerRadius: 22, style: .continuous)
           .stroke(QingxuPalette.separator.opacity(0.72), lineWidth: 0.6)
       }
     }

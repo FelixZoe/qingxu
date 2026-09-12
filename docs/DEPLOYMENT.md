@@ -69,14 +69,14 @@ echo "$TOKEN"
 | `GOMEMLIMIT` | `48MiB` | Go 运行时软内存限制 |
 | `AI_BASE_URL` | OpenAI Chat Completions | 可选 AI 兼容接口地址 |
 | `AI_API_KEY` | 空 | 留空即禁用服务端 AI 代理 |
-| `AI_MODEL` | `gpt-4.1-mini` | 服务端 AI 模型名称 |
+| `AI_MODEL` | `gpt-5.6-terra` | 服务端 AI 模型名称 |
 
 启用自托管 AI 代理时只需编辑 `.env`：
 
 ```dotenv
 AI_BASE_URL=https://api.openai.com/v1/chat/completions
 AI_API_KEY=你的密钥
-AI_MODEL=gpt-4.1-mini
+AI_MODEL=gpt-5.6-terra
 ```
 
 然后执行 `docker compose up -d`。AI 密钥只进入服务器容器环境，不会随同步响应下发给客户端。

@@ -29,8 +29,8 @@ extension PersonalAIProviderLabel on PersonalAIProvider {
 
   String get defaultModel => switch (this) {
     PersonalAIProvider.selfHosted => '',
-    PersonalAIProvider.deepSeek => 'deepseek-chat',
-    PersonalAIProvider.openAI => 'gpt-4.1-mini',
+    PersonalAIProvider.deepSeek => 'deepseek-flash',
+    PersonalAIProvider.openAI => 'gpt-5.6-terra',
   };
 }
 
