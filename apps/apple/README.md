@@ -79,6 +79,17 @@ App Group：group.one.darker.qingxu
 
 `QingxuiOS` 依赖并嵌入 `QingxuWidgets`。真机签名时必须为两个 target 选择同一 Team，并让两份描述文件都授权 App Group。详细检查与私密云端构建见 [iOS 签名文档](../../docs/IOS_PRIVATE_SIGNING.md)。
 
+## 个人服务器入口
+
+“服务器”是可选功能模块，共用同一个连接配置提供三块原生界面：状态、终端与文件。状态通过 SSH 执行只读系统命令；终端使用 SwiftTerm；文件列表与文本预览使用 Citadel SFTP。
+
+- 连接密码只写入 Apple Keychain，不进入普通配置、同步文档或 Git 仓库。
+- 首次连接采用 TOFU（Trust On First Use）记录 SHA-256 主机指纹，后续指纹变化会拒绝连接。
+- 服务器配置不会默认写入项目中的任何域名、IP、用户名或密钥。
+- 当前先支持密码认证；私钥认证需要以 Keychain/安全文件导入方式实现，不能把私钥放入源码或普通 `UserDefaults`。
+
+工程通过 Swift Package Manager 固定依赖版本。最低系统版本为 iOS 17 与 macOS 15，GitHub Actions 使用最新稳定版 Xcode 构建。
+
 ## 数据位置
 
 - iOS：沿用 `Documents/Qingxu` 数据目录，兼容早期客户端数据。

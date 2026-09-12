@@ -47,6 +47,7 @@ private struct MacRootView: View {
       case .today: TaskListScreen(scope: .today)
       case .pomodoro: PomodoroScreen()
       case .rss: EmptyView()
+      case .remoteAccess: RemoteAccessScreen()
       case .settings: SettingsScreen()
       }
     }

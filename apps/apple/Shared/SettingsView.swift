@@ -408,6 +408,7 @@ private struct FeatureModulesSettingsView: View {
   @AppStorage(QingxuPreferenceKey.inboxModule) private var inboxEnabled = true
   @AppStorage(QingxuPreferenceKey.pomodoroModule) private var pomodoroEnabled = true
   @AppStorage(QingxuPreferenceKey.rssModule) private var rssEnabled = true
+  @AppStorage(QingxuPreferenceKey.remoteAccessModule) private var remoteAccessEnabled = true
   @AppStorage(QingxuPreferenceKey.moduleOrder) private var moduleOrder = QingxuModuleOrder.defaultValue
   @State private var orderedTabs = AppTab.allCases
   #if os(iOS)
@@ -472,6 +473,7 @@ private struct FeatureModulesSettingsView: View {
     case .inbox: $inboxEnabled
     case .pomodoro: $pomodoroEnabled
     case .rss: $rssEnabled
+    case .remoteAccess: $remoteAccessEnabled
     case .today, .settings: nil
     }
   }
@@ -482,6 +484,7 @@ private struct FeatureModulesSettingsView: View {
     case .today: "日历与当天任务"
     case .pomodoro: "专注计时与统计"
     case .rss: "按来源阅读订阅内容"
+    case .remoteAccess: "查看状态、使用终端和管理文件"
     case .settings: "账户、同步和偏好"
     }
   }

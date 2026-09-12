@@ -47,6 +47,7 @@ private struct iOSRootView: View {
   @AppStorage(QingxuPreferenceKey.inboxModule) private var inboxEnabled = true
   @AppStorage(QingxuPreferenceKey.pomodoroModule) private var pomodoroEnabled = true
   @AppStorage(QingxuPreferenceKey.rssModule) private var rssEnabled = true
+  @AppStorage(QingxuPreferenceKey.remoteAccessModule) private var remoteAccessEnabled = true
   @AppStorage(QingxuPreferenceKey.moduleOrder) private var moduleOrder = QingxuModuleOrder.defaultValue
 
   var body: some View {
@@ -84,6 +85,9 @@ private struct iOSRootView: View {
     .onChange(of: rssEnabled) { enabled in
       if !enabled, selection == .rss { selection = inboxEnabled ? .inbox : .today }
     }
+    .onChange(of: remoteAccessEnabled) { enabled in
+      if !enabled, selection == .remoteAccess { selection = .today }
+    }
     .onChange(of: scenePhase) { phase in
       if phase == .active {
         consumePendingWidgetDestination()
@@ -102,6 +106,7 @@ private struct iOSRootView: View {
       case "inbox": selection = inboxEnabled ? .inbox : .today
       case "pomodoro": selection = pomodoroEnabled ? .pomodoro : (inboxEnabled ? .inbox : .today)
       case "rss": selection = rssEnabled ? .rss : (inboxEnabled ? .inbox : .today)
+      case "server", "terminal": selection = remoteAccessEnabled ? .remoteAccess : .today
       case "settings": selection = .settings
       default: selection = inboxEnabled ? .inbox : .today
       }
@@ -129,6 +134,7 @@ private struct iOSRootView: View {
       case .inbox: inboxEnabled
       case .pomodoro: pomodoroEnabled
       case .rss: rssEnabled
+      case .remoteAccess: remoteAccessEnabled
       case .today, .settings: true
       }
     }
@@ -141,6 +147,7 @@ private struct iOSRootView: View {
     case .today: TaskListScreen(scope: .today)
     case .pomodoro: PomodoroScreen()
     case .rss: RSSScreen(store: rssStore)
+    case .remoteAccess: RemoteAccessScreen()
     case .settings: SettingsScreen()
     }
   }

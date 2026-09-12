@@ -4,6 +4,7 @@ enum QingxuPreferenceKey {
   static let pomodoroModule = "qingxu.modules.pomodoro"
   static let rssModule = "qingxu.modules.rss"
   static let inboxModule = "qingxu.modules.inbox"
+  static let remoteAccessModule = "qingxu.modules.remoteAccess"
   static let moduleOrder = "qingxu.modules.order"
   static let haptics = "qingxu.feedback.haptics"
   static let completionSound = "qingxu.feedback.completionSound"

@@ -2,9 +2,22 @@ name: QingxuApple
 options:
   minimumXcodeGenVersion: 2.42.0
   deploymentTarget:
-    iOS: "16.2"
-    macOS: "13.0"
+    iOS: "17.0"
+    macOS: "15.0"
   createIntermediateGroups: true
+packages:
+  Citadel:
+    url: https://github.com/orlandos-nl/Citadel.git
+    revision: ae8562f895de06ccb86fdb1cbb65fd99c8976e12
+  SwiftTerm:
+    url: https://github.com/migueldeicaza/SwiftTerm.git
+    revision: a7b8b943e854d1073b3b79ec5cd802e4873e3df0
+  SwiftNIO:
+    url: https://github.com/apple/swift-nio.git
+    from: 2.81.0
+  SwiftNIOSSH:
+    url: https://github.com/Wellz26/swift-nio-ssh.git
+    from: 0.3.4
 settings:
   base:
     SWIFT_VERSION: "5.0"
@@ -25,6 +38,14 @@ targets:
     dependencies:
       - target: QingxuWidgets
         embed: true
+      - package: Citadel
+        product: Citadel
+      - package: SwiftTerm
+        product: SwiftTerm
+      - package: SwiftNIO
+        product: NIOCore
+      - package: SwiftNIOSSH
+        product: NIOSSH
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: one.darker.qingxu
@@ -92,6 +113,14 @@ targets:
     dependencies:
       - target: QingxumacOSWidgets
         embed: true
+      - package: Citadel
+        product: Citadel
+      - package: SwiftTerm
+        product: SwiftTerm
+      - package: SwiftNIO
+        product: NIOCore
+      - package: SwiftNIOSSH
+        product: NIOSSH
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: one.darker.qingxu
