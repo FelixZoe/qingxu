@@ -24,8 +24,7 @@ export default defineConfig({
         text: '开始',
         items: [
           { text: '文档首页', link: '/' },
-          { text: '产品范围', link: '/PRODUCT' },
-          { text: '四端预览', link: '/PREVIEW' }
+          { text: '产品范围', link: '/PRODUCT' }
         ]
       },
       {
@@ -39,6 +38,7 @@ export default defineConfig({
         text: '开发',
         items: [
           { text: '系统架构', link: '/ARCHITECTURE' },
+          { text: '构建与发布', link: '/WORKFLOWS' },
           { text: '同步协议', link: '/SYNC_PROTOCOL' },
           { text: '跨端设计规范', link: '/DESIGN' }
         ]

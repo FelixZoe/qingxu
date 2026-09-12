@@ -53,6 +53,11 @@ jobs:
             echo "Version must use x.y.z format: $app_version" >&2
             exit 1
           fi
+          IFS=. read -r major minor patch <<< "$app_version"
+          if (( major > 9 || minor > 9 || patch > 9 )); then
+            echo "Each version segment must be a single digit (0-9): $app_version" >&2
+            exit 1
+          fi
 
           grep -q 'PRODUCT_BUNDLE_IDENTIFIER: one.darker.qingxu$' project.yml
           grep -q 'PRODUCT_BUNDLE_IDENTIFIER: one.darker.qingxu.widgets$' project.yml

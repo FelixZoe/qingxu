@@ -58,7 +58,29 @@ jobs:
                   version="$current"
                 else
                   IFS=. read -r major minor patch <<< "$latest"
-                  version="$major.$minor.$((patch + 1))"
+                  # Qingxu uses one digit per segment. Legacy versions such as
+                  # 0.1.61 migrate to the next minor release instead of becoming
+                  # visually insignificant four- or five-digit patch streams.
+                  if (( patch >= 10 )); then
+                    minor=$((minor + 1))
+                    patch=0
+                  elif (( minor >= 10 )); then
+                    major=$((major + 1))
+                    minor=0
+                    patch=0
+                  else
+                    patch=$((patch + 1))
+                    if (( patch >= 10 )); then
+                      patch=0
+                      minor=$((minor + 1))
+                    fi
+                  fi
+
+                  if (( minor >= 10 )); then
+                    major=$((major + 1))
+                    minor=0
+                  fi
+                  version="$major.$minor.$patch"
                 fi
               fi
             fi
@@ -69,6 +91,12 @@ jobs:
 
           if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             echo "Version must use x.y.z format: $version" >&2
+            exit 1
+          fi
+
+          IFS=. read -r major minor patch <<< "$version"
+          if (( major > 9 || minor > 9 || patch > 9 )); then
+            echo "Each version segment must be a single digit (0-9): $version" >&2
             exit 1
           fi
 

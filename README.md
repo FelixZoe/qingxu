@@ -14,16 +14,6 @@
   <a href="docs/DESIGN.md">设计规范</a>
 </p>
 
-<p align="center">
-  <img src="https://github.com/FelixZoe/qingxu/releases/latest/download/qingxu-product-hero.png" width="100%" alt="清序 iOS、Android、macOS 与 Windows 四端高清预览">
-</p>
-
-<p align="center">
-  <a href="https://github.com/FelixZoe/qingxu/releases/latest/download/qingxu-platform-previews.png">查看四端原始高清总览</a> ·
-  <a href="https://github.com/FelixZoe/qingxu/actions/workflows/product-previews.yml">立即生成最新预览</a> ·
-  <a href="docs/PREVIEW.md">没有 Android 手机如何预览</a>
-</p>
-
 ## 为什么是清序
 
 清序把任务、专注计时、RSS 阅读与个人服务器工具放在同一个克制的工作流里。数据先保存到设备，本地操作不依赖网络；需要跨设备时，可以把轻量同步服务部署到自己的服务器，不需要注册第三方账号。
@@ -52,18 +42,6 @@
 | Windows | Flutter | `Qingxu-<版本>-Windows-Portable.zip`、`Windows-Setup.exe` | 提供便携版和安装版；未签名时可能出现 SmartScreen 提示 |
 
 下载后可使用同一 Release 中的 `SHA256SUMS.txt` 校验文件完整性。安装包、校验和与构建来源证明均由 GitHub Actions 自动生成。
-
-### 四端真实界面
-
-预览图由 GitHub 云端真实启动四端应用后自动截取，并在每次 Release 成功后更新，不包含手工伪造界面。
-
-| iOS | Android |
-| --- | --- |
-| [![清序 iOS 实时预览](https://github.com/FelixZoe/qingxu/releases/latest/download/qingxu-preview-ios.png)](https://github.com/FelixZoe/qingxu/releases/latest/download/qingxu-preview-ios.png) | [![清序 Android 实时预览](https://github.com/FelixZoe/qingxu/releases/latest/download/qingxu-preview-android.png)](https://github.com/FelixZoe/qingxu/releases/latest/download/qingxu-preview-android.png) |
-| macOS | Windows |
-| [![清序 macOS 实时预览](https://github.com/FelixZoe/qingxu/releases/latest/download/qingxu-preview-macos.png)](https://github.com/FelixZoe/qingxu/releases/latest/download/qingxu-preview-macos.png) | [![清序 Windows 实时预览](https://github.com/FelixZoe/qingxu/releases/latest/download/qingxu-preview-windows.png)](https://github.com/FelixZoe/qingxu/releases/latest/download/qingxu-preview-windows.png) |
-
-没有 Android 手机时，直接运行 [Product Previews](https://github.com/FelixZoe/qingxu/actions/workflows/product-previews.yml)；工作流会在 Pixel 7 模拟器中构建、安装并截图。需要本机点击交互时，按 [四端实时预览说明](docs/PREVIEW.md) 配置 Android Studio 模拟器。
 
 ### 关于 iOS 自签
 
@@ -179,6 +157,14 @@ go vet ./...
 
 ## 自动发布
 
+版本号统一使用 `主版本.功能版本.修订版本`，每一段只保留一位数字：
+
+- 日常修复递增末位，例如 `0.2.1 → 0.2.2`。
+- 末位到 `9` 后自动进位，例如 `0.2.9 → 0.3.0`。
+- 功能版本到 `9` 后进入下一主版本，例如 `0.9.9 → 1.0.0`。
+- 主版本只在不兼容变化或完整大版本升级时提升。
+- 旧的 `0.1.61` 长修订号会在下一次发布一次性迁移为 `0.2.0`。
+
 推送到 `main` 后，工作流会自动：
 
 1. 运行 Flutter 分析与测试、Go 测试与 `vet`。
@@ -192,6 +178,7 @@ go vet ./...
 - [产品范围](docs/PRODUCT.md)
 - [跨端设计规范](docs/DESIGN.md)
 - [系统架构](docs/ARCHITECTURE.md)
+- [构建与发布工作流](docs/WORKFLOWS.md)
 - [同步协议 v1](docs/SYNC_PROTOCOL.md)
 - [自托管部署](docs/DEPLOYMENT.md)
 - [iOS 私密云端签名](docs/IOS_PRIVATE_SIGNING.md)
