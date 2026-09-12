@@ -1,6 +1,6 @@
 ﻿#define MyAppName "清序"
 #ifndef MyAppVersion
-  #define MyAppVersion "0.1.58"
+  #define MyAppVersion "0.1.59"
 #endif
 #define MyAppPublisher "FelixZoe"
 #define MyAppURL "https://github.com/FelixZoe/qingxu"
