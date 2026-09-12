@@ -9,7 +9,7 @@
 - 仓库：<https://github.com/migueldeicaza/SwiftTerm>
 - 用途：iOS 与 macOS 的终端渲染组件。
 - 许可：MIT License。
-- 固定修订：`a7b8b943e854d1073b3b79ec5cd802e4873e3df0`
+- 稳定版本：`v1.18.0`（固定修订 `7691f85b222a67a66b58499e1b2647443cf0dda7`）
 
 ### Citadel
 

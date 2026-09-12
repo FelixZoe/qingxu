@@ -11,7 +11,7 @@ packages:
     revision: ae8562f895de06ccb86fdb1cbb65fd99c8976e12
   SwiftTerm:
     url: https://github.com/migueldeicaza/SwiftTerm.git
-    revision: a7b8b943e854d1073b3b79ec5cd802e4873e3df0
+    revision: 7691f85b222a67a66b58499e1b2647443cf0dda7
   SwiftNIO:
     url: https://github.com/apple/swift-nio.git
     from: 2.81.0
