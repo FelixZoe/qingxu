@@ -691,6 +691,85 @@ private struct TaskRow: View {
   }
 }
 
+private struct InboxAmbientHeader: View {
+  let weather: QingxuWeatherSnapshot?
+  let quote: QingxuQuoteSnapshot?
+  let isLoading: Bool
+  let refresh: () -> Void
+
+  var body: some View {
+    Button(action: refresh) {
+      VStack(alignment: .leading, spacing: 12) {
+        if let weather {
+          HStack(alignment: .firstTextBaseline, spacing: 10) {
+            Image(systemName: weatherSymbol(weather.icon, text: weather.text))
+              .font(.system(size: 18, weight: .medium))
+            Text("\(weather.cityName) · \(weather.text)")
+              .font(.subheadline.weight(.semibold))
+            Spacer(minLength: 12)
+            Text("\(weather.temperature)°")
+              .font(.system(size: 25, weight: .medium, design: .rounded).monospacedDigit())
+          }
+          .foregroundStyle(QingxuPalette.ink)
+        }
+
+        if let quote {
+          VStack(alignment: .leading, spacing: 4) {
+            Text(quote.text)
+              .font(.subheadline)
+              .foregroundStyle(QingxuPalette.ink.opacity(0.86))
+              .lineLimit(2)
+              .fixedSize(horizontal: false, vertical: true)
+            Text("— \(quote.source)")
+              .font(.caption2)
+              .foregroundStyle(QingxuPalette.quiet)
+              .contentTransition(.opacity)
+          }
+        } else if isLoading {
+          HStack(spacing: 9) {
+            ProgressView().controlSize(.small)
+            Text("正在准备天气与今日一言")
+              .font(.subheadline)
+              .foregroundStyle(QingxuPalette.quiet)
+          }
+        }
+
+        if weather != nil || quote != nil {
+          HStack(spacing: 5) {
+            Circle()
+              .fill(QingxuPalette.accent)
+              .frame(width: 5, height: 5)
+            Text("轻点刷新")
+              .font(.caption2)
+              .foregroundStyle(QingxuPalette.quiet)
+          }
+        }
+      }
+      .padding(.horizontal, 16)
+      .padding(.vertical, 15)
+      .frame(maxWidth: .infinity, minHeight: 74, alignment: .leading)
+      .background(QingxuPalette.surface, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+      .overlay {
+        RoundedRectangle(cornerRadius: 22, style: .continuous)
+          .stroke(QingxuPalette.separator.opacity(0.72), lineWidth: 0.6)
+      }
+    }
+    .buttonStyle(.plain)
+    .accessibilityLabel("刷新天气和每日一句")
+  }
+
+  private func weatherSymbol(_ icon: String, text: String) -> String {
+    if text.contains("雷") { return "cloud.bolt.rain.fill" }
+    if text.contains("雨") { return "cloud.rain.fill" }
+    if text.contains("雪") { return "cloud.snow.fill" }
+    if text.contains("雾") || text.contains("霾") { return "cloud.fog.fill" }
+    if text.contains("阴") { return "cloud.fill" }
+    if text.contains("云") { return "cloud.sun.fill" }
+    if ["150", "151", "152", "153"].contains(icon) { return "moon.stars.fill" }
+    return "sun.max.fill"
+  }
+}
+
 #if os(iOS)
 private struct TaskSwipeContainer<Content: View>: View {
   let move: () -> Void
@@ -1427,85 +1506,6 @@ private struct TodayTaskScrollConfigurator: UIViewRepresentable {
       guard abs(scrollView.contentOffset.y - top) > 0.5 else { return }
       scrollView.setContentOffset(CGPoint(x: scrollView.contentOffset.x, y: top), animated: false)
     }
-  }
-}
-
-private struct InboxAmbientHeader: View {
-  let weather: QingxuWeatherSnapshot?
-  let quote: QingxuQuoteSnapshot?
-  let isLoading: Bool
-  let refresh: () -> Void
-
-  var body: some View {
-    Button(action: refresh) {
-      VStack(alignment: .leading, spacing: 12) {
-        if let weather {
-          HStack(alignment: .firstTextBaseline, spacing: 10) {
-            Image(systemName: weatherSymbol(weather.icon, text: weather.text))
-              .font(.system(size: 18, weight: .medium))
-            Text("\(weather.cityName) · \(weather.text)")
-              .font(.subheadline.weight(.semibold))
-            Spacer(minLength: 12)
-            Text("\(weather.temperature)°")
-              .font(.system(size: 25, weight: .medium, design: .rounded).monospacedDigit())
-          }
-          .foregroundStyle(QingxuPalette.ink)
-        }
-
-        if let quote {
-          VStack(alignment: .leading, spacing: 4) {
-            Text(quote.text)
-              .font(.subheadline)
-              .foregroundStyle(QingxuPalette.ink.opacity(0.86))
-              .lineLimit(2)
-              .fixedSize(horizontal: false, vertical: true)
-            Text("— \(quote.source)")
-              .font(.caption2)
-              .foregroundStyle(QingxuPalette.quiet)
-              .contentTransition(.opacity)
-          }
-        } else if isLoading {
-          HStack(spacing: 9) {
-            ProgressView().controlSize(.small)
-            Text("正在准备天气与今日一言")
-              .font(.subheadline)
-              .foregroundStyle(QingxuPalette.quiet)
-          }
-        }
-
-        if weather != nil || quote != nil {
-          HStack(spacing: 5) {
-            Circle()
-              .fill(QingxuPalette.accent)
-              .frame(width: 5, height: 5)
-            Text("轻点刷新")
-              .font(.caption2)
-              .foregroundStyle(QingxuPalette.quiet)
-          }
-        }
-      }
-      .padding(.horizontal, 16)
-      .padding(.vertical, 15)
-      .frame(maxWidth: .infinity, minHeight: 74, alignment: .leading)
-      .background(QingxuPalette.surface, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
-      .overlay {
-        RoundedRectangle(cornerRadius: 22, style: .continuous)
-          .stroke(QingxuPalette.separator.opacity(0.72), lineWidth: 0.6)
-      }
-    }
-    .buttonStyle(.plain)
-    .accessibilityLabel("刷新天气和每日一句")
-  }
-
-  private func weatherSymbol(_ icon: String, text: String) -> String {
-    if text.contains("雷") { return "cloud.bolt.rain.fill" }
-    if text.contains("雨") { return "cloud.rain.fill" }
-    if text.contains("雪") { return "cloud.snow.fill" }
-    if text.contains("雾") || text.contains("霾") { return "cloud.fog.fill" }
-    if text.contains("阴") { return "cloud.fill" }
-    if text.contains("云") { return "cloud.sun.fill" }
-    if ["150", "151", "152", "153"].contains(icon) { return "moon.stars.fill" }
-    return "sun.max.fill"
   }
 }
 
