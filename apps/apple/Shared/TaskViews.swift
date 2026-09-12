@@ -1300,6 +1300,7 @@ private struct TodayTaskScrollConfigurator: UIViewRepresentable {
 
   func updateUIView(_ uiView: UIView, context: Context) {
     context.coordinator.expansion = $expansion
+    guard context.coordinator.needsAttachment else { return }
     configureEnclosingScrollView(from: uiView, coordinator: context.coordinator)
   }
 
@@ -1327,8 +1328,8 @@ private struct TodayTaskScrollConfigurator: UIViewRepresentable {
     private weak var scrollView: UIScrollView?
     private var direction: TodayCalendarDragDirection?
     private var startExpansion: CGFloat = 0
-    private var pendingExpansion: CGFloat?
-    private var updateScheduled = false
+
+    var needsAttachment: Bool { scrollView == nil }
 
     init(expansion: Binding<CGFloat>) {
       self.expansion = expansion
@@ -1382,7 +1383,9 @@ private struct TodayTaskScrollConfigurator: UIViewRepresentable {
           1,
           max(0, startExpansion + translation / TodayCalendarMetrics.expansionDistance)
         )
-        scheduleExpansion(nextExpansion)
+        if abs(expansion.wrappedValue - nextExpansion) > 0.001 {
+          expansion.wrappedValue = nextExpansion
+        }
         if direction == .collapse, nextExpansion <= 0.001 {
           // Once the calendar is fully collapsed, release the rest of this
           // same upward gesture to the task list instead of requiring a
@@ -1393,7 +1396,6 @@ private struct TodayTaskScrollConfigurator: UIViewRepresentable {
 
       case .ended, .cancelled, .failed:
         guard let direction else { return }
-        pendingExpansion = nil
         keepListAtTop(scrollView)
         let velocity = recognizer.velocity(in: scrollView).y
         let interactive = min(1, max(0,
@@ -1413,19 +1415,6 @@ private struct TodayTaskScrollConfigurator: UIViewRepresentable {
 
       default:
         break
-      }
-    }
-
-    private func scheduleExpansion(_ value: CGFloat) {
-      pendingExpansion = value
-      guard !updateScheduled else { return }
-      updateScheduled = true
-      DispatchQueue.main.async { [weak self] in
-        guard let self else { return }
-        self.updateScheduled = false
-        guard let value = self.pendingExpansion else { return }
-        self.pendingExpansion = nil
-        self.expansion.wrappedValue = value
       }
     }
 

@@ -526,12 +526,13 @@ private struct SettingsRowGlyph: View {
 }
 
 private struct FeatureModulesSettingsView: View {
-  @AppStorage(QingxuPreferenceKey.inboxModule) private var inboxEnabled = true
+  @AppStorage(QingxuPreferenceKey.inboxModule) private var inboxEnabled = false
   @AppStorage(QingxuPreferenceKey.pomodoroModule) private var pomodoroEnabled = true
   @AppStorage(QingxuPreferenceKey.rssModule) private var rssEnabled = true
   @AppStorage(QingxuPreferenceKey.remoteAccessModule) private var remoteAccessEnabled = true
   @AppStorage(QingxuPreferenceKey.moduleOrder) private var moduleOrder = QingxuModuleOrder.defaultValue
   @State private var orderedTabs = AppTab.allCases
+  @State private var pendingEnable: AppTab?
   #if os(iOS)
   @State private var editMode = EditMode.active
   #endif
@@ -547,8 +548,8 @@ private struct FeatureModulesSettingsView: View {
               Text(moduleDetail(tab)).font(.caption).foregroundStyle(QingxuPalette.quiet)
             }
             Spacer()
-            if let binding = enabledBinding(for: tab) {
-              Toggle("", isOn: binding).labelsHidden().tint(QingxuPalette.accent)
+            if isOptional(tab) {
+              Toggle("", isOn: moduleBinding(for: tab)).labelsHidden().tint(QingxuPalette.accent)
             } else {
               Text("固定")
                 .font(.caption.weight(.medium))
@@ -561,17 +562,40 @@ private struct FeatureModulesSettingsView: View {
       } header: {
         Text("按住右侧拖动调整底部导航顺序")
       } footer: {
-        Text("今天与设置始终保留。关闭其他模块只会隐藏入口，不会删除数据。")
+        Text("底部导航始终只有 5 个独立入口。今天与设置固定保留；达到上限后启用其他模块，需要替换一个当前入口。")
       }
     }
     .qingxuScreen()
     .navigationTitle("功能模块")
-    .onAppear(perform: reloadOrder)
+    .onAppear {
+      reloadOrder()
+      normalizeEnabledModules()
+    }
     .onDisappear(perform: persistOrder)
     #if os(iOS)
     .navigationBarTitleDisplayMode(.inline)
     .environment(\.editMode, $editMode)
     #endif
+    .confirmationDialog(
+      "替换一个导航入口",
+      isPresented: Binding(
+        get: { pendingEnable != nil },
+        set: { if !$0 { pendingEnable = nil } }
+      ),
+      titleVisibility: .visible
+    ) {
+      ForEach(enabledOptionalTabs) { current in
+        Button("用\(pendingEnable?.title ?? "新模块")替换\(current.title)") {
+          guard let pendingEnable else { return }
+          setEnabled(false, for: current)
+          setEnabled(true, for: pendingEnable)
+          self.pendingEnable = nil
+        }
+      }
+      Button("取消", role: .cancel) { pendingEnable = nil }
+    } message: {
+      Text("不会合并页面，也不会生成系统的“更多”页。")
+    }
   }
 
   private func move(from source: IndexSet, to destination: Int) {
@@ -589,13 +613,58 @@ private struct FeatureModulesSettingsView: View {
     }
   }
 
-  private func enabledBinding(for tab: AppTab) -> Binding<Bool>? {
+  private var enabledOptionalTabs: [AppTab] {
+    QingxuNavigationPolicy.optionalTabs.filter(isEnabled)
+  }
+
+  private func isOptional(_ tab: AppTab) -> Bool {
+    !QingxuNavigationPolicy.fixedTabs.contains(tab)
+  }
+
+  private func moduleBinding(for tab: AppTab) -> Binding<Bool> {
+    Binding(
+      get: { isEnabled(tab) },
+      set: { requested in
+        if !requested {
+          setEnabled(false, for: tab)
+        } else if enabledOptionalTabs.count < QingxuNavigationPolicy.maximumEnabledOptionalTabs {
+          setEnabled(true, for: tab)
+        } else {
+          pendingEnable = tab
+        }
+      }
+    )
+  }
+
+  private func isEnabled(_ tab: AppTab) -> Bool {
     switch tab {
-    case .inbox: $inboxEnabled
-    case .pomodoro: $pomodoroEnabled
-    case .rss: $rssEnabled
-    case .remoteAccess: $remoteAccessEnabled
-    case .today, .settings: nil
+    case .inbox: inboxEnabled
+    case .pomodoro: pomodoroEnabled
+    case .rss: rssEnabled
+    case .remoteAccess: remoteAccessEnabled
+    case .today, .settings: true
+    }
+  }
+
+  private func setEnabled(_ enabled: Bool, for tab: AppTab) {
+    switch tab {
+    case .inbox: inboxEnabled = enabled
+    case .pomodoro: pomodoroEnabled = enabled
+    case .rss: rssEnabled = enabled
+    case .remoteAccess: remoteAccessEnabled = enabled
+    case .today, .settings: break
+    }
+  }
+
+  private func normalizeEnabledModules() {
+    let normalized = QingxuNavigationPolicy.normalizedEnabledTabs(
+      inbox: inboxEnabled,
+      pomodoro: pomodoroEnabled,
+      rss: rssEnabled,
+      remoteAccess: remoteAccessEnabled
+    )
+    for tab in QingxuNavigationPolicy.optionalTabs {
+      setEnabled(normalized.contains(tab), for: tab)
     }
   }
 

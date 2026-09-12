@@ -4,6 +4,7 @@ import Foundation
 import NIOCore
 import NIOSSH
 import Security
+import UniformTypeIdentifiers
 @preconcurrency import SwiftTerm
 import SwiftUI
 
@@ -13,16 +14,61 @@ import UIKit
 import AppKit
 #endif
 
+enum RemoteAuthenticationMethod: String, Codable, CaseIterable, Identifiable {
+  case password
+  case privateKey
+
+  var id: String { rawValue }
+
+  var title: String {
+    switch self {
+    case .password: "密码"
+    case .privateKey: "私钥"
+    }
+  }
+}
+
 struct RemoteServerProfile: Codable, Identifiable, Hashable {
   var id = UUID()
   var name = ""
   var host = ""
   var port = 22
   var username = ""
+  var authentication = RemoteAuthenticationMethod.password
 
   var displayName: String {
     let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
     return trimmed.isEmpty ? host : trimmed
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case id, name, host, port, username, authentication
+  }
+
+  init() {}
+
+  init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+    name = try container.decodeIfPresent(String.self, forKey: .name) ?? ""
+    host = try container.decodeIfPresent(String.self, forKey: .host) ?? ""
+    port = try container.decodeIfPresent(Int.self, forKey: .port) ?? 22
+    username = try container.decodeIfPresent(String.self, forKey: .username) ?? ""
+    authentication = try container.decodeIfPresent(RemoteAuthenticationMethod.self, forKey: .authentication)
+      ?? .password
+  }
+}
+
+struct RemoteServerCredentials {
+  var password = ""
+  var privateKey = ""
+  var passphrase = ""
+
+  func hasCredential(for method: RemoteAuthenticationMethod) -> Bool {
+    switch method {
+    case .password: !password.isEmpty
+    case .privateKey: !privateKey.isEmpty
+    }
   }
 }
 
@@ -37,11 +83,49 @@ final class RemoteServerStore: ObservableObject {
     reload()
   }
 
-  func password(for server: RemoteServerProfile) -> String {
-    keychain.read(account: server.id.uuidString) ?? ""
+  func credentials(for server: RemoteServerProfile) -> RemoteServerCredentials {
+    let identifier = server.id.uuidString
+    return RemoteServerCredentials(
+      password: keychain.read(account: account(identifier, "password"))
+        ?? keychain.read(account: identifier)
+        ?? "",
+      privateKey: keychain.read(account: account(identifier, "private-key")) ?? "",
+      passphrase: keychain.read(account: account(identifier, "private-key-passphrase")) ?? ""
+    )
   }
 
-  func save(_ server: RemoteServerProfile, password: String) {
+  func hasStoredCredential(for server: RemoteServerProfile, method: RemoteAuthenticationMethod) -> Bool {
+    credentials(for: server).hasCredential(for: method)
+  }
+
+  func save(_ server: RemoteServerProfile, credentials: RemoteServerCredentials) throws {
+    let identifier = server.id.uuidString
+    switch server.authentication {
+    case .password:
+      if !credentials.password.isEmpty {
+        try keychain.write(credentials.password, account: account(identifier, "password"))
+        keychain.delete(account: identifier)
+      } else if !hasStoredCredential(for: server, method: .password) {
+        throw RemoteCredentialError.missingPassword
+      }
+      keychain.delete(account: account(identifier, "private-key"))
+      keychain.delete(account: account(identifier, "private-key-passphrase"))
+    case .privateKey:
+      if !credentials.privateKey.isEmpty {
+        try keychain.write(credentials.privateKey, account: account(identifier, "private-key"))
+        if credentials.passphrase.isEmpty {
+          keychain.delete(account: account(identifier, "private-key-passphrase"))
+        }
+      } else if !hasStoredCredential(for: server, method: .privateKey) {
+        throw RemoteCredentialError.missingPrivateKey
+      }
+      if !credentials.passphrase.isEmpty {
+        try keychain.write(credentials.passphrase, account: account(identifier, "private-key-passphrase"))
+      }
+      keychain.delete(account: account(identifier, "password"))
+      keychain.delete(account: identifier)
+    }
+
     if let index = servers.firstIndex(where: { $0.id == server.id }) {
       servers[index] = server
     } else {
@@ -49,15 +133,18 @@ final class RemoteServerStore: ObservableObject {
     }
     servers.sort { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
     persist()
-    if !password.isEmpty {
-      keychain.write(password, account: server.id.uuidString)
-    }
   }
 
   func remove(_ offsets: IndexSet) {
     let removed = offsets.compactMap { servers.indices.contains($0) ? servers[$0] : nil }
     servers.remove(atOffsets: offsets)
-    removed.forEach { keychain.delete(account: $0.id.uuidString) }
+    removed.forEach { server in
+      let identifier = server.id.uuidString
+      keychain.delete(account: identifier)
+      keychain.delete(account: account(identifier, "password"))
+      keychain.delete(account: account(identifier, "private-key"))
+      keychain.delete(account: account(identifier, "private-key-passphrase"))
+    }
     persist()
   }
 
@@ -71,6 +158,28 @@ final class RemoteServerStore: ObservableObject {
   private func persist() {
     guard let data = try? JSONEncoder().encode(servers) else { return }
     UserDefaults.standard.set(data, forKey: defaultsKey)
+  }
+
+  private func account(_ identifier: String, _ kind: String) -> String {
+    "\(identifier).\(kind)"
+  }
+}
+
+private enum RemoteCredentialError: LocalizedError {
+  case missingPassword
+  case missingPrivateKey
+  case unsupportedPrivateKey
+  case privateKeyTooLarge
+  case keychain(OSStatus)
+
+  var errorDescription: String? {
+    switch self {
+    case .missingPassword: "请填写密码。"
+    case .missingPrivateKey: "请选择或粘贴 OpenSSH 私钥。"
+    case .unsupportedPrivateKey: "无法读取该私钥。请使用 OpenSSH 格式的 Ed25519 或 RSA 私钥，并核对口令。"
+    case .privateKeyTooLarge: "私钥文件超过 128 KB，已拒绝导入。"
+    case .keychain(let status): "系统钥匙串保存失败（\(status)），请重试。"
+    }
   }
 }
 
@@ -92,16 +201,31 @@ private struct RemoteSecretStore {
     return String(data: data, encoding: .utf8)
   }
 
-  func write(_ value: String, account: String) {
-    delete(account: account)
-    let query: [String: Any] = [
+  func write(_ value: String, account: String) throws {
+    let lookup: [String: Any] = [
       kSecClass as String: kSecClassGenericPassword,
       kSecAttrService as String: service,
-      kSecAttrAccount as String: account,
-      kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
-      kSecValueData as String: Data(value.utf8)
+      kSecAttrAccount as String: account
     ]
-    SecItemAdd(query as CFDictionary, nil)
+    var update: [String: Any] = [kSecValueData as String: Data(value.utf8)]
+    #if os(iOS)
+    update[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
+    #endif
+    let updateStatus = SecItemUpdate(lookup as CFDictionary, update as CFDictionary)
+    if updateStatus == errSecSuccess { return }
+    guard updateStatus == errSecItemNotFound else {
+      throw RemoteCredentialError.keychain(updateStatus)
+    }
+
+    var add = lookup
+    add[kSecValueData as String] = Data(value.utf8)
+    #if os(iOS)
+    add[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
+    #endif
+    let addStatus = SecItemAdd(add as CFDictionary, nil)
+    guard addStatus == errSecSuccess else {
+      throw RemoteCredentialError.keychain(addStatus)
+    }
   }
 
   func delete(account: String) {
@@ -284,7 +408,7 @@ final class RemoteWorkspace: ObservableObject {
   @Published var filePreview: RemoteFilePreview?
 
   let server: RemoteServerProfile
-  private let password: String
+  private let credentials: RemoteServerCredentials
   private var client: SSHClient?
   private var sftp: SFTPClient?
   private var terminalWriter: TTYStdinWriter?
@@ -292,9 +416,9 @@ final class RemoteWorkspace: ObservableObject {
   private var terminalTask: Task<Void, Never>?
   private var terminalSessionStartedAt: Date?
 
-  init(server: RemoteServerProfile, password: String) {
+  init(server: RemoteServerProfile, credentials: RemoteServerCredentials) {
     self.server = server
-    self.password = password
+    self.credentials = credentials
     publishSystemState()
   }
 
@@ -307,10 +431,11 @@ final class RemoteWorkspace: ObservableObject {
     phase = .connecting
     publishSystemState()
     do {
+      let authenticationMethod = try makeAuthenticationMethod()
       let connectedClient = try await SSHClient.connect(
         host: server.host,
         port: server.port,
-        authenticationMethod: .passwordBased(username: server.username, password: password),
+        authenticationMethod: authenticationMethod,
         hostKeyValidator: .custom(RemoteHostKeyValidator(host: server.host, port: server.port)),
         reconnect: .never
       )
@@ -533,6 +658,30 @@ final class RemoteWorkspace: ObservableObject {
     )
   }
 
+  private func makeAuthenticationMethod() throws -> SSHAuthenticationMethod {
+    switch server.authentication {
+    case .password:
+      guard !credentials.password.isEmpty else { throw RemoteCredentialError.missingPassword }
+      return .passwordBased(username: server.username, password: credentials.password)
+    case .privateKey:
+      guard !credentials.privateKey.isEmpty else { throw RemoteCredentialError.missingPrivateKey }
+      let decryptionKey = credentials.passphrase.isEmpty ? nil : Data(credentials.passphrase.utf8)
+      if let method = try? SSHAuthenticationMethod.ed25519(
+        username: server.username,
+        privateKey: .init(sshEd25519: credentials.privateKey, decryptionKey: decryptionKey)
+      ) {
+        return method
+      }
+      if let method = try? SSHAuthenticationMethod.rsa(
+        username: server.username,
+        privateKey: .init(sshRsa: credentials.privateKey, decryptionKey: decryptionKey)
+      ) {
+        return method
+      }
+      throw RemoteCredentialError.unsupportedPrivateKey
+    }
+  }
+
   private static func message(for error: Error) -> String {
     let text = error.localizedDescription.trimmingCharacters(in: .whitespacesAndNewlines)
     return text.isEmpty ? String(describing: error) : text
@@ -567,7 +716,7 @@ struct RemoteAccessScreen: View {
             Section {
               ForEach(store.servers) { server in
                 NavigationLink {
-                  RemoteServerDetailView(server: server, password: store.password(for: server))
+                  RemoteServerDetailView(server: server, credentials: store.credentials(for: server))
                 } label: {
                   HStack(spacing: 14) {
                     Image(systemName: "server.rack")
@@ -587,7 +736,7 @@ struct RemoteAccessScreen: View {
               }
               .onDelete(perform: store.remove)
             } footer: {
-              Text("密码只保存在这台设备的系统钥匙串中，不会进入同步数据或 Git 仓库。")
+              Text("密码、私钥与私钥口令只保存在这台设备的系统钥匙串中，不会进入同步数据或 Git 仓库。")
             }
           }
         }
@@ -612,12 +761,18 @@ private struct RemoteServerEditor: View {
   @Environment(\.dismiss) private var dismiss
   @ObservedObject var store: RemoteServerStore
   @State private var server: RemoteServerProfile
-  @State private var password: String
+  @State private var credentials = RemoteServerCredentials()
+  @State private var hasStoredPassword: Bool
+  @State private var hasStoredPrivateKey: Bool
+  @State private var importingPrivateKey = false
+  @State private var importedPrivateKeyName = ""
+  @State private var errorMessage = ""
 
   init(store: RemoteServerStore, server: RemoteServerProfile) {
     self.store = store
     _server = State(initialValue: server)
-    _password = State(initialValue: store.password(for: server))
+    _hasStoredPassword = State(initialValue: store.hasStoredCredential(for: server, method: .password))
+    _hasStoredPrivateKey = State(initialValue: store.hasStoredCredential(for: server, method: .privateKey))
   }
 
   var body: some View {
@@ -642,16 +797,60 @@ private struct RemoteServerEditor: View {
           TextField("用户名", text: $server.username)
           #endif
         }
-        Section {
-          #if os(iOS)
-          SecureField("密码", text: $password).textContentType(.password)
-          #else
-          SecureField("密码", text: $password)
-          #endif
-        } header: {
-          Text("认证")
-        } footer: {
-          Text("当前版本先提供密码认证；私钥认证会作为下一步单独加入，不会把私钥写入普通配置。")
+        Section("认证方式") {
+          Picker("认证方式", selection: $server.authentication) {
+            ForEach(RemoteAuthenticationMethod.allCases) { method in
+              Text(method.title).tag(method)
+            }
+          }
+          .pickerStyle(.segmented)
+        }
+
+        if server.authentication == .password {
+          Section {
+            #if os(iOS)
+            SecureField(hasStoredPassword ? "已保存密码；留空则保持不变" : "密码", text: $credentials.password)
+              .textContentType(.password)
+            #else
+            SecureField(hasStoredPassword ? "已保存密码；留空则保持不变" : "密码", text: $credentials.password)
+            #endif
+          } footer: {
+            Text("密码使用仅限本机、仅解锁时可读的系统钥匙串保存。")
+          }
+        } else {
+          Section {
+            Button {
+              importingPrivateKey = true
+            } label: {
+              Label(
+                importedPrivateKeyName.isEmpty ? "从文件导入私钥" : importedPrivateKeyName,
+                systemImage: "key.horizontal"
+              )
+            }
+
+            SecureField(
+              hasStoredPrivateKey ? "已保存私钥；也可粘贴新私钥替换" : "粘贴 OpenSSH 私钥",
+              text: $credentials.privateKey
+            )
+            #if os(iOS)
+            .textInputAutocapitalization(.never)
+            .autocorrectionDisabled()
+            #endif
+
+            SecureField("私钥口令（可选）", text: $credentials.passphrase)
+          } header: {
+            Text("私钥")
+          } footer: {
+            Text("支持 OpenSSH Ed25519 与 RSA 私钥，含加密私钥。私钥和口令只存入本机系统钥匙串。")
+          }
+        }
+
+        if !errorMessage.isEmpty {
+          Section {
+            Text(errorMessage)
+              .font(.footnote)
+              .foregroundStyle(.red)
+          }
         }
       }
       .navigationTitle(server.host.isEmpty ? "添加服务器" : "编辑服务器")
@@ -662,14 +861,53 @@ private struct RemoteServerEditor: View {
         ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() } }
         ToolbarItem(placement: .confirmationAction) {
           Button("保存") {
-            store.save(server, password: password)
-            dismiss()
+            do {
+              server.host = server.host.trimmingCharacters(in: .whitespacesAndNewlines)
+              server.username = server.username.trimmingCharacters(in: .whitespacesAndNewlines)
+              try store.save(server, credentials: credentials)
+              dismiss()
+            } catch {
+              errorMessage = error.localizedDescription
+            }
           }
           .disabled(server.host.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                     || server.username.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                    || password.isEmpty)
+                    || !(1...65_535).contains(server.port)
+                    || !hasCredential)
         }
       }
+      .fileImporter(
+        isPresented: $importingPrivateKey,
+        allowedContentTypes: [.data, .plainText],
+        allowsMultipleSelection: false
+      ) { result in
+        importPrivateKey(result)
+      }
+    }
+  }
+
+  private var hasCredential: Bool {
+    switch server.authentication {
+    case .password: !credentials.password.isEmpty || hasStoredPassword
+    case .privateKey: !credentials.privateKey.isEmpty || hasStoredPrivateKey
+    }
+  }
+
+  private func importPrivateKey(_ result: Result<[URL], Error>) {
+    do {
+      guard let url = try result.get().first else { return }
+      let accessed = url.startAccessingSecurityScopedResource()
+      defer { if accessed { url.stopAccessingSecurityScopedResource() } }
+      let data = try Data(contentsOf: url, options: [.mappedIfSafe])
+      guard data.count <= 128 * 1_024 else { throw RemoteCredentialError.privateKeyTooLarge }
+      guard let value = String(data: data, encoding: .utf8), !value.isEmpty else {
+        throw RemoteCredentialError.unsupportedPrivateKey
+      }
+      credentials.privateKey = value
+      importedPrivateKeyName = url.lastPathComponent
+      errorMessage = ""
+    } catch {
+      errorMessage = error.localizedDescription
     }
   }
 }
@@ -685,8 +923,8 @@ private struct RemoteServerDetailView: View {
   @StateObject private var workspace: RemoteWorkspace
   @State private var section = RemoteSection.status
 
-  init(server: RemoteServerProfile, password: String) {
-    _workspace = StateObject(wrappedValue: RemoteWorkspace(server: server, password: password))
+  init(server: RemoteServerProfile, credentials: RemoteServerCredentials) {
+    _workspace = StateObject(wrappedValue: RemoteWorkspace(server: server, credentials: credentials))
   }
 
   var body: some View {

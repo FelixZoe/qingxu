@@ -285,11 +285,17 @@ final class AppStore: ObservableObject {
   }
 
   func saveSyncSettings(_ settings: SyncSettings) throws {
-    let serverChanged = settings.normalizedServerURL != syncSettings.normalizedServerURL
-      || settings.token != syncSettings.token
-    syncSettings = settings
+    let previous = syncSettings
+    let serverChanged = settings.normalizedServerURL != previous.normalizedServerURL
+      || settings.token != previous.token
     try SecureSyncToken.write(settings.token)
-    try QingxuFiles.save(settings, name: "sync.json")
+    do {
+      try QingxuFiles.save(settings, name: "sync.json")
+    } catch {
+      try? SecureSyncToken.write(previous.token)
+      throw error
+    }
+    syncSettings = settings
     if serverChanged {
       lastRevision = 0
       dirtyTaskIDs = Set(tasks.map(\.id))
@@ -306,9 +312,15 @@ final class AppStore: ObservableObject {
   }
 
   func saveAISettings(_ settings: AISettings) throws {
-    aiSettings = settings
+    let previous = aiSettings
     try SecureAIAPIKey.write(settings.apiKey)
-    try QingxuFiles.save(settings, name: "ai.json")
+    do {
+      try QingxuFiles.save(settings, name: "ai.json")
+    } catch {
+      try? SecureAIAPIKey.write(previous.apiKey)
+      throw error
+    }
+    aiSettings = settings
   }
 
   func testAIConnection(_ settings: AISettings) async throws {

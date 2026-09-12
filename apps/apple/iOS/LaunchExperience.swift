@@ -48,30 +48,30 @@ struct QingxuLaunchExperience: View {
   }
 
   private func launchPanels(size: CGSize) -> some View {
-    let upperHeight = ceil(size.height / 2)
-    let lowerHeight = size.height - upperHeight
+    let leftWidth = ceil(size.width / 2)
+    let rightWidth = size.width - leftWidth
 
-    return VStack(spacing: 0) {
-      launchPanel(edge: .bottom)
-        .frame(height: upperHeight)
-        .offset(y: panelsOpen ? -upperHeight - 2 : 0)
+    return HStack(spacing: 0) {
+      launchPanel(edge: .trailing)
+        .frame(width: leftWidth)
+        .offset(x: panelsOpen ? -leftWidth - 2 : 0)
 
-      launchPanel(edge: .top)
-        .frame(height: lowerHeight)
-        .offset(y: panelsOpen ? lowerHeight + 2 : 0)
+      launchPanel(edge: .leading)
+        .frame(width: rightWidth)
+        .offset(x: panelsOpen ? rightWidth + 2 : 0)
     }
   }
 
-  private func launchPanel(edge: VerticalEdge) -> some View {
-    ZStack(alignment: edge == .top ? .top : .bottom) {
+  private func launchPanel(edge: HorizontalEdge) -> some View {
+    ZStack(alignment: edge == .leading ? .leading : .trailing) {
       Color.black
 
       LinearGradient(
         colors: [Color.white.opacity(0.08), Color.clear],
-        startPoint: edge == .top ? .top : .bottom,
-        endPoint: edge == .top ? .bottom : .top
+        startPoint: edge == .leading ? .leading : .trailing,
+        endPoint: edge == .leading ? .trailing : .leading
       )
-      .frame(height: 2)
+      .frame(width: 2)
       .opacity(panelsOpen ? 1 : 0)
     }
     .clipped()
@@ -100,12 +100,12 @@ struct QingxuLaunchExperience: View {
       sealVisible = true
     }
     UIImpactFeedbackGenerator(style: .soft).impactOccurred(intensity: 0.42)
-    try? await Task.sleep(nanoseconds: 390_000_000)
+    try? await Task.sleep(nanoseconds: 350_000_000)
 
-    withAnimation(.timingCurve(0.22, 1, 0.36, 1, duration: 0.56)) {
+    withAnimation(.timingCurve(0.22, 1, 0.36, 1, duration: 0.62)) {
       panelsOpen = true
     }
-    try? await Task.sleep(nanoseconds: 580_000_000)
+    try? await Task.sleep(nanoseconds: 640_000_000)
     onFinished()
   }
 }

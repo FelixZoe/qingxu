@@ -35,6 +35,45 @@ enum QingxuModuleOrder {
   }
 }
 
+enum QingxuNavigationPolicy {
+  static let maximumVisibleTabs = 5
+  static let fixedTabs: Set<AppTab> = [.today, .settings]
+  static let optionalTabs: [AppTab] = [.pomodoro, .rss, .remoteAccess, .inbox]
+  static let maximumEnabledOptionalTabs = maximumVisibleTabs - fixedTabs.count
+
+  static func normalizedEnabledTabs(
+    inbox: Bool,
+    pomodoro: Bool,
+    rss: Bool,
+    remoteAccess: Bool
+  ) -> Set<AppTab> {
+    let requested: [AppTab: Bool] = [
+      .inbox: inbox,
+      .pomodoro: pomodoro,
+      .rss: rss,
+      .remoteAccess: remoteAccess
+    ]
+    return Set(optionalTabs.filter { requested[$0] == true }.prefix(maximumEnabledOptionalTabs))
+      .union(fixedTabs)
+  }
+
+  static func visibleTabs(
+    order: [AppTab],
+    inbox: Bool,
+    pomodoro: Bool,
+    rss: Bool,
+    remoteAccess: Bool
+  ) -> [AppTab] {
+    let enabled = normalizedEnabledTabs(
+      inbox: inbox,
+      pomodoro: pomodoro,
+      rss: rss,
+      remoteAccess: remoteAccess
+    )
+    return order.filter(enabled.contains).prefix(maximumVisibleTabs).map { $0 }
+  }
+}
+
 #if os(iOS)
 import AudioToolbox
 import UIKit

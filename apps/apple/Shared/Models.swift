@@ -246,8 +246,11 @@ struct SyncSettings: Codable, Equatable {
   }
 
   var validationMessage: String? {
-    guard let url = URL(string: normalizedServerURL), url.host != nil else {
+    guard let url = URL(string: normalizedServerURL), let host = url.host?.lowercased() else {
       return "服务器地址格式不正确"
+    }
+    guard QingxuTransportSecurity.allows(url: url, host: host) else {
+      return "远程同步必须使用 HTTPS；HTTP 仅允许本机调试"
     }
     guard token.range(of: "^[0-9a-fA-F]{64}$", options: .regularExpression) != nil else {
       return "同步密钥必须是 64 位十六进制字符"
@@ -341,8 +344,11 @@ struct AISettings: Codable, Equatable {
         ? nil
         : "请先配置可用的自托管同步服务器"
     case .openAI, .deepSeek, .compatible:
-      guard let url = URL(string: normalizedBaseURL), url.host != nil else {
+      guard let url = URL(string: normalizedBaseURL), let host = url.host?.lowercased() else {
         return "AI 接口地址格式不正确"
+      }
+      guard QingxuTransportSecurity.allows(url: url, host: host) else {
+        return "远程 AI 接口必须使用 HTTPS；HTTP 仅允许本机调试"
       }
       guard !model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
         return "请填写模型名称"
@@ -360,6 +366,14 @@ struct AISettings: Codable, Equatable {
 
   enum CodingKeys: String, CodingKey {
     case mode, baseURL, model, summaryPrompt
+  }
+}
+
+private enum QingxuTransportSecurity {
+  static func allows(url: URL, host: String) -> Bool {
+    if url.scheme?.lowercased() == "https" { return true }
+    let localHosts: Set<String> = ["localhost", "127.0.0.1", "::1"]
+    return url.scheme?.lowercased() == "http" && localHosts.contains(host)
   }
 }
 

@@ -41,10 +41,10 @@ private struct iOSRootView: View {
   @EnvironmentObject private var rssStore: RSSStore
   @Environment(\.openURL) private var openURL
   @Environment(\.scenePhase) private var scenePhase
-  @State private var selection = AppTab.inbox
+  @State private var selection = AppTab.today
   @State private var showingLaunchExperience = true
   @State private var availableUpdate: QingxuRelease?
-  @AppStorage(QingxuPreferenceKey.inboxModule) private var inboxEnabled = true
+  @AppStorage(QingxuPreferenceKey.inboxModule) private var inboxEnabled = false
   @AppStorage(QingxuPreferenceKey.pomodoroModule) private var pomodoroEnabled = true
   @AppStorage(QingxuPreferenceKey.rssModule) private var rssEnabled = true
   @AppStorage(QingxuPreferenceKey.remoteAccessModule) private var remoteAccessEnabled = true
@@ -122,6 +122,7 @@ private struct iOSRootView: View {
       )
     }
     .onAppear {
+      normalizeVisibleModules()
       if !inboxEnabled, selection == .inbox { selection = .today }
       consumePendingWidgetDestination()
       RSSBackgroundRefresh.schedule()
@@ -129,15 +130,26 @@ private struct iOSRootView: View {
   }
 
   private var visibleTabs: [AppTab] {
-    QingxuModuleOrder.decode(moduleOrder).filter { tab in
-      switch tab {
-      case .inbox: inboxEnabled
-      case .pomodoro: pomodoroEnabled
-      case .rss: rssEnabled
-      case .remoteAccess: remoteAccessEnabled
-      case .today, .settings: true
-      }
-    }
+    QingxuNavigationPolicy.visibleTabs(
+      order: QingxuModuleOrder.decode(moduleOrder),
+      inbox: inboxEnabled,
+      pomodoro: pomodoroEnabled,
+      rss: rssEnabled,
+      remoteAccess: remoteAccessEnabled
+    )
+  }
+
+  private func normalizeVisibleModules() {
+    let enabled = QingxuNavigationPolicy.normalizedEnabledTabs(
+      inbox: inboxEnabled,
+      pomodoro: pomodoroEnabled,
+      rss: rssEnabled,
+      remoteAccess: remoteAccessEnabled
+    )
+    inboxEnabled = enabled.contains(.inbox)
+    pomodoroEnabled = enabled.contains(.pomodoro)
+    rssEnabled = enabled.contains(.rss)
+    remoteAccessEnabled = enabled.contains(.remoteAccess)
   }
 
   @ViewBuilder
