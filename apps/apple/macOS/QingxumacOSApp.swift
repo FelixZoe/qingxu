@@ -59,12 +59,6 @@ private struct MacRootView: View {
 
 private struct MacPreferencesView: View {
   var body: some View {
-    TabView {
-      AppearanceSettingsView()
-        .tabItem { Label("外观", systemImage: "circle.lefthalf.filled") }
-      SyncSettingsView()
-        .tabItem { Label("同步", systemImage: "arrow.triangle.2.circlepath") }
-    }
-    .padding(16)
+    SettingsScreen()
   }
 }

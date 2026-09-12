@@ -394,15 +394,15 @@ struct TaskListScreen: View {
     tasks.first(where: { $0.status == .completed })?.id
   }
 
-  #if os(iOS)
   private func refreshCalendarTaskDays() {
+    #if os(iOS)
     let calendar = Calendar.autoupdatingCurrent
     calendarTaskDays = Set(store.tasks.lazy
       .filter(\.isOpen)
       .flatMap { [$0.startAt, $0.deadlineAt].compactMap { $0 } }
       .map { calendar.startOfDay(for: $0) })
+    #endif
   }
-  #endif
 
   private var selectedDateLabel: String {
     let calendar = Calendar.autoupdatingCurrent
