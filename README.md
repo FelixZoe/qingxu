@@ -157,28 +157,13 @@ go vet ./...
 
 ## 自动发布
 
-版本号统一使用 `主版本.功能版本.修订版本`，每一段只保留一位数字：
-
-- 日常修复递增末位，例如 `0.2.1 → 0.2.2`。
-- 末位到 `9` 后自动进位，例如 `0.2.9 → 0.3.0`。
-- 功能版本到 `9` 后进入下一主版本，例如 `0.9.9 → 1.0.0`。
-- 主版本只在不兼容变化或完整大版本升级时提升。
-- 旧的 `0.1.61` 长修订号会在下一次发布一次性迁移为 `0.2.0`。
-
-推送到 `main` 后，工作流会自动：
-
-1. 运行 Flutter 分析与测试、Go 测试与 `vet`。
-2. 并行构建 iOS、macOS、Android 与 Windows。
-3. 发布 `ghcr.io/felixzoe/qingxu-sync` Docker 镜像。
-4. 创建新版 Release、SHA-256 校验和与构建来源证明。
-5. 将最终版本号回写源码，并使用 `[skip ci]` 避免重复构建。
+推送到 `main` 后会自动检查、构建四端客户端和同步服务，并在全部必要任务通过后发布新版本。构建过程与结果以 [GitHub Actions](https://github.com/FelixZoe/qingxu/actions) 为准，不在用户文档重复展示内部版本迁移和流水线实现。
 
 ## 文档
 
 - [产品范围](docs/PRODUCT.md)
 - [跨端设计规范](docs/DESIGN.md)
 - [系统架构](docs/ARCHITECTURE.md)
-- [构建与发布工作流](docs/WORKFLOWS.md)
 - [同步协议 v1](docs/SYNC_PROTOCOL.md)
 - [自托管部署](docs/DEPLOYMENT.md)
 - [iOS 私密云端签名](docs/IOS_PRIVATE_SIGNING.md)
