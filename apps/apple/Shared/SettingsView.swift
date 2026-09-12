@@ -1,15 +1,135 @@
 import SwiftUI
+#if os(iOS)
+import UIKit
+#endif
 
 private extension View {
   @ViewBuilder
   func qingxuSettingsDestination() -> some View {
     #if os(iOS)
-    toolbar(.hidden, for: .tabBar)
+    background {
+      SettingsTabBarTransitionBridge()
+        .allowsHitTesting(false)
+    }
     #else
     self
     #endif
   }
 }
+
+#if os(iOS)
+/// Keeps the native tab bar transition attached to the navigation controller's
+/// own animator. Interactive back gestures therefore scrub the tab bar opacity
+/// and position instead of abruptly toggling it at either end of the gesture.
+private struct SettingsTabBarTransitionBridge: UIViewControllerRepresentable {
+  func makeUIViewController(context: Context) -> Controller {
+    Controller()
+  }
+
+  func updateUIViewController(_ controller: Controller, context: Context) {}
+
+  final class Controller: UIViewController {
+    private weak var tabBar: UITabBar?
+
+    override func loadView() {
+      view = UIView(frame: .zero)
+      view.isUserInteractionEnabled = false
+      view.backgroundColor = .clear
+    }
+
+    override func viewWillAppear(_ animated: Bool) {
+      super.viewWillAppear(animated)
+      guard let tabBar = resolveTabBar() else { return }
+      self.tabBar = tabBar
+      animate(tabBar: tabBar, hidden: true, animated: animated)
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+      super.viewDidAppear(animated)
+      apply(tabBar: resolveTabBar(), hidden: true)
+    }
+
+    override func viewWillDisappear(_ animated: Bool) {
+      super.viewWillDisappear(animated)
+      guard isLeavingSettingsDestination,
+            let tabBar = resolveTabBar() ?? tabBar else { return }
+      animate(tabBar: tabBar, hidden: false, animated: animated)
+    }
+
+    private var isLeavingSettingsDestination: Bool {
+      var candidate = parent
+      while let controller = candidate {
+        if controller.isMovingFromParent || controller.navigationController?.isBeingDismissed == true {
+          return true
+        }
+        if controller is UINavigationController { break }
+        candidate = controller.parent
+      }
+      return navigationController?.transitionCoordinator?.isInteractive == true
+    }
+
+    private func resolveTabBar() -> UITabBar? {
+      var candidate: UIViewController? = self
+      while let controller = candidate {
+        if let tabController = controller as? UITabBarController {
+          return tabController.tabBar
+        }
+        if let tabController = controller.tabBarController {
+          return tabController.tabBar
+        }
+        candidate = controller.parent
+      }
+      return view.window?.rootViewController?.findTabBarController()?.tabBar
+    }
+
+    private func animate(tabBar: UITabBar, hidden: Bool, animated: Bool) {
+      tabBar.isUserInteractionEnabled = !hidden
+      let changes = { [weak self, weak tabBar] in
+        self?.apply(tabBar: tabBar, hidden: hidden)
+      }
+      let completion: (UIViewControllerTransitionCoordinatorContext) -> Void = { [weak self, weak tabBar] context in
+        guard context.isCancelled else { return }
+        self?.apply(tabBar: tabBar, hidden: !hidden)
+        tabBar?.isUserInteractionEnabled = hidden
+      }
+
+      if animated, let coordinator = transitionCoordinator ?? navigationController?.transitionCoordinator {
+        coordinator.animate(alongsideTransition: { _ in changes() }, completion: completion)
+      } else if animated {
+        UIView.animate(
+          withDuration: 0.3,
+          delay: 0,
+          options: [.beginFromCurrentState, .curveEaseInOut, .allowUserInteraction],
+          animations: changes
+        )
+      } else {
+        changes()
+      }
+    }
+
+    private func apply(tabBar: UITabBar?, hidden: Bool) {
+      guard let tabBar else { return }
+      tabBar.alpha = hidden ? 0 : 1
+      tabBar.transform = hidden
+        ? CGAffineTransform(translationX: 0, y: min(14, tabBar.bounds.height * 0.12))
+        : .identity
+    }
+  }
+}
+
+private extension UIViewController {
+  func findTabBarController() -> UITabBarController? {
+    if let tabController = self as? UITabBarController { return tabController }
+    for child in children {
+      if let tabController = child.findTabBarController() { return tabController }
+    }
+    if let presentedViewController {
+      return presentedViewController.findTabBarController()
+    }
+    return nil
+  }
+}
+#endif
 
 struct SettingsScreen: View {
   @EnvironmentObject private var store: AppStore
