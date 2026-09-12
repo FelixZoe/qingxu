@@ -84,8 +84,9 @@ private struct SettingsTabBarTransitionBridge: UIViewControllerRepresentable {
 
     private func animate(tabBar: UITabBar, hidden: Bool, animated: Bool) {
       tabBar.isUserInteractionEnabled = !hidden
-      let changes = { [weak self, weak tabBar] in
-        self?.apply(tabBar: tabBar, hidden: hidden)
+      let changes: () -> Void = { [weak self, weak tabBar] in
+        guard let self else { return }
+        self.apply(tabBar: tabBar, hidden: hidden)
       }
       let completion: (UIViewControllerTransitionCoordinatorContext) -> Void = { [weak self, weak tabBar] context in
         guard context.isCancelled else { return }

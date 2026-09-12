@@ -31,6 +31,11 @@ private struct QingxuWidgetEntry: TimelineEntry {
   let weather: MacWidgetWeather?
   let quote: MacWidgetQuote?
   let snapshotUpdatedAt: Date?
+  let remoteServerName: String
+  let remoteStatus: String
+  let remoteDetail: String
+  let remoteUpdatedAt: Date?
+  let remoteSessionStartedAt: Date?
 }
 
 private struct QingxuWidgetProvider: TimelineProvider {
@@ -62,7 +67,12 @@ private struct QingxuWidgetProvider: TimelineProvider {
       heatmap: [:],
       weather: MacWidgetWeather(cityName: "上海", temperature: "23", text: "晴", humidity: "52"),
       quote: MacWidgetQuote(text: "把今天真正重要的事做好。", source: "清序"),
-      snapshotUpdatedAt: .now
+      snapshotUpdatedAt: .now,
+      remoteServerName: "我的服务器",
+      remoteStatus: "online",
+      remoteDetail: "服务器在线",
+      remoteUpdatedAt: .now,
+      remoteSessionStartedAt: nil
     )
   }
 
@@ -85,7 +95,12 @@ private struct QingxuWidgetProvider: TimelineProvider {
       heatmap: heatmap,
       weather: decode(MacWidgetWeather.self, data: defaults?.data(forKey: "qingxu.ambient.weather-cache.v1")),
       quote: decode(MacWidgetQuote.self, data: defaults?.data(forKey: "qingxu.ambient.quote-cache.v1")),
-      snapshotUpdatedAt: defaults?.object(forKey: "widgetSnapshotUpdatedAt") as? Date
+      snapshotUpdatedAt: defaults?.object(forKey: "widgetSnapshotUpdatedAt") as? Date,
+      remoteServerName: defaults?.string(forKey: QingxuRemoteShared.serverNameKey) ?? "服务器",
+      remoteStatus: defaults?.string(forKey: QingxuRemoteShared.statusKey) ?? "idle",
+      remoteDetail: defaults?.string(forKey: QingxuRemoteShared.detailKey) ?? "打开清序以连接",
+      remoteUpdatedAt: defaults?.object(forKey: QingxuRemoteShared.updatedAtKey) as? Date,
+      remoteSessionStartedAt: defaults?.object(forKey: QingxuRemoteShared.sessionStartedAtKey) as? Date
     )
   }
 
@@ -402,6 +417,75 @@ private struct FocusHeatmapWidgetView: View {
   }
 }
 
+private struct MacRemoteServerWidgetView: View {
+  @Environment(\.widgetFamily) private var family
+  let entry: QingxuWidgetEntry
+
+  var body: some View {
+    WidgetSurface {
+      VStack(alignment: .leading, spacing: 14) {
+        HStack(spacing: 8) {
+          Image(systemName: "server.rack")
+            .font(.system(size: 16, weight: .semibold))
+          Text("私人服务器")
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(.secondary)
+          Spacer()
+          Circle().fill(statusColor).frame(width: 7, height: 7)
+        }
+
+        Spacer(minLength: 0)
+        Text(entry.remoteServerName)
+          .font(.headline.weight(.semibold))
+          .lineLimit(1)
+
+        if entry.remoteStatus == "session", let startedAt = entry.remoteSessionStartedAt {
+          HStack(alignment: .firstTextBaseline) {
+            Text(timerInterval: startedAt...Date.distantFuture, countsDown: false)
+              .font(.title2.weight(.semibold).monospacedDigit())
+              .lineLimit(1)
+            Spacer()
+            Text("终端会话")
+              .font(.caption)
+              .foregroundStyle(.secondary)
+          }
+        } else {
+          HStack {
+            Text(entry.remoteDetail)
+              .font(family == .systemSmall ? .caption : .subheadline)
+              .foregroundStyle(.secondary)
+              .lineLimit(2)
+            Spacer()
+            Text(statusTitle)
+              .font(.caption.weight(.medium))
+          }
+        }
+      }
+      .padding(16)
+    }
+    .widgetURL(URL(string: "qingxu://server"))
+    .accessibilityLabel("\(entry.remoteServerName)，\(statusTitle)")
+  }
+
+  private var statusTitle: String {
+    switch entry.remoteStatus {
+    case "connecting": return "连接中"
+    case "online": return "在线"
+    case "offline": return "离线"
+    case "session": return "已连接"
+    default: return "未连接"
+    }
+  }
+
+  private var statusColor: Color {
+    switch entry.remoteStatus {
+    case "online", "session": return .primary
+    case "connecting": return .secondary
+    default: return .secondary.opacity(0.35)
+    }
+  }
+}
+
 struct MacTodayTasksWidget: Widget {
   let kind = "QingxuMacTodayTasks"
 
@@ -480,6 +564,19 @@ struct MacAmbientWidget: Widget {
   }
 }
 
+struct MacRemoteServerWidget: Widget {
+  let kind = "QingxuMacRemoteServer"
+
+  var body: some WidgetConfiguration {
+    StaticConfiguration(kind: kind, provider: QingxuWidgetProvider()) { entry in
+      MacRemoteServerWidgetView(entry: entry)
+    }
+    .configurationDisplayName("服务器状态")
+    .description("查看私人服务器状态和终端会话时长。")
+    .supportedFamilies([.systemSmall, .systemMedium])
+  }
+}
+
 @main
 struct QingxumacOSWidgetBundle: WidgetBundle {
   var body: some Widget {
@@ -489,5 +586,6 @@ struct QingxumacOSWidgetBundle: WidgetBundle {
     MacFocusHeatmapWidget()
     MacOverviewWidget()
     MacAmbientWidget()
+    MacRemoteServerWidget()
   }
 }

@@ -87,6 +87,7 @@ App Group：group.one.darker.qingxu
 - 首次连接采用 TOFU（Trust On First Use）记录 SHA-256 主机指纹，后续指纹变化会拒绝连接。
 - 服务器配置不会默认写入项目中的任何域名、IP、用户名或密钥。
 - 当前先支持密码认证；私钥认证需要以 Keychain/安全文件导入方式实现，不能把私钥放入源码或普通 `UserDefaults`。
+- iOS 与 macOS 小组件只读取服务器名称、在线状态和会话开始时间；iOS 进入终端后启动锁屏实时活动与灵动岛，离开服务器页面即结束，不展示命令、输出、用户名或凭据。
 
 工程通过 Swift Package Manager 固定依赖版本。最低系统版本为 iOS 17 与 macOS 15，GitHub Actions 使用最新稳定版 Xcode 构建。
 
@@ -95,7 +96,7 @@ App Group：group.one.darker.qingxu
 - iOS：沿用 `Documents/Qingxu` 数据目录，兼容早期客户端数据。
 - macOS：`Application Support/Qingxu`。
 - 同步密钥与客户端直连 AI Key：Apple Keychain。
-- Widget/Live Activity 快照：App Group 共享容器；阶段标识确保专注与休息切换时不复用旧倒计时。
+- Widget/Live Activity 快照：App Group 共享容器；阶段标识确保专注与休息切换时不复用旧倒计时，服务器组件只保存非敏感连接状态。
 
 主题、模块开关等设备偏好不参与同步。任务、番茄钟和 RSS 阅读状态使用与 Flutter 客户端相同的协议。
 

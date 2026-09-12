@@ -46,8 +46,8 @@ flowchart LR
 
 iOS 主应用与 `QingxuWidgets` 扩展通过 `group.one.darker.qingxu` App Group 共享最小快照：
 
-- WidgetKit 读取今日任务和专注状态。
-- ActivityKit 显示锁屏实时活动与灵动岛。
+- WidgetKit 读取今日任务、专注状态和私人服务器的非敏感连接快照。
+- ActivityKit 显示番茄钟与终端会话的锁屏实时活动和灵动岛；终端会话仅显示服务器名称、状态与持续时间。
 - 运行中的倒计时保存绝对结束时间，不依赖应用在后台每秒执行。
 - 扩展不直接访问同步网络；状态由主应用写入共享容器。
 

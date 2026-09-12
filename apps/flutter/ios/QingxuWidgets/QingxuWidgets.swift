@@ -87,6 +87,11 @@ private struct QingxuEntry: TimelineEntry {
   let weather: WidgetWeather?
   let quote: WidgetQuote?
   let snapshotUpdatedAt: Date?
+  let remoteServerName: String
+  let remoteStatus: String
+  let remoteDetail: String
+  let remoteUpdatedAt: Date?
+  let remoteSessionStartedAt: Date?
 }
 
 private struct QingxuProvider: TimelineProvider {
@@ -107,7 +112,12 @@ private struct QingxuProvider: TimelineProvider {
       focusHeatmap: Array(repeating: 0, count: 126),
       weather: WidgetWeather(cityName: "上海", temperature: "23", text: "晴", humidity: "52"),
       quote: WidgetQuote(text: "把今天真正重要的事做好。", source: "清序"),
-      snapshotUpdatedAt: .now
+      snapshotUpdatedAt: .now,
+      remoteServerName: "我的服务器",
+      remoteStatus: "online",
+      remoteDetail: "服务器在线",
+      remoteUpdatedAt: .now,
+      remoteSessionStartedAt: nil
     )
   }
 
@@ -143,7 +153,12 @@ private struct QingxuProvider: TimelineProvider {
       focusHeatmap: defaults?.array(forKey: "focusHeatmapLevels") as? [Int] ?? [],
       weather: weather,
       quote: quote,
-      snapshotUpdatedAt: defaults?.object(forKey: "widgetSnapshotUpdatedAt") as? Date
+      snapshotUpdatedAt: defaults?.object(forKey: "widgetSnapshotUpdatedAt") as? Date,
+      remoteServerName: defaults?.string(forKey: "qingxu.remote.widget.serverName") ?? "服务器",
+      remoteStatus: defaults?.string(forKey: "qingxu.remote.widget.status") ?? "idle",
+      remoteDetail: defaults?.string(forKey: "qingxu.remote.widget.detail") ?? "打开清序以连接",
+      remoteUpdatedAt: defaults?.object(forKey: "qingxu.remote.widget.updatedAt") as? Date,
+      remoteSessionStartedAt: defaults?.object(forKey: "qingxu.remote.widget.sessionStartedAt") as? Date
     )
   }
 
@@ -550,6 +565,175 @@ struct QingxuFocusWidget: Widget {
   }
 }
 
+private struct RemoteServerWidgetView: View {
+  @Environment(\.widgetFamily) private var family
+  let entry: QingxuEntry
+
+  var body: some View {
+    switch family {
+    case .accessoryCircular:
+      ZStack {
+        AccessoryWidgetBackground()
+        Image(systemName: entry.remoteStatus == "session" ? "terminal.fill" : "server.rack")
+          .font(.system(size: 17, weight: .semibold))
+      }
+      .accessibilityLabel(accessibilityText)
+    case .accessoryRectangular:
+      HStack(spacing: 8) {
+        Image(systemName: entry.remoteStatus == "session" ? "terminal.fill" : "server.rack")
+        VStack(alignment: .leading, spacing: 1) {
+          Text(entry.remoteServerName).font(.headline).lineLimit(1)
+          if entry.remoteStatus == "session", let startedAt = entry.remoteSessionStartedAt {
+            Text(timerInterval: startedAt...Date.distantFuture, countsDown: false)
+              .font(.caption.monospacedDigit())
+          } else {
+            Text(statusTitle).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+          }
+        }
+      }
+      .accessibilityLabel(accessibilityText)
+    case .accessoryInline:
+      Label("\(entry.remoteServerName) · \(statusTitle)", systemImage: "server.rack")
+    default:
+      QingxuWidgetSurface {
+        VStack(alignment: .leading, spacing: 12) {
+          HStack {
+            Image(systemName: "server.rack")
+              .font(.system(size: 17, weight: .semibold))
+            Spacer()
+            HStack(spacing: 5) {
+              Circle().fill(statusColor).frame(width: 7, height: 7)
+              Text(statusTitle).font(.caption.weight(.medium)).foregroundStyle(.secondary)
+            }
+          }
+
+          Spacer(minLength: 0)
+          Text(entry.remoteServerName)
+            .font(.headline.weight(.semibold))
+            .lineLimit(1)
+          if entry.remoteStatus == "session", let startedAt = entry.remoteSessionStartedAt {
+            Text(timerInterval: startedAt...Date.distantFuture, countsDown: false)
+              .font(.title2.weight(.semibold).monospacedDigit())
+              .lineLimit(1)
+          } else {
+            Text(entry.remoteDetail)
+              .font(.caption)
+              .foregroundStyle(.secondary)
+              .lineLimit(family == .systemMedium ? 2 : 1)
+          }
+        }
+      }
+      .accessibilityLabel(accessibilityText)
+    }
+  }
+
+  private var statusTitle: String {
+    switch entry.remoteStatus {
+    case "connecting": return "连接中"
+    case "online": return "在线"
+    case "offline": return "离线"
+    case "session": return "终端会话"
+    default: return "未连接"
+    }
+  }
+
+  private var statusColor: Color {
+    switch entry.remoteStatus {
+    case "online", "session": return QingxuWidgetPalette.accent
+    case "connecting": return .secondary
+    default: return .secondary.opacity(0.45)
+    }
+  }
+
+  private var accessibilityText: String {
+    "\(entry.remoteServerName)，\(statusTitle)"
+  }
+}
+
+struct QingxuRemoteServerWidget: Widget {
+  let kind = "QingxuRemoteServerWidget"
+
+  var body: some WidgetConfiguration {
+    StaticConfiguration(kind: kind, provider: QingxuProvider()) { entry in
+      RemoteServerWidgetView(entry: entry)
+        .qingxuWidgetBackground(QingxuWidgetPalette.background)
+        .widgetURL(URL(string: "qingxu://server"))
+    }
+    .configurationDisplayName("服务器状态")
+    .description("查看私人服务器状态，并快速进入终端与文件。")
+    .supportedFamilies([.systemSmall, .systemMedium, .accessoryCircular, .accessoryRectangular, .accessoryInline])
+  }
+}
+
+@available(iOSApplicationExtension 16.2, *)
+struct QingxuRemoteSessionLiveActivity: Widget {
+  var body: some WidgetConfiguration {
+    ActivityConfiguration(for: QingxuRemoteSessionAttributes.self) { context in
+      HStack(spacing: 12) {
+        Image(systemName: "terminal.fill")
+          .font(.headline)
+        VStack(alignment: .leading, spacing: 2) {
+          Text(context.attributes.serverName)
+            .font(.subheadline.weight(.semibold))
+            .lineLimit(1)
+          Text(timerInterval: context.state.startedAt...Date.distantFuture, countsDown: false)
+            .font(.title3.weight(.semibold).monospacedDigit())
+        }
+        Spacer(minLength: 8)
+        Text("已连接")
+          .font(.caption.weight(.medium))
+          .foregroundStyle(.secondary)
+      }
+      .padding(.horizontal)
+      .activityBackgroundTint(Color.black.opacity(0.92))
+      .activitySystemActionForegroundColor(.white)
+      .widgetURL(URL(string: "qingxu://terminal"))
+    } dynamicIsland: { context in
+      DynamicIsland {
+        DynamicIslandExpandedRegion(.leading) {
+          Image(systemName: "terminal.fill")
+            .font(.system(size: 16, weight: .semibold))
+        }
+        DynamicIslandExpandedRegion(.trailing) {
+          Text(timerInterval: context.state.startedAt...Date.distantFuture, countsDown: false)
+            .font(.system(size: 15, weight: .semibold, design: .rounded).monospacedDigit())
+            .lineLimit(1)
+            .frame(width: 62, alignment: .trailing)
+        }
+        DynamicIslandExpandedRegion(.bottom) {
+          HStack(spacing: 10) {
+            VStack(alignment: .leading, spacing: 2) {
+              Text(context.attributes.serverName)
+                .font(.system(size: 13, weight: .semibold))
+                .lineLimit(1)
+              Text(context.state.detail)
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+            }
+            Spacer()
+            Label("已连接", systemImage: "lock.shield.fill")
+              .font(.system(size: 11, weight: .medium))
+              .foregroundStyle(.secondary)
+          }
+          .padding(.bottom, 2)
+        }
+      } compactLeading: {
+        Image(systemName: "terminal.fill").font(.system(size: 11, weight: .semibold))
+      } compactTrailing: {
+        Text(timerInterval: context.state.startedAt...Date.distantFuture, countsDown: false)
+          .font(.system(size: 10.5, weight: .medium, design: .monospaced))
+          .lineLimit(1)
+          .frame(width: 34, alignment: .trailing)
+      } minimal: {
+        Image(systemName: "terminal.fill")
+      }
+      .widgetURL(URL(string: "qingxu://terminal"))
+      .keylineTint(QingxuWidgetPalette.accent)
+    }
+  }
+}
+
 @available(iOSApplicationExtension 16.2, *)
 struct QingxuLiveActivity: Widget {
   var body: some WidgetConfiguration {
@@ -738,6 +922,8 @@ struct QingxuWidgetBundle: WidgetBundle {
     QingxuOverviewWidget()
     QingxuAmbientWidget()
     QingxuHeatmapWidget()
+    QingxuRemoteServerWidget()
     QingxuLiveActivity()
+    QingxuRemoteSessionLiveActivity()
   }
 }

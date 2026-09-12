@@ -290,10 +290,12 @@ final class RemoteWorkspace: ObservableObject {
   private var terminalWriter: TTYStdinWriter?
   private weak var terminalView: TerminalView?
   private var terminalTask: Task<Void, Never>?
+  private var terminalSessionStartedAt: Date?
 
   init(server: RemoteServerProfile, password: String) {
     self.server = server
     self.password = password
+    publishSystemState()
   }
 
   deinit {
@@ -303,6 +305,7 @@ final class RemoteWorkspace: ObservableObject {
   func connect() async {
     guard client == nil, phase != .connecting else { return }
     phase = .connecting
+    publishSystemState()
     do {
       let connectedClient = try await SSHClient.connect(
         host: server.host,
@@ -315,12 +318,14 @@ final class RemoteWorkspace: ObservableObject {
       hostFingerprint = RemoteKnownHostsStore.shared.entry(host: server.host, port: server.port)?.fingerprint
         ?? "无法读取"
       phase = .connected
+      publishSystemState()
       async let status: Void = refreshStatus()
       async let directory: Void = loadDirectory(".")
       _ = await (status, directory)
       startTerminalIfNeeded()
     } catch {
       phase = .failed(Self.message(for: error))
+      publishSystemState()
     }
   }
 
@@ -332,6 +337,8 @@ final class RemoteWorkspace: ObservableObject {
     let closingClient = client
     client = nil
     phase = .idle
+    terminalSessionStartedAt = nil
+    publishSystemState()
     Task { try? await closingClient?.close() }
   }
 
@@ -355,8 +362,10 @@ final class RemoteWorkspace: ObservableObject {
       var response = try await client.executeCommand(command, maxResponseSize: 65_536)
       let output = response.readString(length: response.readableBytes) ?? ""
       machineStatus = RemoteMachineStatus(output: output)
+      publishSystemState()
     } catch {
       phase = .failed(Self.message(for: error))
+      publishSystemState()
     }
   }
 
@@ -438,6 +447,7 @@ final class RemoteWorkspace: ObservableObject {
         try await writer.write(ByteBuffer(bytes: bytes))
       } catch {
         await MainActor.run { self.phase = .failed(Self.message(for: error)) }
+        await MainActor.run { self.publishSystemState() }
       }
     }
   }
@@ -456,6 +466,12 @@ final class RemoteWorkspace: ObservableObject {
       do {
         try await client.withTTY { inbound, outbound in
           await MainActor.run { self.terminalWriter = outbound }
+          await MainActor.run {
+            if self.terminalSessionStartedAt == nil {
+              self.terminalSessionStartedAt = .now
+              self.publishSystemState()
+            }
+          }
           for try await event in inbound {
             guard !Task.isCancelled else { return }
             let bytes: [UInt8]
@@ -468,11 +484,53 @@ final class RemoteWorkspace: ObservableObject {
             }
           }
         }
+        await MainActor.run {
+          self.terminalWriter = nil
+          self.terminalTask = nil
+          self.terminalSessionStartedAt = nil
+          self.publishSystemState()
+        }
       } catch {
         guard !Task.isCancelled else { return }
-        await MainActor.run { self.phase = .failed(Self.message(for: error)) }
+        await MainActor.run {
+          self.terminalWriter = nil
+          self.terminalTask = nil
+          self.terminalSessionStartedAt = nil
+          self.phase = .failed(Self.message(for: error))
+          self.publishSystemState()
+        }
       }
     }
+  }
+
+  private func publishSystemState() {
+    let state: QingxuRemoteSurfaceState
+    let detail: String
+    if terminalSessionStartedAt != nil {
+      state = .session
+      detail = machineStatus.hostname == "—" ? "终端会话进行中" : machineStatus.hostname
+    } else {
+      switch phase {
+      case .idle:
+        state = .idle
+        detail = "未连接"
+      case .connecting:
+        state = .connecting
+        detail = "正在建立安全连接"
+      case .connected:
+        state = .online
+        detail = machineStatus.hostname == "—" ? "服务器在线" : machineStatus.hostname
+      case .failed:
+        state = .offline
+        detail = "连接不可用"
+      }
+    }
+    RemoteSystemFeatures.publish(
+      serverName: server.displayName,
+      state: state,
+      detail: detail,
+      sessionStartedAt: terminalSessionStartedAt
+    )
   }
 
   private static func message(for error: Error) -> String {
